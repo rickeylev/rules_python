@@ -143,8 +143,8 @@ def _pip_repository_impl(rctx):
     annotations_file = rctx.path("annotations.json")
     rctx.file(annotations_file, json.encode_indent(annotations, indent = " " * 4))
 
+    requirements_txt = _locked_requirements(rctx)
     if rctx.attr.incremental:
-        requirements_txt = _locked_requirements(rctx)
         args = [
             python_interpreter,
             "-m",
@@ -172,7 +172,7 @@ def _pip_repository_impl(rctx):
             "-m",
             "python.pip_install.extract_wheels",
             "--requirements",
-            rctx.path(rctx.attr.requirements),
+            rctx.path(requirements_txt),
             "--annotations",
             annotations_file,
         ]
