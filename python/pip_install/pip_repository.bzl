@@ -396,7 +396,10 @@ def _whl_library_impl(rctx):
     result = rctx.execute(
         args,
         # Manually construct the PYTHONPATH since we cannot use the toolchain here
-        environment = {"PYTHONPATH": _construct_pypath(rctx)},
+        environment = {
+            "PIP_INDEX_URL": "https://devx-artifactory.build.rhinternal.net/artifactory/api/pypi/pypi/simple",
+            "PYTHONPATH": _construct_pypath(rctx),
+        },
         quiet = rctx.attr.quiet,
         timeout = rctx.attr.timeout,
     )
