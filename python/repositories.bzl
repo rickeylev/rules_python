@@ -95,6 +95,21 @@ def _python_repository_impl(rctx):
     elif rctx.attr.distutils_content:
         rctx.file(distutils_path, rctx.attr.distutils_content)
 
+    rctx.download_and_extract(
+        url = "https://files.pythonhosted.org/packages/27/d6/003e593296a85fd6ed616ed962795b2f87709c3eee2bca4f6d0fe55c6d00/wheel-0.37.1-py2.py3-none-any.whl",
+        sha256 = "4bdcd7d840138086126cd09254dc6195fb4fc6f01c050a1d7236f2630db1d22a",
+        output = "lib/python3.8/site-packages",
+        type = "zip",
+    )
+
+    # don't bump above 60.x.x
+    rctx.download_and_extract(
+        url = "https://files.pythonhosted.org/packages/8d/25/88b377b99ffb4ad0fc44ff5735fd6be605b2183f743d1ff5c10b7790cea5/setuptools-59.8.0-py3-none-any.whl",
+        sha256 = "608a7885b664342ae9fafc43840b29d219c5a578876f6f7e00c4e2612160587f",
+        output = "lib/python3.8/site-packages",
+        type = "zip",
+    )
+
     # Make the Python installation read-only.
     if "windows" not in rctx.os.name:
         exec_result = rctx.execute(["chmod", "-R", "ugo-w", "lib"])
