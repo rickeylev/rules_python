@@ -10,10 +10,8 @@ _attrs = {
     "twine_bin": attr.label(
         doc = """\
 A py_binary that runs the twine tool.
-The default value assumes you have `twine` listed in your own requirements.txt, and have run
-`pip_parse` with the default name of `pypi`.
 
-If these don't apply, you might use the `entry_point` helper to supply your own twine binary:
+You might use the `entry_point` helper to supply the twine binary:
 ```starlark
 load("@my_pip_parse_name//:requirements.bzl", "entry_point")
 py_twine(
@@ -22,12 +20,11 @@ py_twine(
 )
 ```
 
-Or of course you can supply a py_binary by some other means which is CLI-compatible with twine.
+Of course you can supply a py_binary by some other means which is CLI-compatible with twine.
 
 Currently rules_python doesn't supply twine itself.
 Follow https://github.com/bazelbuild/rules_python/issues/1016
 """,
-        default = "@pypi_twine//:rules_python_wheel_entry_point_twine",
         executable = True,
         cfg = "exec",
     ),
