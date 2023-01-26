@@ -14,6 +14,11 @@
 
 load("//python:defs.bzl", "py_library")
 load("//python:packaging.bzl", "py_wheel")
+load("//python:pip.bzl", "compile_pip_requirements")
+
+compile_pip_requirements(
+    name = "requirements",
+)
 
 filegroup(
     name = "distribution",
@@ -40,10 +45,12 @@ py_wheel(
         "Development Status :: 5 - Production/Stable",
         "License :: OSI Approved :: Apache Software License",
     ],
-    description_file = "README.md",
+    description_file = "README.rst",
     distribution = "bazel_runfiles",
     homepage = "https://github.com/bazelbuild/rules_python",
     strip_path_prefixes = ["python"],
+    # This attribute is for the "wheel.publish" target.
+    twine_bin = "@publish_deps_twine//:rules_python_wheel_entry_point_twine",
     version = "{BUILD_EMBED_LABEL}",
     visibility = ["//visibility:public"],
     deps = [":runfiles"],

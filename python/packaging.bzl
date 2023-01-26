@@ -15,6 +15,7 @@
 """Public API for for building wheels."""
 
 load("//python/private:py_package.bzl", "py_package_lib")
+load("//python/private:py_twine.bzl", "py_twine_lib")
 load("//python/private:py_wheel.bzl", _PyWheelInfo = "PyWheelInfo", _py_wheel = "py_wheel")
 
 # Re-export as public API
@@ -80,15 +81,22 @@ def py_wheel(name, **kwargs):
         name:  A unique name for this target.
         **kwargs: other named parameters passed to the underlying [py_wheel rule](#py_wheel_rule)
     """
+    py_twine(
+        name = "{}.publish".format(name),
+        wheel = name,
+        twine_bin = kwargs.pop("twine_bin", None),
+    )
+
     _py_wheel(name = name, **kwargs)
 
-    # TODO(alexeagle): produce an executable target like this:
-    # py_publish_wheel(
-    #     name = "{}.publish".format(name),
-    #     wheel = name,
-    #     # Optional: override the label for a py_binary that runs twine
-    #     # https://twine.readthedocs.io/en/stable/
-    #     twine_bin = "//path/to:twine",
-    # )
-
 py_wheel_rule = _py_wheel
+
+py_twine = rule(
+    doc = """\
+The py_twine rule executes the twine CLI to upload packages.
+https://packaging.python.org/en/latest/tutorials/packaging-projects/#uploading-the-distribution-archives
+""",
+    implementation = py_twine_lib.implementation,
+    attrs = py_twine_lib.attrs,
+    executable = True,
+)
