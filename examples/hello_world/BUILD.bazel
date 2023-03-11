@@ -1,0 +1,25 @@
+# A simple hello world example
+
+load("@rules_python//python:defs.bzl", "py_binary", "py_library")
+load("@rules_python//python:py_test.bzl", "py_test")
+
+py_binary(
+    name = "hello",
+    srcs = ["hello.py"],
+    deps = [":hello_lib"],
+)
+
+py_library(
+    name = "lib",
+    srcs = ["lib.py"],
+)
+
+py_test(
+    name = "hello_test",
+    srcs = ["hello_test.py"],
+    # Binaries go in data, not deps. This is because they produce an executable
+    # file as their output (which large and expensive to build). Were they put
+    # in deps, that unused executable file would be included in the runfiles.
+    data = [":hello"],
+    deps = [":hello_lib"],
+)

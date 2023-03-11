@@ -1,0 +1,10 @@
+workspace(name = "hello_world")
+
+local_repository(
+    name = "rules_python",
+    path = "../..",
+)
+
+load("@rules_python//python:repositories.bzl", "py_repositories")
+
+py_repositories()
