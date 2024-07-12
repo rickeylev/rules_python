@@ -1,0 +1,29 @@
+load(":defs.bzl", "autoconf")
+
+autoconf.gen_autoconf(
+    name = "pyconfig.h",
+    src = "config.h.in",
+    deps = [
+        ":have_bar",
+        ":have_foo",
+    ],
+)
+
+autoconf.autoconf_vars(
+    name = "have_bar",
+    vars = {"HAVE_BAR": "1"},
+)
+
+autoconf.autoconf_vars(
+    name = "have_foo",
+    vars = select({
+        "@platforms//os:linux": {
+            "HAVE_FOO": "1",
+        },
+        "//conditions:default": {
+            "HAVE_FOO": "0",
+        },
+    }) | {
+        "HAVE_QUX": "comment-out",
+    },
+)
