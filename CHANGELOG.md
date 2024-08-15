@@ -35,6 +35,8 @@ A brief description of the categories of changes:
     * `3.12 -> 3.12.4`
 
 ### Fixed
+* (rules) Use -P instead of PYTHONSAFEPATH to prevent PYTHONSAFEPATH propagating unintentionally
+  to child processes
 * (rules) correctly handle absolute URLs in parse_simpleapi_html.bzl.
 * (rules) Fixes build targets linking against `@rules_python//python/cc:current_py_cc_libs`
   in host platform builds on macOS, by editing the `LC_ID_DYLIB` field of the hermetic interpreter's
