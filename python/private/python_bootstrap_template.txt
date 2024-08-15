@@ -376,12 +376,17 @@ def ExecuteFile(python_program, main_filename, args, env, module_space,
     shutil.rmtree(os.path.dirname(module_space), True)
   sys.exit(ret_code)
 
+def SupportsSafePath():
+  return sys.version_info[0] >= 3 and sys.version_info[1] >= 11
+
 def _RunExecv(python_program, main_filename, args, env):
   # type: (str, str, list[str], dict[str, str]) -> ...
   """Executes the given Python file using the various environment settings."""
   os.environ.update(env)
   PrintVerbose("RunExecv: environ:", os.environ)
   argv = [python_program, main_filename] + args
+  if SupportsSafePath():
+    argv.insert(1, "-P")
   PrintVerbose("RunExecv: argv:", python_program, argv)
   os.execv(python_program, argv)
 
@@ -410,25 +415,26 @@ relative_files = True
   PrintVerboseCoverage('Coverage entrypoint:', coverage_entrypoint)
   # First run the target Python file via coveragepy to create a .coverage
   # database file, from which we can later export lcov.
-  ret_code = subprocess.call(
-    [
-      python_program,
-      coverage_entrypoint,
-      "run",
-      "--rcfile=" + rcfile_name,
-      "--append",
-      "--branch",
-      main_filename
-    ] + args,
-    env=env,
-    cwd=workspace
-  )
+  argv = [
+    python_program,
+    coverage_entrypoint,
+    "run",
+    "--rcfile=" + rcfile_name,
+    "--append",
+    "--branch",
+    main_filename
+  ] + args
+  if SupportsSafePath():
+    argv.insert(1, "-P")
+  ret_code = subprocess.call(argv, env=env, cwd=workspace)
   output_filename = os.path.join(os.environ['COVERAGE_DIR'], 'pylcov.dat')
 
   PrintVerboseCoverage('Converting coveragepy database to lcov:', output_filename)
   # Run coveragepy again to convert its .coverage database file into lcov.
   # Under normal conditions running lcov outputs to stdout/stderr, which causes problems for `coverage`.
   params = [python_program, coverage_entrypoint, "lcov", "--rcfile=" + rcfile_name, "-o", output_filename, "--quiet"]
+  if SupportsSafePath():
+    params.insert(1, "-P")
   kparams = {"env": env, "cwd": workspace, "stdout": subprocess.DEVNULL, "stderr": subprocess.DEVNULL}
   if IsVerboseCoverage():
     # reconnect stdout/stderr to lcov generation.  Should be useful for debugging `coverage` issues.
@@ -494,10 +500,6 @@ def Main():
   runfiles_envkey, runfiles_envvalue = RunfilesEnvvar(module_space)
   if runfiles_envkey:
     new_env[runfiles_envkey] = runfiles_envvalue
-
-  # Don't prepend a potentially unsafe path to sys.path
-  # See: https://docs.python.org/3.11/using/cmdline.html#envvar-PYTHONSAFEPATH
-  new_env['PYTHONSAFEPATH'] = '1'
 
   main_filename = os.path.join(module_space, main_rel_path)
   main_filename = GetWindowsPathWithUNCPrefix(main_filename)
