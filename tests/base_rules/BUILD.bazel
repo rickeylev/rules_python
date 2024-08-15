@@ -78,3 +78,18 @@ sh_py_run_test(
     sh_src = "inherit_pythonsafepath_env_test.sh",
     target_compatible_with = _SUPPORTS_BOOTSTRAP_SCRIPT,
 )
+
+sh_py_run_test(
+    name = "pythonsafepath_env_system_python_zip_no_test",
+    bootstrap_impl = "system_python",
+    build_python_zip = "no",
+    py_src = "bin.py",
+    # todo: rename sh file
+    sh_src = "inherit_pythonsafepath_env_test.sh",
+)
+
+# todo: add tests for:
+# bootstrap={system,script} x zip={yes,no}
+
+# todo: add test for Python 3.9 (or lower, before -P flag is available);
+# could be an analysis test instead of regular test, since 3.9 is so old.

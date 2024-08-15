@@ -59,11 +59,11 @@ actual=$(PYTHONSAFEPATH=OUTER $bin 2>&1)
 expect_match "sys.flags.safe_path: True" "$actual"
 expect_match "PYTHONSAFEPATH: OUTER" "$actual"
 
-echo "Check enabled by default"
+echo "Check enabled by default without PYTHONSAFEPATH env contamination"
 # Verifying doing nothing leaves safepath enabled by default
 actual=$($bin 2>&1)
 expect_match "sys.flags.safe_path: True" "$actual"
-expect_match "PYTHONSAFEPATH: 1" "$actual"
+expect_match "PYTHONSAFEPATH: UNSET" "$actual"
 
 # Exit if any of the expects failed
 [[ ! -e EXPECTATION_FAILED ]]
