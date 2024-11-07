@@ -102,7 +102,10 @@ py_binary(
     srcs = ["proto_to_markdown.py"],
     # Only public because it's an implicit attribute
     visibility = ["//visibility:public"],
-    deps = [":proto_to_markdown_lib"],
+    deps = [
+        ":proto_to_markdown_lib",
+        "@dev_pip//protobuf",
+    ],
 )
 
 py_library(

@@ -34,5 +34,6 @@ build:rtd --stamp
 build:rtd --enable_bzlmod
 
 common:bazel7.x --incompatible_python_disallow_native_rules
+common:bazel7.x --incompatible_enable_proto_toolchain_resolution
 
 build --lockfile_mode=update

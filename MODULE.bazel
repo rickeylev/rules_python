@@ -79,6 +79,7 @@ bazel_dep(name = "rules_testing", version = "0.6.0", dev_dependency = True)
 bazel_dep(name = "rules_shell", version = "0.3.0", dev_dependency = True)
 bazel_dep(name = "rules_multirun", version = "0.9.0", dev_dependency = True)
 bazel_dep(name = "bazel_ci_rules", version = "1.0.0", dev_dependency = True)
+bazel_dep(name = "toolchains_protoc", version = "0.3.3", dev_dependency = True)
 
 # Extra gazelle plugin deps so that WORKSPACE.bzlmod can continue including it for e2e tests.
 # We use `WORKSPACE.bzlmod` because it is impossible to have dev-only local overrides.
@@ -129,6 +130,30 @@ dev_pip.parse(
     requirements_lock = "//examples/wheel:requirements_server.txt",
 )
 use_repo(dev_pip, "dev_pip", "pypiserver")
+
+# Prebuilt protoc toolchain setup
+protoc = use_extension(
+    "@toolchains_protoc//protoc:extensions.bzl",
+    "protoc",
+    dev_dependency = True,
+)
+
+##protoc.toolchain(
+##    google_protobuf = "com_google_protobuf",
+##    # Demonstrate overriding the default version
+##    version = "v28.0",
+##)
+use_repo(
+    protoc,
+    ##"com_google_protobuf",
+    "toolchains_protoc_hub",
+)
+
+register_toolchains(
+    "@toolchains_protoc_hub//:all",
+    "//tools/toolchains:all",
+    dev_dependency = True,
+)
 
 # Bazel integration test setup below
 
