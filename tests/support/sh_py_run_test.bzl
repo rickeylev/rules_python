@@ -33,17 +33,22 @@ def _perform_transition_impl(input_settings, attr):
         settings["//command_line_option:extra_toolchains"] = attr.extra_toolchains
     if attr.python_version:
         settings["//python/config_settings:python_version"] = attr.python_version
+    if attr.collect_code_coverage:
+        settings["//command_line_option:collect_code_coverage"] = attr.collect_code_coverage
+
     return settings
 
 _perform_transition = transition(
     implementation = _perform_transition_impl,
     inputs = [
-        "//python/config_settings:bootstrap_impl",
+        "//command_line_option:collect_code_coverage",
         "//command_line_option:extra_toolchains",
+        "//python/config_settings:bootstrap_impl",
         "//python/config_settings:python_version",
     ],
     outputs = [
         "//command_line_option:build_python_zip",
+        "//command_line_option:collect_code_coverage",
         "//command_line_option:extra_toolchains",
         "//python/config_settings:bootstrap_impl",
         "//python/config_settings:python_version",
@@ -95,6 +100,7 @@ def _make_reconfig_rule(**kwargs):
     attrs = {
         "bootstrap_impl": attr.string(),
         "build_python_zip": attr.string(default = "auto"),
+        "collect_code_coverage": attr.string(),
         "env": attr.string_dict(),
         "extra_toolchains": attr.string_list(
             doc = """
@@ -130,9 +136,14 @@ def py_reconfig_test(*, name, **kwargs):
         **kwargs: kwargs to pass along to _py_reconfig_test and py_test.
     """
     reconfig_kwargs = {}
+
+    # Specific to the transition
     reconfig_kwargs["bootstrap_impl"] = kwargs.pop("bootstrap_impl", None)
     reconfig_kwargs["extra_toolchains"] = kwargs.pop("extra_toolchains", None)
     reconfig_kwargs["python_version"] = kwargs.pop("python_version", None)
+    reconfig_kwargs["collect_code_coverage"] = kwargs.pop("collect_code_coverage", None)
+
+    # Shared with py_test
     reconfig_kwargs["env"] = kwargs.get("env")
     reconfig_kwargs["target_compatible_with"] = kwargs.get("target_compatible_with")
 

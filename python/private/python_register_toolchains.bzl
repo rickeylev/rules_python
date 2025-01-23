@@ -130,6 +130,11 @@ def python_register_toolchains(
                 )],
             )
 
+        repo_name = "{name}_{platform}".format(
+            name = name,
+            platform = platform,
+        )
+        print("create:", repo_name, "cov=", coverage_tool, type(coverage_tool))
         python_repository(
             name = "{name}_{platform}".format(
                 name = name,

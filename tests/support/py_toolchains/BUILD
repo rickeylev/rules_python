@@ -25,6 +25,7 @@ load("//python/private:py_exec_tools_toolchain.bzl", "py_exec_tools_toolchain") 
 # makes it easier for analysis tests to verify content.
 py_runtime(
     name = "platform_runtime",
+    coverage_tool = "foo",
     implementation_name = "fakepy",
     interpreter_path = "/fake/python3.9",
     interpreter_version_info = {

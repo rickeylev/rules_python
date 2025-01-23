@@ -15,6 +15,18 @@
 import os
 import sys
 
+print("==============")
+print("==============")
+print("==============")
+print("dir:", os.environ.get("COVERAGE_DIR"))
+covdir = os.environ.get("COVERAGE_DIR")
+print(os.path.exists(os.path.join(covdir, "pylcov.dat")))
+print(sys.modules.get("STASH_COV"))
+print('covrun=', os.environ.get("COVERAGE_RUN"))
+print("==============")
+print("==============")
+sys.exit(1)
+
 expected = os.getenv("VERSION_CHECK")
 current = f"{sys.version_info.major}.{sys.version_info.minor}"
 

@@ -315,6 +315,8 @@ relative_files = True
                 "*/external/*",
             ],
         )
+        if os.environ.get("RULES_PYTHON_INTERNAL_STASH_COVERAGE"):
+            sys.modules["STASH_COVERAGE"] = cov
         cov.start()
         try:
             yield
@@ -332,6 +334,7 @@ relative_files = True
             if os.path.isfile(lcov_path):
                 unresolve_symlinks(lcov_path)
     finally:
+        sys.modules.pop("STASH_COVERAGE", None)
         try:
             os.unlink(rcfile_name)
         except OSError as err:

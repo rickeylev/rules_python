@@ -566,6 +566,10 @@ def _create_venv(ctx, output_prefix, imports, runtime_details):
             runtime.coverage_tool.short_path,
         )
     else:
+        if "verify_coverage" in ctx.label.name:
+            toolchain = ctx.toolchains[TOOLCHAIN_TYPE]
+            print(toolchain.toolchain_label)
+            fail(ctx.label, dir(runtime_details.toolchain_runtime))
         coverage_tool_runfiles_path = ""
 
     ctx.actions.expand_template(

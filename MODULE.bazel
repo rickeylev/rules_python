@@ -43,6 +43,7 @@ python = use_extension("//python/extensions:python.bzl", "python")
 # change frequently to track the most recent Python version.
 # NOTE: The root module can override this.
 python.toolchain(
+    configure_coverage_tool = True,
     is_default = True,
     python_version = "3.11",
 )
