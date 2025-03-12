@@ -27,7 +27,20 @@ def _py_binary_impl(ctx):
         inherited_environment = [],
     )
 
+# NOTE: Exported publicly
 def create_binary_rule_builder():
+    """Create a rule builder for a py_binary.
+
+    :::{important}
+
+    **This is a public, but unstable, API.** Many of the details of how a rule
+    is defined are internal and may change without notice.
+    :::
+
+    Returns:
+        {type}`ruleb.Rule` with the necessary settings
+        for creating a `py_binary` rule.
+    """
     builder = create_executable_rule_builder(
         implementation = _py_binary_impl,
         executable = True,
