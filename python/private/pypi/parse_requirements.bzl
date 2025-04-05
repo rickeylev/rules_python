@@ -67,10 +67,10 @@ def parse_requirements(
             of the distribution URLs from a PyPI index. Accepts ctx and
             distribution names to query.
         evaluate_markers: A function to use to evaluate the requirements.
-            Accepts the ctx and a dict where keys are requirement lines to
-            evaluate against the platforms stored as values in the input dict.
-            Returns the same dict, but with values being platforms that are
-            compatible with the requirements line.
+            Accepts a dict where keys are requirement lines to evaluate against
+            the platforms stored as values in the input dict. Returns the same
+            dict, but with values being platforms that are compatible with the
+            requirements line.
         logger: repo_utils.logger or None, a simple struct to log diagnostic messages.
 
     Returns:
@@ -93,7 +93,7 @@ def parse_requirements(
 
         The second element is extra_pip_args should be passed to `whl_library`.
     """
-    evaluate_markers = evaluate_markers or (lambda *_: {})
+    evaluate_markers = evaluate_markers or (lambda _: {})
     options = {}
     requirements = {}
     for file, plats in requirements_by_platform.items():
@@ -168,7 +168,7 @@ def parse_requirements(
     # to do, we could use Python to parse the requirement lines and infer the
     # URL of the files to download things from. This should be important for
     # VCS package references.
-    env_marker_target_platforms = evaluate_markers(ctx, reqs_with_env_markers)
+    env_marker_target_platforms = evaluate_markers(reqs_with_env_markers)
     if logger:
         logger.debug(lambda: "Evaluated env markers from:\n{}\n\nTo:\n{}".format(
             reqs_with_env_markers,
@@ -184,7 +184,7 @@ def parse_requirements(
                 req.distribution: None
                 for reqs in requirements_by_platform.values()
                 for req in reqs.values()
-                if req.srcs.shas
+                if not req.srcs.url
             }),
         )
 
@@ -292,16 +292,44 @@ def _add_dists(*, requirement, index_urls, logger = None):
         index_urls: The result of simpleapi_download.
         logger: A logger for printing diagnostic info.
     """
+
+    # Handle direct URLs in requirements
+    if requirement.srcs.url:
+        url = requirement.srcs.url
+        _, _, filename = url.rpartition("/")
+        if "." not in filename:
+            # detected filename has no extension, it might be an sdist ref
+            # TODO @aignas 2025-04-03: should be handled if the following is fixed:
+            # https://github.com/bazel-contrib/rules_python/issues/2363
+            return [], None
+
+        direct_url_dist = struct(
+            url = url,
+            filename = filename,
+            sha256 = requirement.srcs.shas[0] if requirement.srcs.shas else "",
+            yanked = False,
+        )
+
+        if filename.endswith(".whl"):
+            return [direct_url_dist], None
+        else:
+            return [], direct_url_dist
+
     if not index_urls:
         return [], None
 
     whls = []
     sdist = None
 
-    # TODO @aignas 2024-05-22: it is in theory possible to add all
-    # requirements by version instead of by sha256. This may be useful
-    # for some projects.
-    for sha256 in requirement.srcs.shas:
+    # First try to find distributions by SHA256 if provided
+    shas_to_use = requirement.srcs.shas
+    if not shas_to_use:
+        version = requirement.srcs.version
+        shas_to_use = index_urls.sha256s_by_version.get(version, [])
+        if logger:
+            logger.warn(lambda: "requirement file has been generated without hashes, will use all hashes for the given version {} that could find on the index:\n    {}".format(version, shas_to_use))
+
+    for sha256 in shas_to_use:
         # For now if the artifact is marked as yanked we just ignore it.
         #
         # See https://packaging.python.org/en/latest/specifications/simple-repository-api/#adding-yank-support-to-the-simple-api

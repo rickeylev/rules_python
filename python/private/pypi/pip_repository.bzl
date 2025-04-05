@@ -18,7 +18,7 @@ load("@bazel_skylib//lib:sets.bzl", "sets")
 load("//python/private:normalize_name.bzl", "normalize_name")
 load("//python/private:repo_utils.bzl", "REPO_DEBUG_ENV_VAR")
 load("//python/private:text_util.bzl", "render")
-load(":evaluate_markers.bzl", "evaluate_markers", EVALUATE_MARKERS_SRCS = "SRCS")
+load(":evaluate_markers.bzl", "evaluate_markers")
 load(":parse_requirements.bzl", "host_platform", "parse_requirements", "select_requirement")
 load(":pip_repository_attrs.bzl", "ATTRS")
 load(":render_pkg_aliases.bzl", "render_pkg_aliases")
@@ -82,13 +82,7 @@ def _pip_repository_impl(rctx):
             extra_pip_args = rctx.attr.extra_pip_args,
         ),
         extra_pip_args = rctx.attr.extra_pip_args,
-        evaluate_markers = lambda rctx, requirements: evaluate_markers(
-            rctx,
-            requirements = requirements,
-            python_interpreter = rctx.attr.python_interpreter,
-            python_interpreter_target = rctx.attr.python_interpreter_target,
-            srcs = rctx.attr._evaluate_markers_srcs,
-        ),
+        evaluate_markers = evaluate_markers,
     )
     selected_requirements = {}
     options = None
@@ -228,18 +222,11 @@ pip_repository = repository_rule(
 Optional annotations to apply to packages. Keys should be package names, with
 capitalization matching the input requirements file, and values should be
 generated using the `package_name` macro. For example usage, see [this WORKSPACE
-file](https://github.com/bazelbuild/rules_python/blob/main/examples/pip_repository_annotations/WORKSPACE).
+file](https://github.com/bazel-contrib/rules_python/blob/main/examples/pip_repository_annotations/WORKSPACE).
 """,
         ),
         _template = attr.label(
             default = ":requirements.bzl.tmpl.workspace",
-        ),
-        _evaluate_markers_srcs = attr.label_list(
-            default = EVALUATE_MARKERS_SRCS,
-            doc = """\
-The list of labels to use as SRCS for the marker evaluation code. This ensures that the
-code will be re-evaluated when any of files in the default changes.
-""",
         ),
         **ATTRS
     ),
@@ -336,7 +323,7 @@ In some cases you may not want to generate the requirements.bzl file as a reposi
 while Bazel is fetching dependencies. For example, if you produce a reusable Bazel module
 such as a ruleset, you may want to include the requirements.bzl file rather than make your users
 install the WORKSPACE setup to generate it.
-See https://github.com/bazelbuild/rules_python/issues/608
+See https://github.com/bazel-contrib/rules_python/issues/608
 
 This is the same workflow as Gazelle, which creates `go_repository` rules with
 [`update-repos`](https://github.com/bazelbuild/bazel-gazelle#update-repos)

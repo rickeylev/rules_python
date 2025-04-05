@@ -26,7 +26,10 @@ foo==0.0.1 \
     --hash=sha256:deadb00f
 """,
         "requirements_direct": """\
-foo[extra] @ https://some-url
+foo[extra] @ https://some-url/package.whl
+bar @ https://example.org/bar-1.0.whl --hash=sha256:deadbeef
+baz @ https://test.com/baz-2.0.whl; python_version < "3.8" --hash=sha256:deadb00f
+qux @ https://example.org/qux-1.0.tar.gz --hash=sha256:deadbe0f
 """,
         "requirements_extra_args": """\
 --index-url=example.org
@@ -58,6 +61,10 @@ foo[extra]==0.0.1 --hash=sha256:deadbeef
         "requirements_marker": """\
 foo[extra]==0.0.1 ;marker --hash=sha256:deadbeef
 bar==0.0.1 --hash=sha256:deadbeef
+""",
+        "requirements_optional_hash": """
+foo==0.0.4 @ https://example.org/foo-0.0.4.whl
+foo==0.0.5 @ https://example.org/foo-0.0.5.whl --hash=sha256:deadbeef
 """,
         "requirements_osx": """\
 foo==0.0.3 --hash=sha256:deadbaaf
@@ -106,6 +113,7 @@ def _test_simple(env):
                     requirement_line = "foo[extra]==0.0.1 --hash=sha256:deadbeef",
                     shas = ["deadbeef"],
                     version = "0.0.1",
+                    url = "",
                 ),
                 target_platforms = [
                     "linux_x86_64",
@@ -123,6 +131,110 @@ def _test_simple(env):
     ).equals("0.0.1")
 
 _tests.append(_test_simple)
+
+def _test_direct_urls(env):
+    got = parse_requirements(
+        ctx = _mock_ctx(),
+        requirements_by_platform = {
+            "requirements_direct": ["linux_x86_64"],
+        },
+    )
+    env.expect.that_dict(got).contains_exactly({
+        "bar": [
+            struct(
+                distribution = "bar",
+                extra_pip_args = [],
+                sdist = None,
+                is_exposed = True,
+                srcs = struct(
+                    marker = "",
+                    requirement = "bar @ https://example.org/bar-1.0.whl --hash=sha256:deadbeef",
+                    requirement_line = "bar @ https://example.org/bar-1.0.whl --hash=sha256:deadbeef",
+                    shas = ["deadbeef"],
+                    version = "",
+                    url = "https://example.org/bar-1.0.whl",
+                ),
+                target_platforms = ["linux_x86_64"],
+                whls = [struct(
+                    url = "https://example.org/bar-1.0.whl",
+                    filename = "bar-1.0.whl",
+                    sha256 = "deadbeef",
+                    yanked = False,
+                )],
+            ),
+        ],
+        "baz": [
+            struct(
+                distribution = "baz",
+                extra_pip_args = [],
+                sdist = None,
+                is_exposed = True,
+                srcs = struct(
+                    marker = "python_version < \"3.8\"",
+                    requirement = "baz @ https://test.com/baz-2.0.whl --hash=sha256:deadb00f",
+                    requirement_line = "baz @ https://test.com/baz-2.0.whl --hash=sha256:deadb00f",
+                    shas = ["deadb00f"],
+                    version = "",
+                    url = "https://test.com/baz-2.0.whl",
+                ),
+                target_platforms = ["linux_x86_64"],
+                whls = [struct(
+                    url = "https://test.com/baz-2.0.whl",
+                    filename = "baz-2.0.whl",
+                    sha256 = "deadb00f",
+                    yanked = False,
+                )],
+            ),
+        ],
+        "foo": [
+            struct(
+                distribution = "foo",
+                extra_pip_args = [],
+                sdist = None,
+                is_exposed = True,
+                srcs = struct(
+                    marker = "",
+                    requirement = "foo[extra] @ https://some-url/package.whl",
+                    requirement_line = "foo[extra] @ https://some-url/package.whl",
+                    shas = [],
+                    version = "",
+                    url = "https://some-url/package.whl",
+                ),
+                target_platforms = ["linux_x86_64"],
+                whls = [struct(
+                    url = "https://some-url/package.whl",
+                    filename = "package.whl",
+                    sha256 = "",
+                    yanked = False,
+                )],
+            ),
+        ],
+        "qux": [
+            struct(
+                distribution = "qux",
+                extra_pip_args = [],
+                sdist = struct(
+                    url = "https://example.org/qux-1.0.tar.gz",
+                    filename = "qux-1.0.tar.gz",
+                    sha256 = "deadbe0f",
+                    yanked = False,
+                ),
+                is_exposed = True,
+                srcs = struct(
+                    marker = "",
+                    requirement = "qux @ https://example.org/qux-1.0.tar.gz --hash=sha256:deadbe0f",
+                    requirement_line = "qux @ https://example.org/qux-1.0.tar.gz --hash=sha256:deadbe0f",
+                    shas = ["deadbe0f"],
+                    version = "",
+                    url = "https://example.org/qux-1.0.tar.gz",
+                ),
+                target_platforms = ["linux_x86_64"],
+                whls = [],
+            ),
+        ],
+    })
+
+_tests.append(_test_direct_urls)
 
 def _test_extra_pip_args(env):
     got = parse_requirements(
@@ -145,6 +257,7 @@ def _test_extra_pip_args(env):
                     requirement_line = "foo[extra]==0.0.1 --hash=sha256:deadbeef",
                     shas = ["deadbeef"],
                     version = "0.0.1",
+                    url = "",
                 ),
                 target_platforms = [
                     "linux_x86_64",
@@ -182,6 +295,7 @@ def _test_dupe_requirements(env):
                     requirement_line = "foo[extra,extra_2]==0.0.1 --hash=sha256:deadbeef",
                     shas = ["deadbeef"],
                     version = "0.0.1",
+                    url = "",
                 ),
                 target_platforms = ["linux_x86_64"],
                 whls = [],
@@ -211,6 +325,7 @@ def _test_multi_os(env):
                     requirement_line = "bar==0.0.1 --hash=sha256:deadb00f",
                     shas = ["deadb00f"],
                     version = "0.0.1",
+                    url = "",
                 ),
                 target_platforms = ["windows_x86_64"],
                 whls = [],
@@ -228,6 +343,7 @@ def _test_multi_os(env):
                     requirement_line = "foo==0.0.3 --hash=sha256:deadbaaf",
                     shas = ["deadbaaf"],
                     version = "0.0.3",
+                    url = "",
                 ),
                 target_platforms = ["linux_x86_64"],
                 whls = [],
@@ -243,6 +359,7 @@ def _test_multi_os(env):
                     requirement_line = "foo[extra]==0.0.2 --hash=sha256:deadbeef",
                     shas = ["deadbeef"],
                     version = "0.0.2",
+                    url = "",
                 ),
                 target_platforms = ["windows_x86_64"],
                 whls = [],
@@ -282,6 +399,7 @@ def _test_multi_os_legacy(env):
                     requirement_line = "bar==0.0.1 --hash=sha256:deadb00f",
                     shas = ["deadb00f"],
                     version = "0.0.1",
+                    url = "",
                 ),
                 target_platforms = ["cp39_linux_x86_64"],
                 whls = [],
@@ -299,6 +417,7 @@ def _test_multi_os_legacy(env):
                     requirement_line = "foo==0.0.1 --hash=sha256:deadbeef",
                     shas = ["deadbeef"],
                     version = "0.0.1",
+                    url = "",
                 ),
                 target_platforms = ["cp39_linux_x86_64"],
                 whls = [],
@@ -314,6 +433,7 @@ def _test_multi_os_legacy(env):
                     requirement = "foo==0.0.3",
                     shas = ["deadbaaf"],
                     version = "0.0.3",
+                    url = "",
                 ),
                 target_platforms = ["cp39_osx_aarch64"],
                 whls = [],
@@ -338,7 +458,7 @@ def _test_select_requirement_none_platform(env):
 _tests.append(_test_select_requirement_none_platform)
 
 def _test_env_marker_resolution(env):
-    def _mock_eval_markers(_, input):
+    def _mock_eval_markers(input):
         ret = {
             "foo[extra]==0.0.1 ;marker --hash=sha256:deadbeef": ["cp311_windows_x86_64"],
         }
@@ -367,6 +487,7 @@ def _test_env_marker_resolution(env):
                     requirement_line = "bar==0.0.1 --hash=sha256:deadbeef",
                     shas = ["deadbeef"],
                     version = "0.0.1",
+                    url = "",
                 ),
                 target_platforms = ["cp311_linux_super_exotic", "cp311_windows_x86_64"],
                 whls = [],
@@ -384,6 +505,7 @@ def _test_env_marker_resolution(env):
                     requirement_line = "foo[extra]==0.0.1 --hash=sha256:deadbeef",
                     shas = ["deadbeef"],
                     version = "0.0.1",
+                    url = "",
                 ),
                 target_platforms = ["cp311_windows_x86_64"],
                 whls = [],
@@ -419,6 +541,7 @@ def _test_different_package_version(env):
                     requirement_line = "foo==0.0.1 --hash=sha256:deadb00f",
                     shas = ["deadb00f"],
                     version = "0.0.1",
+                    url = "",
                 ),
                 target_platforms = ["linux_x86_64"],
                 whls = [],
@@ -434,6 +557,7 @@ def _test_different_package_version(env):
                     requirement_line = "foo==0.0.1+local --hash=sha256:deadbeef",
                     shas = ["deadbeef"],
                     version = "0.0.1+local",
+                    url = "",
                 ),
                 target_platforms = ["linux_x86_64"],
                 whls = [],
@@ -442,6 +566,62 @@ def _test_different_package_version(env):
     })
 
 _tests.append(_test_different_package_version)
+
+def _test_optional_hash(env):
+    got = parse_requirements(
+        ctx = _mock_ctx(),
+        requirements_by_platform = {
+            "requirements_optional_hash": ["linux_x86_64"],
+        },
+    )
+    env.expect.that_dict(got).contains_exactly({
+        "foo": [
+            struct(
+                distribution = "foo",
+                extra_pip_args = [],
+                sdist = None,
+                is_exposed = True,
+                srcs = struct(
+                    marker = "",
+                    requirement = "foo==0.0.4 @ https://example.org/foo-0.0.4.whl",
+                    requirement_line = "foo==0.0.4 @ https://example.org/foo-0.0.4.whl",
+                    shas = [],
+                    version = "0.0.4",
+                    url = "https://example.org/foo-0.0.4.whl",
+                ),
+                target_platforms = ["linux_x86_64"],
+                whls = [struct(
+                    url = "https://example.org/foo-0.0.4.whl",
+                    filename = "foo-0.0.4.whl",
+                    sha256 = "",
+                    yanked = False,
+                )],
+            ),
+            struct(
+                distribution = "foo",
+                extra_pip_args = [],
+                sdist = None,
+                is_exposed = True,
+                srcs = struct(
+                    marker = "",
+                    requirement = "foo==0.0.5 @ https://example.org/foo-0.0.5.whl --hash=sha256:deadbeef",
+                    requirement_line = "foo==0.0.5 @ https://example.org/foo-0.0.5.whl --hash=sha256:deadbeef",
+                    shas = ["deadbeef"],
+                    version = "0.0.5",
+                    url = "https://example.org/foo-0.0.5.whl",
+                ),
+                target_platforms = ["linux_x86_64"],
+                whls = [struct(
+                    url = "https://example.org/foo-0.0.5.whl",
+                    filename = "foo-0.0.5.whl",
+                    sha256 = "deadbeef",
+                    yanked = False,
+                )],
+            ),
+        ],
+    })
+
+_tests.append(_test_optional_hash)
 
 def parse_requirements_test_suite(name):
     """Create the test suite.

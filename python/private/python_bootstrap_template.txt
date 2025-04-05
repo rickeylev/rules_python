@@ -1,11 +1,5 @@
 %shebang%
 
-# This script must retain compatibility with a wide variety of Python versions
-# since it is run for every py_binary target. Currently we guarantee support
-# going back to Python 2.7, and try to support even Python 2.6 on a best-effort
-# basis. We might abandon 2.6 support once users have the ability to control the
-# above shebang string via the Python toolchain (#8685).
-
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
@@ -95,19 +89,17 @@ def print_verbose(*args, mapping=None, values=None):
             for key, value in sorted((mapping or {}).items()):
                 print(
                     "bootstrap:",
-                    *args,
-                    f"{key}={value!r}",
+                    *(list(args) + ["{}={}".format(key, repr(value))]),
                     file=sys.stderr,
-                    flush=True,
+                    flush=True
                 )
         elif values is not None:
             for i, v in enumerate(values):
                 print(
                     "bootstrap:",
-                    *args,
-                    f"[{i}] {v!r}",
+                    *(list(args) + ["[{}] {}".format(i, repr(v))]),
                     file=sys.stderr,
-                    flush=True,
+                    flush=True
                 )
         else:
             print("bootstrap:", *args, file=sys.stderr, flush=True)
@@ -425,12 +417,21 @@ def _RunForCoverage(python_program, main_filename, args, env,
         directory under the runfiles tree, and will recursively delete the
         runfiles directory if set.
   """
+  instrumented_files = [abs_path for abs_path, _ in InstrumentedFilePaths()]
+  unique_dirs = {os.path.dirname(file) for file in instrumented_files}
+  source = "\n\t".join(unique_dirs)
+
+  PrintVerboseCoverage("[coveragepy] Instrumented Files:\n" + "\n".join(instrumented_files))
+  PrintVerboseCoverage("[coveragepy] Sources:\n" + "\n".join(unique_dirs))
+
   # We need for coveragepy to use relative paths.  This can only be configured
   unique_id = uuid.uuid4()
   rcfile_name = os.path.join(os.environ['COVERAGE_DIR'], ".coveragerc_{}".format(unique_id))
   with open(rcfile_name, "w") as rcfile:
-    rcfile.write('''[run]
+    rcfile.write(f'''[run]
 relative_files = True
+source =
+\t{source}
 ''')
   PrintVerboseCoverage('Coverage entrypoint:', coverage_entrypoint)
   # First run the target Python file via coveragepy to create a .coverage

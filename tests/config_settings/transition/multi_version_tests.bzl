@@ -13,11 +13,13 @@
 # limitations under the License.
 """Tests for py_test."""
 
+load("@pythons_hub//:versions.bzl", "DEFAULT_PYTHON_VERSION")
 load("@rules_testing//lib:analysis_test.bzl", "analysis_test")
 load("@rules_testing//lib:test_suite.bzl", "test_suite")
 load("@rules_testing//lib:util.bzl", "TestingAspectInfo", rt_util = "util")
+load("//python:py_binary.bzl", "py_binary")
 load("//python:py_info.bzl", "PyInfo")
-load("//python/config_settings:transition.bzl", py_binary_transitioned = "py_binary", py_test_transitioned = "py_test")
+load("//python:py_test.bzl", "py_test")
 load("//python/private:reexports.bzl", "BuiltinPyInfo")  # buildifier: disable=bzl-visibility
 load("//python/private:util.bzl", "IS_BAZEL_7_OR_HIGHER")  # buildifier: disable=bzl-visibility
 load("//tests/support:support.bzl", "CC_TOOLCHAIN")
@@ -28,13 +30,13 @@ load("//tests/support:support.bzl", "CC_TOOLCHAIN")
 # If the toolchain is not resolved then you will have a weird message telling
 # you that your transition target does not have a PyRuntime provider, which is
 # caused by there not being a toolchain detected for the target.
-_PYTHON_VERSION = "3.11"
+_PYTHON_VERSION = DEFAULT_PYTHON_VERSION
 
 _tests = []
 
 def _test_py_test_with_transition(name):
     rt_util.helper_target(
-        py_test_transitioned,
+        py_test,
         name = name + "_subject",
         srcs = [name + "_subject.py"],
         python_version = _PYTHON_VERSION,
@@ -56,7 +58,7 @@ _tests.append(_test_py_test_with_transition)
 
 def _test_py_binary_with_transition(name):
     rt_util.helper_target(
-        py_binary_transitioned,
+        py_binary,
         name = name + "_subject",
         srcs = [name + "_subject.py"],
         python_version = _PYTHON_VERSION,
@@ -78,7 +80,7 @@ _tests.append(_test_py_binary_with_transition)
 
 def _setup_py_binary_windows(name, *, impl, build_python_zip):
     rt_util.helper_target(
-        py_binary_transitioned,
+        py_binary,
         name = name + "_subject",
         srcs = [name + "_subject.py"],
         python_version = _PYTHON_VERSION,
