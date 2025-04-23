@@ -318,9 +318,9 @@ def _create_executable(
         runfiles_details):
     _ = is_test, cc_details, native_deps_details  # @unused
 
-    is_windows = target_platform_has_any_constraint(ctx, ctx.attr._windows_constraints)
+    is_windows = _is_windows(ctx)
 
-    if is_windows:
+    if is_windows and False:
         if not executable.extension == "exe":
             fail("Should not happen: somehow we are generating a non-.exe file on windows")
         base_executable_name = executable.basename[0:-4]
@@ -360,6 +360,7 @@ def _create_executable(
             venv = venv,
         )
     else:
+        fail("not 2 stage")
         stage2_bootstrap = None
         extra_runfiles = ctx.runfiles()
         zip_main = ctx.actions.declare_file(base_executable_name + ".temp", sibling = executable)
@@ -408,12 +409,12 @@ def _create_executable(
         else:
             bootstrap_output = executable
     else:
-        _create_windows_exe_launcher(
-            ctx,
-            output = executable,
-            use_zip_file = build_zip_enabled,
-            python_binary_path = runtime_details.executable_interpreter_path,
-        )
+        ##_create_windows_exe_launcher(
+        ##    ctx,
+        ##    output = executable,
+        ##    use_zip_file = build_zip_enabled,
+        ##    python_binary_path = runtime_details.executable_interpreter_path,
+        ##)
         if not build_zip_enabled:
             # On Windows, the main executable has an "exe" extension, so
             # here we re-use the un-extensioned name for the bootstrap output.
@@ -530,6 +531,8 @@ def relative_path(from_, to):
 # * https://github.com/python/cpython/blob/main/Modules/getpath.py
 # * https://github.com/python/cpython/blob/main/Lib/site.py
 def _create_venv(ctx, output_prefix, imports, runtime_details):
+    is_windows = _is_windows(ctx)
+
     venv = "_{}.venv".format(output_prefix.lstrip("_"))
 
     # The pyvenv.cfg file must be present to trigger the venv site hooks.
@@ -540,12 +543,17 @@ def _create_venv(ctx, output_prefix, imports, runtime_details):
 
     runtime = runtime_details.effective_runtime
 
+    # For historical reasons, "Scripts" became the convention for Windows
+    if _is_windows(ctx):
+        bin_infix = "Scripts"
+    else:
+        bin_infix = "bin"
     venvs_use_declare_symlink_enabled = (
         VenvsUseDeclareSymlinkFlag.get_value(ctx) == VenvsUseDeclareSymlinkFlag.YES
     )
     recreate_venv_at_runtime = False
-
-    if not venvs_use_declare_symlink_enabled or not runtime.supports_build_time_venv:
+    bin_files = []
+    if not venvs_use_declare_symlink_enabled or not runtime.supports_build_time_venv or _is_windows(ctx):
         recreate_venv_at_runtime = True
         if runtime.interpreter:
             interpreter_actual_path = runfiles_root_path(ctx, runtime.interpreter.short_path)
@@ -565,21 +573,176 @@ def _create_venv(ctx, output_prefix, imports, runtime_details):
         # name to decide what to do, so preserve the name.
         py_exe_basename = paths.basename(runtime.interpreter.short_path)
 
-        # Even though ctx.actions.symlink() is used, using
-        # declare_symlink() is required to ensure that the resulting file
-        # in runfiles is always a symlink. An RBE implementation, for example,
-        # may choose to write what symlink() points to instead.
-        interpreter = ctx.actions.declare_symlink("{}/bin/{}".format(venv, py_exe_basename))
+        if not is_windows:
+            # Even though ctx.actions.symlink() is used, using
+            # declare_symlink() is required to ensure that the resulting file
+            # in runfiles is always a symlink. An RBE implementation, for example,
+            # may choose to write what symlink() points to instead.
+            interpreter = ctx.actions.declare_symlink("{}/{}/{}".format(venv, bin_infix, py_exe_basename))
 
-        interpreter_actual_path = runfiles_root_path(ctx, runtime.interpreter.short_path)
-        rel_path = relative_path(
-            # dirname is necessary because a relative symlink is relative to
-            # the directory the symlink resides within.
-            from_ = paths.dirname(runfiles_root_path(ctx, interpreter.short_path)),
-            to = interpreter_actual_path,
-        )
+            interpreter_actual_path = runfiles_root_path(ctx, runtime.interpreter.short_path)
+            rel_path = relative_path(
+                # dirname is necessary because a relative symlink is relative to
+                # the directory the symlink resides within.
+                from_ = paths.dirname(runfiles_root_path(ctx, interpreter.short_path)),
+                to = interpreter_actual_path,
+            )
+            ctx.actions.symlink(output = interpreter, target_path = rel_path)
+        else:
+            # Consult venv.py. What it does is symlink all the exe/dll files in
+            # dirname(python.exe).
+            # todo: missing home key results in wrong base_prefix/base_executable.
+            # also prints a warning on startup? sys.path is slightly different, but
+            # has all necessary entries. Probably need to look at site.py to see
+            # where it's looking
+            names = ["python.exe", 
+                     #"python3.dll", "python312.dll", "vcruntime140.dll", "vcruntime140_1.dll"
+            ]
+            actual_bin_dir = runfiles_root_path(ctx, runtime.interpreter.short_path)
+            actual_bin_dir = paths.dirname(actual_bin_dir)
+            print("actual rf root dir:", actual_bin_dir)
+            dolink = ctx.actions.declare_file("dolink.sh")
+            ctx.actions.write(output=dolink, content="""\
+{
+echo path=$PATH ; 
+echo pwd=$PWD ;  
+echo "parent    =$PARENT" ;  
+echo "pointer   =$POINTER" ;  
+echo "pointed_to=$POINTED_TO" ;  
+set -x
+##"ls -R $up1 ;
+mkdir -p $PARENT ;
+echo mkdir done: $? ; 
+ls -l $PARENT ;
 
-        ctx.actions.symlink(output = interpreter, target_path = rel_path)
+rm -fr $PARENT/*
+#mkdir -p $PARENT/_reltmp ;
+##mkdir -p $PARENT/a/b
+##echo a_marker > $PARENT/a/MARKER
+##echo above_parent_marker > $PARENT/../MARKER
+
+cd $PARENT
+export MSYS=winsymlinks:nativestrict ; 
+touch marker
+#ln -s -r -f -T ./marker python.exe
+ln -s 'C:\\Users\\richardlev\\AppData\\Local\\Microsoft\\WindowsApps\\python3.exe' python.exe
+rm marker
+cd -
+# Works?
+##export MSYS=winsymlinks:nativestrict ; 
+##p=$PARENT/a/b/markerlink
+##p2=$PARENT/a/MARKER
+##ln -s -r -f -T $p2 $p
+##mv $PARENT/a/b/markerlink $PARENT/markerlink
+##ls -lR $PARENT
+##cat $PARENT/markerlink
+
+# no work -- bazel calls it a dangling link
+##cd $PARENT
+##export MSYS=winsymlinks:native ; 
+##ln -s -r -f -T ../python.exe $POINTER
+
+# no work
+#ln -s -r $PARENT/$POINTED_TO $POINTER
+# No work
+##p2=bazel-out/x64_windows-fastbuild-ST-0062227cd08e/bin/tests/bootstrap_impls/_run_binary_bootstrap_script_zip_no_test_bin.ps1.venv/python.exe
+##ls $(dirname $p2)
+##ln -s -r $p2 $POINTER
+# nowork
+#ln -s -r python.exe $POINTER
+
+#ln -s -r $POINTED_TO $POINTER ;
+#echo ln status: $?
+
+ls -l $PARENT
+
+echo "done"
+} 2>&1
+""".replace("\n", "\r\n"), is_executable=True)
+
+            for name in names:
+                venv_file = ctx.actions.declare_symlink("{}/{}/{}".format(
+                        venv, bin_infix, name))
+                bin_files.append(venv_file)
+                pointer = runfiles_root_path(ctx, venv_file.short_path)
+                pointed_to = paths.join(actual_bin_dir, name)
+                name_rel = relative_path(
+                    from_ = paths.dirname(pointer),
+                    to = pointed_to
+                )
+                parent = paths.dirname(venv_file.path)
+                win_parent = parent.replace("/", "\\")
+                pointer = venv_file.path
+                win_pointer = pointer.replace("/", "\\")
+                win_pointed_to = name_rel.replace("/", "\\")
+                ctx.actions.run_shell(
+                    command = "{dolink}".format(dolink=dolink.path),
+                    inputs = [dolink],
+                    outputs = [venv_file],
+                    env = {
+                        "PARENT": parent,
+                        "POINTER": pointer,
+                        #"POINTED_TO": pointed_to,
+                        "POINTED_TO": name_rel,
+                    }
+                )
+                ##ctx.actions.run(
+                ##    executable = "bash.exe",
+                ##    arguments = [dolink.path, venv_file.path, pointed_to],
+                ##    inputs = [dolink],
+                ##    outputs = [venv_file],
+                ##)
+                ##command = "mkdir -p {parent} && cmd /c mklink {pointer} {pointed_to}".format(
+                ##        parent = mklink_parent,
+                ##        pointer = mklink_pointer,
+                ##        pointed_to = mklink_pointed_to
+                ##)
+                command = (
+"echo path=$PATH ; " +
+"echo pwd=$PWD ; " + 
+"echo parent=$PARENT ; " + 
+"echo pointer=$POINTER ; " + 
+"echo pointed_to=$POINTED_TO ; " + 
+"up1=$(dirname $PARENT) ; " +
+"up2=$(dirname $up1) ; " +
+"up3=$(dirname $up2) ; " +
+"up4=$(dirname $up3) ; " +
+##"ls -R $up1 ; " +
+"mkdir -p $PARENT ; " +
+"echo mkdir done: $? ; " +
+"ls $PARENT ; " +
+"echo $(which cmd) ; " +
+"echo $(which cmd.exe) ; " +
+"echo $(which cmd.com) ; " +
+"(mklink /? || echo NOOOOOOCMMMMDDDDD) ; " +
+#"cmd /c mklink $POINTER $POINTED_TO ; " +
+#"cmd /c mklink $POINTER ../pyvenv.cfg ; " +
+#"echo mklink done: $? ; " +
+"export MSYS=winsymlinks:nativestrict ; " +
+#"ln -s $POINTED_TO $POINTER ; " +
+"ln -s doesnotexist $POINTER ; " +
+'echo bla > "$PARENT\\marker" ; ' +
+##"cmd /c dir $PARENT ; " +
+"ls -lR $PARENT ; " +
+"".format(
+                        parent = win_parent,
+                        pointer = win_pointer,
+                        pointed_to = win_pointed_to
+                ))
+                ##print("cmd:", str(command))
+                ##ctx.actions.run_shell(
+                ##    command = command,
+                ##    outputs = [venv_file],
+                ##    mnemonic = "PyCreateWindowsVenvSymlinks",
+                ##    progress_message = "Create venv symlink:" + name,
+                ##    env = {
+                ##        "PARENT": mklink_parent,
+                ##        "POINTER": mklink_pointer,
+                ##        "POINTED_TO": mklink_pointed_to,
+                ##    }
+                ##)
+            interpreter = bin_files[0]
+            interpreter_actual_path = paths.join(actual_bin_dir, names[0])
     else:
         py_exe_basename = paths.basename(runtime.interpreter_path)
         interpreter = ctx.actions.declare_symlink("{}/bin/{}".format(venv, py_exe_basename))
@@ -600,7 +763,10 @@ def _create_venv(ctx, output_prefix, imports, runtime_details):
     if "t" in runtime.abi_flags:
         version += "t"
 
-    venv_site_packages = "lib/python{}/site-packages".format(version)
+    if _is_windows(ctx):
+        venv_site_packages = "Lib/site-packages"
+    else:
+        venv_site_packages = "lib/python{}/site-packages".format(version)
     site_packages = "{}/{}".format(venv, venv_site_packages)
     pth = ctx.actions.declare_file("{}/bazel.pth".format(site_packages))
     ctx.actions.write(pth, "import _bazel_site_init\n")
@@ -626,7 +792,7 @@ def _create_venv(ctx, output_prefix, imports, runtime_details):
         recreate_venv_at_runtime = recreate_venv_at_runtime,
         # Runfiles root relative path or absolute path
         interpreter_actual_path = interpreter_actual_path,
-        files_without_interpreter = [pyvenv_cfg, pth, site_init] + site_packages_symlinks,
+        files_without_interpreter = [pyvenv_cfg, pth, site_init] + site_packages_symlinks + bin_files,
         # string; venv-relative path to the site-packages directory.
         venv_site_packages = venv_site_packages,
     )
@@ -849,6 +1015,7 @@ def _create_windows_exe_launcher(
         output,
         python_binary_path,
         use_zip_file):
+    fail("should not hit windows exe launcher")
     launch_info = ctx.actions.args()
     launch_info.use_param_file("%s", use_always = True)
     launch_info.set_param_file_format("multiline")
@@ -1183,7 +1350,8 @@ def _validate_executable(ctx):
 
 def _declare_executable_file(ctx):
     if target_platform_has_any_constraint(ctx, ctx.attr._windows_constraints):
-        executable = ctx.actions.declare_file(ctx.label.name + ".exe")
+        ##executable = ctx.actions.declare_file(ctx.label.name + ".exe")
+        executable = ctx.actions.declare_file(ctx.label.name + ".ps1")
     else:
         executable = ctx.actions.declare_file(ctx.label.name)
 
@@ -1960,3 +2128,6 @@ def cc_configure_features(
 only_exposed_for_google_internal_reason = struct(
     create_runfiles_with_build_data = _create_runfiles_with_build_data,
 )
+
+def _is_windows(ctx):
+    return target_platform_has_any_constraint(ctx, ctx.attr._windows_constraints)

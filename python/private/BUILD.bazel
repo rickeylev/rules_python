@@ -718,7 +718,11 @@ exports_files(
 
 filegroup(
     name = "stage1_bootstrap_template",
-    srcs = ["stage1_bootstrap_template.sh"],
+    ##srcs = ["stage1_bootstrap_template.sh"],
+    srcs = select({
+        "@platforms//os:windows": ["stage1_bootstrap_template.ps1"],
+        "//conditions:default": ["stage1_bootstrap_template.sh"],
+    }),
     # Not actually public. Only public because it's an implicit dependency of
     # py_runtime.
     visibility = ["//visibility:public"],
@@ -754,7 +758,7 @@ filegroup(
 alias(
     name = "bootstrap_template",
     actual = select({
-        ":is_script_bootstrap_enabled": "stage1_bootstrap_template.sh",
+        ":is_script_bootstrap_enabled": ":stage1_bootstrap_template",
         "//conditions:default": "python_bootstrap_template.txt",
     }),
     # Not actually public. Only public because it's an implicit dependency of
