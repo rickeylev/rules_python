@@ -1,0 +1,21 @@
+argparse >= 1.4.0
+certifi >= 2025.1.31
+charset-normalizer >= 3.4.1
+datadog_api_client >= 2.23.0
+google-auth >= 2.38.0
+google-cloud-bigquery >= 3.31.0
+google-cloud-storage >= 3.1.0
+idna >= 3.10
+matplotlib >= 3.10.1
+minilog >= 2.3.1
+numpy >= 1.22    ; platform_machine == 'aarch64'
+numpy >= 2.2.4   ; platform_machine == 'x86_64'
+pip-tools >= 7.4.1
+pyqt5 >= 0.0     ; platform_machine == 'aarch64'
+pyqt5 >= 5.15.11 ; platform_machine == 'x86_64'
+pytest >= 8.3.5
+requests >= 2.32.3
+spatialmath-python >= 1.1.14 ; platform_system == 'Linux'
+toml >= 0.10.2
+torch >= 2.3
+urllib3 >= 2.3.0
