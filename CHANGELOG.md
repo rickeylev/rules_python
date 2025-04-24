@@ -111,6 +111,9 @@ END_UNRELEASED_TEMPLATE
 * (packaging) An empty `requires_file` is treated as if it were omitted, resulting in a valid `METADATA` file.
 * (rules) py_wheel and sphinxdocs rules now propagate `target_compatible_with` to all targets they create.
   [PR #2788](https://github.com/bazel-contrib/rules_python/pull/2788).
+* (pypi) Correctly handle `METADATA` entries when `python_full_version` is used in
+  the environment marker.
+  Fixes [#2319](https://github.com/bazel-contrib/rules_python/issues/2319).
 
 {#1-4-0-added}
 ### Added
