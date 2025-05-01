@@ -93,7 +93,7 @@ rp_string_flag(
     build_setting_default = BootstrapImplFlag.SYSTEM_PYTHON,
     override = select({
         # Windows doesn't yet support bootstrap=script, so force disable it
-        ":_is_windows": BootstrapImplFlag.SYSTEM_PYTHON,
+        ##":_is_windows": BootstrapImplFlag.SYSTEM_PYTHON,
         "//conditions:default": "",
     }),
     values = sorted(BootstrapImplFlag.__members__.values()),

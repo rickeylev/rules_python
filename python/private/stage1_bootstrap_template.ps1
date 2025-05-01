@@ -41,16 +41,41 @@ Write-Verbose "actual: $PYTHON_BINARY_ACTUAL"
 # --- Main Logic ---
 
 try { # Wrap main logic for potential cleanup using finally (mimics trap EXIT)
-
     Write-Verbose "Processing as non-Zipfile..."
     # Function to find Runfiles Root (PowerShell adaptation)
-    
+
     $RUNFILES_DIR = Resolve-Path ".\bazel-bin\tests\bootstrap_impls\_run_binary_bootstrap_script_zip_no_test_bin.ps1.runfiles"
     Write-Verbose "Runfiles directory set to: $RUNFILES_DIR"
 
+    $runfilesVenvRoot = Split-Path -Parent (Split-Path -Parent $PYTHON_BINARY)
+
+    $tempDirRoot = $Env:TEMP
+    $tempDirName = "rp-venv-" + (New-Guid).ToString()
+    #$venvRoot = Join-Path -Path $tempDirRoot -ChildPath $tempDirName
+    $venvRoot = "C:\tempvenv"
+    Write-Verbose "Temp venv root: $venvRoot"
+    Remove-Item -Path $venvRoot -Recurse -Force
+    New-Item -ItemType Directory -Path $venvRoot | Out-Null
+    New-Item -ItemType Directory -Path $venvRoot\Scripts | Out-Null
+    New-Item -ItemType SymbolicLink -Path $venvRoot\Scripts\python.exe `
+        -Target "$RUNFILES_DIR\$PYTHON_BINARY_ACTUAL" | Out-Null
+    $pyActualDir = Split-Path -Parent "$RUNFILES_DIR\$PYTHON_BINARY_ACTUAL"
+    Write-Verbose "py actual dir: $pyActualDir"
+    New-Item -ItemType SymbolicLink -Path $venvRoot\Scripts\python3.dll `
+        -Target "$pyActualDir\python3.dll"
+    New-Item -ItemType SymbolicLink -Path $venvRoot\Scripts\python311.dll `
+        -Target "$pyActualDir\python311.dll"
+
+    New-Item -ItemType SymbolicLink -Path $venvRoot\Lib `
+        -Target $runfilesVenvRoot\Lib | Out-Null
+    ##New-Item -ItemType File -Path "$venvRoot\pyvenv.cfg"
+    "home = $pyActualDir" >> "$venvRoot\pyvenv.cfg"
+
     # Function to find Python Interpreter (PowerShell adaptation)
     ##$python_exe = "C:\\Users\\richardlev\\AppData\\Local\\Microsoft\\WindowsApps\\PythonSoftwareFoundation.Python.3.10_qbz5n2kfra8p0\\python.exe"
-    $python_exe = Join-Path $RUNFILES_DIR $PYTHON_BINARY
+    #$python_exe = Join-Path $RUNFILES_DIR $PYTHON_BINARY
+    #$python_exe = Join-Path $RUNFILES_DIR $PYTHON_BINARY_ACTUAL
+    $python_exe = "$venvRoot\Scripts\python.exe"
 
     # --- Interpreter Check ---
     Write-Verbose "Final check for Python executable: $python_exe"
@@ -137,6 +162,7 @@ try { # Wrap main logic for potential cleanup using finally (mimics trap EXIT)
     $Env:RULES_PYTHON_BOOTSTRAP_VERBOSE = ""
     # Execute the python interpreter
     & $python_exe $final_python_args
+    #& $python_exe -c "import sys; print(sys.prefix); print(sys.base_prefix)"
 
     # Capture the exit code of the last command
     $lastExitCode = $LASTEXITCODE
@@ -147,6 +173,7 @@ try { # Wrap main logic for potential cleanup using finally (mimics trap EXIT)
 
 } finally {
   Write-Verbose "Finally block ran"
+  #Remove-Item -Path $venvRoot -Recurse -Force
 }
 
 # The script should exit within the try block or via error preference.

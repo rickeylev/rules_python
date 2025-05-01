@@ -329,6 +329,8 @@ def _create_executable(
 
     venv = None
 
+    ##print(BootstrapImplFlag.get_value(ctx))
+    ##print(runtime_details.effective_runtime == None)
     # The check for stage2_bootstrap_template is to support legacy
     # BuiltinPyRuntimeInfo providers, which is likely to come from
     # @bazel_tools//tools/python:autodetecting_toolchain, the toolchain used
@@ -565,7 +567,7 @@ def _create_venv(ctx, output_prefix, imports, runtime_details):
         # When the venv symlinks are disabled, the $venv/bin/python3 file isn't
         # needed or used at runtime. However, the zip code uses the interpreter
         # File object to figure out some paths.
-        interpreter = ctx.actions.declare_file("{}/bin/{}".format(venv, py_exe_basename))
+        interpreter = ctx.actions.declare_file("{}/{}/{}".format(venv, bin_infix, py_exe_basename))
         ctx.actions.write(interpreter, "actual:{}".format(interpreter_actual_path))
 
     elif runtime.interpreter:
@@ -602,64 +604,6 @@ def _create_venv(ctx, output_prefix, imports, runtime_details):
             actual_bin_dir = paths.dirname(actual_bin_dir)
             print("actual rf root dir:", actual_bin_dir)
             dolink = ctx.actions.declare_file("dolink.sh")
-            ctx.actions.write(output=dolink, content="""\
-{
-echo path=$PATH ; 
-echo pwd=$PWD ;  
-echo "parent    =$PARENT" ;  
-echo "pointer   =$POINTER" ;  
-echo "pointed_to=$POINTED_TO" ;  
-set -x
-##"ls -R $up1 ;
-mkdir -p $PARENT ;
-echo mkdir done: $? ; 
-ls -l $PARENT ;
-
-rm -fr $PARENT/*
-#mkdir -p $PARENT/_reltmp ;
-##mkdir -p $PARENT/a/b
-##echo a_marker > $PARENT/a/MARKER
-##echo above_parent_marker > $PARENT/../MARKER
-
-cd $PARENT
-export MSYS=winsymlinks:nativestrict ; 
-touch marker
-#ln -s -r -f -T ./marker python.exe
-ln -s 'C:\\Users\\richardlev\\AppData\\Local\\Microsoft\\WindowsApps\\python3.exe' python.exe
-rm marker
-cd -
-# Works?
-##export MSYS=winsymlinks:nativestrict ; 
-##p=$PARENT/a/b/markerlink
-##p2=$PARENT/a/MARKER
-##ln -s -r -f -T $p2 $p
-##mv $PARENT/a/b/markerlink $PARENT/markerlink
-##ls -lR $PARENT
-##cat $PARENT/markerlink
-
-# no work -- bazel calls it a dangling link
-##cd $PARENT
-##export MSYS=winsymlinks:native ; 
-##ln -s -r -f -T ../python.exe $POINTER
-
-# no work
-#ln -s -r $PARENT/$POINTED_TO $POINTER
-# No work
-##p2=bazel-out/x64_windows-fastbuild-ST-0062227cd08e/bin/tests/bootstrap_impls/_run_binary_bootstrap_script_zip_no_test_bin.ps1.venv/python.exe
-##ls $(dirname $p2)
-##ln -s -r $p2 $POINTER
-# nowork
-#ln -s -r python.exe $POINTER
-
-#ln -s -r $POINTED_TO $POINTER ;
-#echo ln status: $?
-
-ls -l $PARENT
-
-echo "done"
-} 2>&1
-""".replace("\n", "\r\n"), is_executable=True)
-
             for name in names:
                 venv_file = ctx.actions.declare_symlink("{}/{}/{}".format(
                         venv, bin_infix, name))
@@ -686,61 +630,6 @@ echo "done"
                         "POINTED_TO": name_rel,
                     }
                 )
-                ##ctx.actions.run(
-                ##    executable = "bash.exe",
-                ##    arguments = [dolink.path, venv_file.path, pointed_to],
-                ##    inputs = [dolink],
-                ##    outputs = [venv_file],
-                ##)
-                ##command = "mkdir -p {parent} && cmd /c mklink {pointer} {pointed_to}".format(
-                ##        parent = mklink_parent,
-                ##        pointer = mklink_pointer,
-                ##        pointed_to = mklink_pointed_to
-                ##)
-                command = (
-"echo path=$PATH ; " +
-"echo pwd=$PWD ; " + 
-"echo parent=$PARENT ; " + 
-"echo pointer=$POINTER ; " + 
-"echo pointed_to=$POINTED_TO ; " + 
-"up1=$(dirname $PARENT) ; " +
-"up2=$(dirname $up1) ; " +
-"up3=$(dirname $up2) ; " +
-"up4=$(dirname $up3) ; " +
-##"ls -R $up1 ; " +
-"mkdir -p $PARENT ; " +
-"echo mkdir done: $? ; " +
-"ls $PARENT ; " +
-"echo $(which cmd) ; " +
-"echo $(which cmd.exe) ; " +
-"echo $(which cmd.com) ; " +
-"(mklink /? || echo NOOOOOOCMMMMDDDDD) ; " +
-#"cmd /c mklink $POINTER $POINTED_TO ; " +
-#"cmd /c mklink $POINTER ../pyvenv.cfg ; " +
-#"echo mklink done: $? ; " +
-"export MSYS=winsymlinks:nativestrict ; " +
-#"ln -s $POINTED_TO $POINTER ; " +
-"ln -s doesnotexist $POINTER ; " +
-'echo bla > "$PARENT\\marker" ; ' +
-##"cmd /c dir $PARENT ; " +
-"ls -lR $PARENT ; " +
-"".format(
-                        parent = win_parent,
-                        pointer = win_pointer,
-                        pointed_to = win_pointed_to
-                ))
-                ##print("cmd:", str(command))
-                ##ctx.actions.run_shell(
-                ##    command = command,
-                ##    outputs = [venv_file],
-                ##    mnemonic = "PyCreateWindowsVenvSymlinks",
-                ##    progress_message = "Create venv symlink:" + name,
-                ##    env = {
-                ##        "PARENT": mklink_parent,
-                ##        "POINTER": mklink_pointer,
-                ##        "POINTED_TO": mklink_pointed_to,
-                ##    }
-                ##)
             interpreter = bin_files[0]
             interpreter_actual_path = paths.join(actual_bin_dir, names[0])
     else:
