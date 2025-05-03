@@ -602,7 +602,6 @@ def _new_version(*, epoch = 0, release, pre = "", post = "", dev = "", local = "
         gt = lambda x: _version_gt(self, x),  # buildifier: disable=uninitialized
         le = lambda x: not _version_gt(self, x),  # buildifier: disable=uninitialized
         ge = lambda x: not _version_lt(self, x),  # buildifier: disable=uninitialized
-        eqq = lambda x: _version_eqq(self, x),  # buildifier: disable=uninitialized
     )
 
     return self
@@ -619,7 +618,10 @@ def parse_version(version):
     Returns:
       string containing the normalized version.
     """
-    parser = _new(version.strip())  # PEP 440: Leading and Trailing Whitespace
+
+    # TODO @aignas 2025-05-04: this is discarding '.*', but per spec this should be only done
+    # for public version segments
+    parser = _new(version.strip(" .*"))  # PEP 440: Leading and Trailing Whitespace
     accept(parser, _is("v"), "")  # PEP 440: Preceding v character
 
     parts = {}
