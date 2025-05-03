@@ -265,6 +265,18 @@ def _evaluate_with_aliases(env):
 
 _tests.append(_evaluate_with_aliases)
 
+def _expr_case(expr, want, env):
+    return struct(expr=expr, want=want, env=env)
+
+_MISC_EXPRESSIONS = [
+]
+
+def _misc_expressions(env):
+    for case in _MISC_EXPRESSIONS:
+        _check_evaluation(env, case.expr, case.want, case.env)
+
+_tests.append(_misc_expressions)
+
 def evaluate_test_suite(name):  # buildifier: disable=function-docstring
     test_suite(
         name = name,
