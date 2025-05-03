@@ -366,8 +366,9 @@ def _version_expr(left, op, right):
     _left = parse_version(left)
     _right = parse_version(right)
     if _left == None or _right == None:
-        # Sometimes `platform_version` is not a true PEP440 version,
-        # so then we fallback to a simple string expression evaluation
+        # Per spec, if either can't be normalized to a version, then
+        # fallback to simple string comparison. Usually this is `platform_version`
+        # or `platform_release`, which vary depending on platform.
         return _env_expr(left, op, right)
 
     if op == "<":
