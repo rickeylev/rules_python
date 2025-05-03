@@ -174,7 +174,7 @@ def env(target_platform, *, extra = None):
         "implementation_name": "cpython",
         "platform_python_implementation": "CPython",
         "platform_release": "",
-        "platform_version": "",
+        "platform_version": "0",
     }
 
     if type(target_platform) == type(""):
