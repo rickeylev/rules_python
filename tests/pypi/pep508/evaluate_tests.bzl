@@ -19,6 +19,11 @@ load("//python/private/pypi:pep508_evaluate.bzl", "evaluate", "tokenize")  # bui
 
 _tests = []
 
+def _check_evaluate(env, expr, expected, values, strict=True):
+    env.expect.where(
+        expression=expr, values=values
+    ).that_bool(evaluate(expr, env=values, strict=strict)).equals(expected)
+
 def _tokenize_tests(env):
     for input, want in {
         "": [],
@@ -82,23 +87,11 @@ def _evaluate_non_version_env_tests(env):
             "{} > 'osx'".format(var_name): False,
             "{} >= 'osx'".format(var_name): True,
         }.items():
-            got = evaluate(
-                input,
-                env = marker_env,
-            )
-            env.expect.where(
-                expr = input,
-                env = marker_env,
-            ).that_bool(got).equals(want)
+            _check_evaluate(env, input, want, marker_env)
 
             # Check that the non-strict eval gives us back the input when no
             # env is supplied.
-            got = evaluate(
-                input,
-                env = {},
-                strict = False,
-            )
-            env.expect.that_bool(got).equals(input.replace("'", '"'))
+            _check_evaluate(env, input, input.replace("'", '"'), {}, strict=False)
 
 _tests.append(_evaluate_non_version_env_tests)
 
@@ -132,20 +125,11 @@ def _evaluate_version_env_tests(env):
             "{} === '3.7.9'".format(var_name): True,
             "{} == '3.7.9+rc2'".format(var_name): True,
         }.items():  # buildifier: @unsorted-dict-items
-            got = evaluate(
-                input,
-                env = marker_env,
-            )
-            env.expect.that_collection((input, got)).contains_exactly((input, want))
+            _check_evaluate(env, input, want, marker_env)
 
             # Check that the non-strict eval gives us back the input when no
             # env is supplied.
-            got = evaluate(
-                input,
-                env = {},
-                strict = False,
-            )
-            env.expect.that_bool(got).equals(input.replace("'", '"'))
+            _check_evaluate(env, input, input.replace("'", '"'), {}, strict=False)
 
 _tests.append(_evaluate_version_env_tests)
 
@@ -155,29 +139,15 @@ def _evaluate_platform_version_is_special(env):
 
     # When the platform version is not
     input = "platform_version == '0'"
-    got = evaluate(
-        input,
-        env = marker_env,
-    )
-    env.expect.that_collection((input, got)).contains_exactly((input, False))
+    _check_evaluate(env, input, False, marker_env)
 
     # And when I compare it as string
     input = "'FooBar' in platform_version"
-    got = evaluate(
-        input,
-        env = marker_env,
-    )
-    env.expect.that_collection((input, got)).contains_exactly((input, True))
-
+    _check_evaluate(env, input, True, marker_env)
 
     # Check that the non-strict eval gives us back the input when no
     # env is supplied.
-    got = evaluate(
-        input,
-        env = {},
-        strict = False,
-    )
-    env.expect.that_bool(got).equals(input.replace("'", '"'))
+    _check_evaluate(env, input, input.replace("'", '"'), {}, strict=False)
 
 _tests.append(_evaluate_platform_version_is_special)
 
@@ -228,13 +198,7 @@ def _logical_expression_tests(env):
         "not not os_name == 'foo'": True,
         "not not not os_name == 'foo'": False,
     }.items():  # buildifier: @unsorted-dict-items
-        got = evaluate(
-            input,
-            env = {
-                "os_name": "foo",
-            },
-        )
-        env.expect.that_collection((input, got)).contains_exactly((input, want))
+        _check_evaluate(env, input, want, {"os_name": "foo"})
 
         if not input.strip("()"):
             # These cases will just return True, because they will be evaluated
@@ -243,12 +207,7 @@ def _logical_expression_tests(env):
 
         # Check that the non-strict eval gives us back the input when no env
         # is supplied.
-        got = evaluate(
-            input,
-            env = {},
-            strict = False,
-        )
-        env.expect.that_bool(got).equals(input.replace("'", '"'))
+        _check_evaluate(env, input, input.replace("'", '"'), {}, strict=False)
 
 _tests.append(_logical_expression_tests)
 
@@ -277,6 +236,7 @@ def _evaluate_partial_only_extra(env):
             strict = False,
         )
         env.expect.that_bool(got).equals(want)
+        _check_evaluate(env, input, want, env = {"extra": extra}, strict=False)
 
 _tests.append(_evaluate_partial_only_extra)
 
@@ -301,11 +261,7 @@ def _evaluate_with_aliases(env):
         },
     }.items():  # buildifier: @unsorted-dict-items
         for input, want in tests.items():
-            got = evaluate(
-                input,
-                env = pep508_env(target_platform),
-            )
-            env.expect.that_bool(got).equals(want)
+            _check_evaluate(env, input, want, pep508_env(target_platform))
 
 _tests.append(_evaluate_with_aliases)
 
