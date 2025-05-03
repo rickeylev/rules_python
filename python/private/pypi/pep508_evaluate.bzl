@@ -16,7 +16,8 @@
 """
 
 load("//python/private:enum.bzl", "enum")
-load("//python/private:semver.bzl", "semver")
+load("//python/private:py_wheel_normalize_pep440.bzl", "parse_version")
+
 
 # The expression parsing and resolution for the PEP508 is below
 #
@@ -353,36 +354,37 @@ def _env_expr(left, op, right):
     elif op == ">=":
         return left >= right
     else:
-        return fail("TODO: op unsupported: '{}'".format(op))
+        return fail("unsupported op: '{}' {} '{}'".format(left, op, right))
 
 def _version_expr(left, op, right):
     """Evaluate a version comparison expression"""
-    left = semver(left)
-    right = semver(right)
-    _left = left.key()
-    _right = right.key()
+    if op == "===":
+        # https://peps.python.org/pep-0440/#arbitrary-equality
+        # > simple string equality operations
+        return _env_expr(left, "==", right)
+
+    _left = parse_version(left)
+    _right = parse_version(right)
+    if _left == None or _right == None:
+        # Sometimes `platform_version` is not a true PEP440 version,
+        # so then we fallback to a simple string expression evaluation
+        return _env_expr(left, op, right)
+
     if op == "<":
-        return _left < _right
+        return _left.lt(_right)
     elif op == ">":
-        return _left > _right
+        return _left.gt(_right)
     elif op == "<=":
-        return _left <= _right
+        return _left.le(_right)
     elif op == ">=":
-        return _left >= _right
+        return _left.ge(_right)
     elif op == "!=":
-        return _left != _right
+        return _left.ne(_right)
     elif op == "==":
         # Matching of major, minor, patch only
-        return _left[:3] == _right[:3]
+        return _left.eq(_right)
     elif op == "~=":
-        right_plus = right.upper()
-        _right_plus = right_plus.key()
-        return _left >= _right and _left < _right_plus
-    elif op == "===":
-        # Strict matching
-        return _left == _right
-    elif op in _VERSION_CMP:
-        fail("TODO: op unsupported: '{}'".format(op))
+        return _left.ge(_right) and _left.lt(_right.upper())
     else:
         return False  # Let's just ignore the invalid ops
 

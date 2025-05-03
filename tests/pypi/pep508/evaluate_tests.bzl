@@ -123,6 +123,7 @@ def _evaluate_version_env_tests(env):
             "{} <= '3.7.10'".format(var_name): True,
             "{} <= '3.7.8'".format(var_name): False,
             "{} == '3.7.9'".format(var_name): True,
+            "{} == '3.7.*'".format(var_name): True,
             "{} != '3.7.9'".format(var_name): False,
             "{} ~= '3.7.1'".format(var_name): True,
             "{} ~= '3.7.10'".format(var_name): False,
@@ -147,6 +148,38 @@ def _evaluate_version_env_tests(env):
             env.expect.that_bool(got).equals(input.replace("'", '"'))
 
 _tests.append(_evaluate_version_env_tests)
+
+def _evaluate_platform_version_is_special(env):
+    # Given
+    marker_env = {"platform_version": "FooBar Linux v1.2.3"}
+
+    # When the platform version is not
+    input = "platform_version == '0'"
+    got = evaluate(
+        input,
+        env = marker_env,
+    )
+    env.expect.that_collection((input, got)).contains_exactly((input, False))
+
+    # And when I compare it as string
+    input = "'FooBar' in platform_version"
+    got = evaluate(
+        input,
+        env = marker_env,
+    )
+    env.expect.that_collection((input, got)).contains_exactly((input, True))
+
+
+    # Check that the non-strict eval gives us back the input when no
+    # env is supplied.
+    got = evaluate(
+        input,
+        env = {},
+        strict = False,
+    )
+    env.expect.that_bool(got).equals(input.replace("'", '"'))
+
+_tests.append(_evaluate_platform_version_is_special)
 
 def _logical_expression_tests(env):
     for input, want in {

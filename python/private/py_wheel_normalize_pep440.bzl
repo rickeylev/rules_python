@@ -517,3 +517,128 @@ def normalize_pep440(version):
             "Parse error at '%s'" % parser.input[parser.context()["start"]:],
         )
     return parser.context()["norm"]
+
+def _upper(*, epoch = 0, release, pre = "", post = "", dev = "", local = ""):
+    epoch = epoch
+    _release = list(release[:-1])
+    pre = pre
+    post = post
+    dev = dev
+    local = local
+
+    if pre or dev or local:
+        return _new_version(
+            epoch = epoch,
+            release = release,
+        )
+
+    _release[-1] = _release[-1] + 1
+    release = ".".join([str(d) for d in _release])
+
+    return _new_version(
+        epoch = epoch,
+        release = release,
+    )
+
+def _version_eq(left, right):
+    if left.epoch != right.epoch:
+        return False
+
+    # Check at most 3 terms and check the same number of terms
+    check_len = min(min(len(left.release), len(right.release)), 3)
+
+    return left.release[:check_len] == right.release[:check_len]
+
+def _version_lt(left, right):
+    if left.epoch < right.epoch:
+        return True
+    elif left.epoch > right.epoch:
+        return False
+
+    return left.release < right.release
+
+def _version_gt(left, right):
+    if left.epoch > right.epoch:
+        return True
+    elif left.epoch < right.epoch:
+        return False
+
+    return left.release > right.release
+
+def _new_version(*, epoch = 0, release, pre = "", post = "", dev = "", local = ""):
+    epoch = epoch or 0
+    _release = tuple([int(d) for d in release.split(".")])
+    pre = pre or ""
+    post = post or ""
+    dev = dev or ""
+    local = local or ""
+
+    self = struct(
+        epoch = epoch,
+        release = _release,
+        pre = pre,
+        post = post,
+        dev = dev,
+        local = local,
+        upper = lambda: _upper(
+            epoch = epoch,
+            release = _release,
+            pre = pre,
+            post = post,
+            dev = dev,
+            local = local,
+        ),
+        key = lambda: (
+            epoch,
+            _release,
+            pre,
+            post,
+            dev,
+            local,
+        ),
+        eq = lambda x: _version_eq(self, x),  # buildifier: disable=uninitialized
+        ne = lambda x: not _version_eq(self, x),  # buildifier: disable=uninitialized
+        lt = lambda x: _version_lt(self, x),  # buildifier: disable=uninitialized
+        gt = lambda x: _version_gt(self, x),  # buildifier: disable=uninitialized
+        le = lambda x: not _version_gt(self, x),  # buildifier: disable=uninitialized
+        ge = lambda x: not _version_lt(self, x),  # buildifier: disable=uninitialized
+        eqq = lambda x: _version_eqq(self, x),  # buildifier: disable=uninitialized
+    )
+
+    return self
+
+def parse_version(version):
+    """Escape the version component of a filename.
+
+    See https://packaging.python.org/en/latest/specifications/binary-distribution-format/#escaping-and-unicode
+    and https://peps.python.org/pep-0440/
+
+    Args:
+      version: version string to be normalized according to PEP 440.
+
+    Returns:
+      string containing the normalized version.
+    """
+    parser = _new(version.strip())  # PEP 440: Leading and Trailing Whitespace
+    accept(parser, _is("v"), "")  # PEP 440: Preceding v character
+
+    parts = {}
+    fns = [
+        ("epoch", accept_epoch),
+        ("release", accept_release),
+        ("pre", accept_prerelease),
+        ("post", accept_postrelease),
+        ("dev", accept_devrelease),
+        ("local", accept_local),
+    ]
+
+    for p, fn in fns:
+        fn(parser)
+        parts[p] = parser.context()["norm"]
+        parser.context()["norm"] = ""
+
+    if parser.input[parser.context()["start"]:]:
+        # If we fail to parse the version return None
+        return None
+
+    return _new_version(**parts)
