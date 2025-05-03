@@ -540,23 +540,75 @@ def _upper(*, epoch = 0, release, pre = "", post = "", dev = "", local = ""):
         release = release,
     )
 
+def _pad_zeros(release, n):
+    if len(release) >= n:
+        return release
+
+    release = list(release)
+    release += [0] * len(release)
+    return tuple(release)
+
+# TODO @aignas 2025-05-04: add tests for the comparison
 def _version_eq(left, right):
     if left.epoch != right.epoch:
         return False
 
-    # Check at most 3 terms and check the same number of terms
-    check_len = min(min(len(left.release), len(right.release)), 3)
+    if left.is_prefix:
+        right_release = right.release[:len(left.release)]
+    else:
+        right_release = _pad_zeros(right.release, len(left.release))
 
-    return left.release[:check_len] == right.release[:check_len]
+    if right.is_prefix:
+        left_release = left.release[:len(right.release)]
+    else:
+        left_release = _pad_zeros(left.release, len(right.release))
 
-def _version_lt(left, right):
-    if left.epoch < right.epoch:
-        return True
-    elif left.epoch > right.epoch:
+    if left_release != right_release:
         return False
 
-    return left.release < right.release
+    if left.is_prefix or right.is_prefix:
+        return True
 
+    return (
+        left.pre == right.pre and
+        left.post == right.post and
+        left.dev == right.dev and
+        left.local == right.local
+    )
+
+# TODO @aignas 2025-05-04: add tests for the comparison
+def _version_lt(left, right):
+    if left.epoch > right.epoch:
+        return False
+    if left.epoch < right.epoch:
+        return True
+
+    if left.is_prefix:
+        right_release = right.release[:len(left.release)]
+    else:
+        right_release = _pad_zeros(right.release, len(left.release))
+
+    if right.is_prefix:
+        left_release = left.release[:len(right.release)]
+    else:
+        left_release = _pad_zeros(left.release, len(right.release))
+
+    if left_release > right_release:
+        return False
+    elif left_release < right_release:
+        return True
+
+    if left.is_prefix or right.is_prefix:
+        return True
+
+    return (
+        left.pre < right.pre and
+        left.post < right.post and
+        left.dev < right.dev and
+        left.local < right.local
+    )
+
+# TODO @aignas 2025-05-04: add tests for the comparison
 def _version_gt(left, right):
     if left.epoch > right.epoch:
         return True
@@ -565,7 +617,7 @@ def _version_gt(left, right):
 
     return left.release > right.release
 
-def _new_version(*, epoch = 0, release, pre = "", post = "", dev = "", local = ""):
+def _new_version(*, epoch = 0, release, pre = "", post = "", dev = "", local = "", is_prefix = False):
     epoch = epoch or 0
     _release = tuple([int(d) for d in release.split(".")])
     pre = pre or ""
@@ -580,6 +632,7 @@ def _new_version(*, epoch = 0, release, pre = "", post = "", dev = "", local = "
         post = post,
         dev = dev,
         local = local,
+        is_prefix = is_prefix,
         upper = lambda: _upper(
             epoch = epoch,
             release = _release,
@@ -588,14 +641,7 @@ def _new_version(*, epoch = 0, release, pre = "", post = "", dev = "", local = "
             dev = dev,
             local = local,
         ),
-        key = lambda: (
-            epoch,
-            _release,
-            pre,
-            post,
-            dev,
-            local,
-        ),
+        # TODO @aignas 2025-05-04: add tests for the comparison
         eq = lambda x: _version_eq(self, x),  # buildifier: disable=uninitialized
         ne = lambda x: not _version_eq(self, x),  # buildifier: disable=uninitialized
         lt = lambda x: _version_lt(self, x),  # buildifier: disable=uninitialized
@@ -607,7 +653,9 @@ def _new_version(*, epoch = 0, release, pre = "", post = "", dev = "", local = "
     return self
 
 def parse_version(version):
-    """Escape the version component of a filename.
+    """Parse a PEP4408 compliant version
+
+    TODO: finish
 
     See https://packaging.python.org/en/latest/specifications/binary-distribution-format/#escaping-and-unicode
     and https://peps.python.org/pep-0440/
@@ -619,9 +667,7 @@ def parse_version(version):
       string containing the normalized version.
     """
 
-    # TODO @aignas 2025-05-04: this is discarding '.*', but per spec this should be only done
-    # for public version segments
-    parser = _new(version.strip(" .*"))  # PEP 440: Leading and Trailing Whitespace
+    parser = _new(version.strip(" .*"))  # PEP 440: Leading and Trailing Whitespace and .*
     accept(parser, _is("v"), "")  # PEP 440: Preceding v character
 
     parts = {}
@@ -637,7 +683,15 @@ def parse_version(version):
     for p, fn in fns:
         fn(parser)
         parts[p] = parser.context()["norm"]
-        parser.context()["norm"] = ""
+        parser.context()["norm"] = "" # Clear out the buffer so that it is easy to separate the fields
+
+    is_prefix = version.endswith(".*")
+    parts["is_prefix"] = is_prefix
+    if is_prefix and (parts["local"] or parts["post"] or parts["dev"] or parts["pre"]):
+        # local version part has been obtained, but only public segments can have prefix
+        # matches. Just return None.
+        # https://peps.python.org/pep-0440/#public-version-identifiers
+        return None
 
     if parser.input[parser.context()["start"]:]:
         # If we fail to parse the version return None
