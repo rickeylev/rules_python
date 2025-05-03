@@ -22,18 +22,6 @@ load("//python/private:py_wheel_normalize_pep440.bzl", "parse_version")
 # The expression parsing and resolution for the PEP508 is below
 #
 
-# Taken from
-# https://peps.python.org/pep-0508/#grammar
-#
-# version_cmp   = wsp* '<' | '<=' | '!=' | '==' | '>=' | '>' | '~=' | '==='
-_VERSION_CMP = sorted(
-    [
-        i.strip(" '")
-        for i in "'<' | '<=' | '!=' | '==' | '>=' | '>' | '~=' | '==='".split(" | ")
-    ],
-    key = lambda x: (-len(x), x),
-)
-
 _STATE = enum(
     STRING = "string",
     VAR = "var",
