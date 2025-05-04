@@ -579,6 +579,11 @@ bzl_library(
 )
 
 bzl_library(
+    name = "py_wheel_normalize_pep440_bzl",
+    srcs = ["py_wheel_normalize_pep440.bzl"],
+)
+
+bzl_library(
     name = "reexports_bzl",
     srcs = ["reexports.bzl"],
     visibility = [
