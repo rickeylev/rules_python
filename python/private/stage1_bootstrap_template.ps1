@@ -1,18 +1,19 @@
+# todo: use camelCase for var names. It seems to be the PS idiom
 # Equivalent to set -e
 $ErrorActionPreference = 'Stop'
 
+# todo: remove this
 $Env:RULES_PYTHON_BOOTSTRAP_VERBOSE = "1"
 
 # Check if verbose mode is requested (using environment variable)
 if ($Env:RULES_PYTHON_BOOTSTRAP_VERBOSE -eq "1") {
-    # Enable detailed script execution tracing
-    ##Set-PSDebug -Trace 1
-    $VerbosePreference = 'Continue' # Also enable Write-Verbose
-    Write-Verbose "Verbose mode enabled."
+    # NOTE: Set-PSDebug affects the calling shell.
+    # Set-PSDebug -Trace 2
+    $VerbosePreference = 'Continue' # Make Write-Verbose print and continue
 }
 
-##$STAGE2_BOOTSTRAP = "%stage2_bootstrap%"
-$STAGE2_BOOTSTRAP = "_main\tests\bootstrap_impls\__run_binary_bootstrap_script_zip_no_test_bin_stage2_bootstrap.py"
+# runfiles-relative path to stage2 bootstrap file
+$STAGE2_BOOTSTRAP = "%stage2_bootstrap%"
 # runfiles-relative path to python interpreter to use
 $PYTHON_BINARY = '%python_binary%'
 # The path that PYTHON_BINARY should symlink to.
@@ -27,40 +28,67 @@ $RECREATE_VENV_AT_RUNTIME = "%recreate_venv_at_runtime%"
 
 # array of strings
 # Placeholders need to be PowerShell array syntax compatible when replaced, e.g., 'arg1', 'arg2'
+# todo: parse from string
 $INTERPRETER_ARGS_FROM_TARGET = @(
     #"%interpreter_args%"
 )
 
-$RUNFILES_DIR = $null
-$zip_dir = $null
-$use_exec = $true # PowerShell doesn't have exec, so we control flow differently. True means we try to mimic exec behavior at the end.
-
-Write-Verbose "python binary: $PYTHON_BINARY"
-Write-Verbose "actual: $PYTHON_BINARY_ACTUAL"
+Write-Verbose "STAGE2_BOOTSTRAP: $STAGE2_BOOTSTRAP"
+Write-Verbose "PYTHON_BINARY: $PYTHON_BINARY"
+Write-Verbose "PYTHON_BINARY_ACTUAL: $PYTHON_BINARY_ACTUAL"
+Write-Verbose "IS_ZIPFILE: $IS_ZIPFILE"
+Write-Verbose "RECREATE_VENV_AT_RUNTIME: $RECREATE_VENV_AT_RUNTIME"
 
 # --- Main Logic ---
 
 try { # Wrap main logic for potential cleanup using finally (mimics trap EXIT)
     Write-Verbose "Processing as non-Zipfile..."
     # Function to find Runfiles Root (PowerShell adaptation)
-
-    $RUNFILES_DIR = Resolve-Path ".\bazel-bin\tests\bootstrap_impls\_run_binary_bootstrap_script_zip_no_test_bin.ps1.runfiles"
-    Write-Verbose "Runfiles directory set to: $RUNFILES_DIR"
+    Write-Verbose "Locating runfiles based on:"
+    Write-Verbose "  RUNFILES_DIR=${Env:RUNFILES_PATH}"
+    Write-Verbose "  argv0=$PSCommandPath"
+    if ($Env:RUNFILES_DIR -ne $null) {
+        Write-Verbose "Runfiles found via RUNFILES_DIR envvar"
+        $RUNFILES_DIR = $Env:RUNFILES_DIR
+    } elseif (Test-Path -Path "${PSCommandPath}.runfiles") {
+        Write-Verbose "Runfiles found via arg0 sibling .runfiles directory"
+        $RUNFILES_DIR = "${PSCommandPath}.runfiles"
+    } else {
+        # Otherwise, we are probably a program within another program's
+        # runfiles tree. Search up to find the runfiles directory.
+        $currentDir = Split-Path -Path "$PSCommandPath" -Parent
+        while ($currentDir -ne "") {
+            if ($currentDir -like "*.runfiles") {
+                $RUNFILES_DIR = $currentDir
+                Write-Verbose "Runfiles found via parent directory search"
+                break
+            }
+            $currentDir = Split-Path -Path "$currentDir" -Parent
+        }
+    }
+    if ($RUNFILES_DIR -eq $null) {
+        throw "ERROR: Unable to find runfiles directory for $PSCommandPath"
+    }
 
     $runfilesVenvRoot = Split-Path -Parent (Split-Path -Parent $PYTHON_BINARY)
 
+    # todo: also check RULES_PYTHON_EXTRACT_ROOT
     $tempDirRoot = $Env:TEMP
     $tempDirName = "rp-venv-" + (New-Guid).ToString()
     #$venvRoot = Join-Path -Path $tempDirRoot -ChildPath $tempDirName
+    # todo: Remove this debug path
     $venvRoot = "C:\tempvenv"
     Write-Verbose "Temp venv root: $venvRoot"
     Remove-Item -Path $venvRoot -Recurse -Force
     New-Item -ItemType Directory -Path $venvRoot | Out-Null
     New-Item -ItemType Directory -Path $venvRoot\Scripts | Out-Null
-    New-Item -ItemType SymbolicLink -Path $venvRoot\Scripts\python.exe `
+    $pyBasename = Split-Path $PYTHON_BINARY_ACTUAL -Leaf
+    $pyExe = "$venvRoot\Scripts\$pyBasename"
+    New-Item -ItemType SymbolicLink -Path "$pyExe" `
         -Target "$RUNFILES_DIR\$PYTHON_BINARY_ACTUAL" | Out-Null
     $pyActualDir = Split-Path -Parent "$RUNFILES_DIR\$PYTHON_BINARY_ACTUAL"
     Write-Verbose "py actual dir: $pyActualDir"
+    # todo: have build system pass these paths along
     New-Item -ItemType SymbolicLink -Path $venvRoot\Scripts\python3.dll `
         -Target "$pyActualDir\python3.dll"
     New-Item -ItemType SymbolicLink -Path $venvRoot\Scripts\python311.dll `
@@ -68,44 +96,37 @@ try { # Wrap main logic for potential cleanup using finally (mimics trap EXIT)
 
     New-Item -ItemType SymbolicLink -Path $venvRoot\Lib `
         -Target $runfilesVenvRoot\Lib | Out-Null
+    # todo: Why must we set home again? ISTR that windows python doesn't
+    # handle a missing home key as nicely as linux, but don't remember
+    # the details
+    # todo: call python to get this value; see stage1.sh and its logic
     ##New-Item -ItemType File -Path "$venvRoot\pyvenv.cfg"
     "home = $pyActualDir" >> "$venvRoot\pyvenv.cfg"
 
-    # Function to find Python Interpreter (PowerShell adaptation)
-    ##$python_exe = "C:\\Users\\richardlev\\AppData\\Local\\Microsoft\\WindowsApps\\PythonSoftwareFoundation.Python.3.10_qbz5n2kfra8p0\\python.exe"
-    #$python_exe = Join-Path $RUNFILES_DIR $PYTHON_BINARY
-    #$python_exe = Join-Path $RUNFILES_DIR $PYTHON_BINARY_ACTUAL
-    $python_exe = "$venvRoot\Scripts\python.exe"
 
     # --- Interpreter Check ---
-    Write-Verbose "Final check for Python executable: $python_exe"
-    if (-not (Test-Path $python_exe)) {
-        Write-Error "ERROR: Python interpreter not found: $python_exe"
-        # Attempt to list parent dir content for debugging
-        Get-ChildItem (Split-Path $python_exe -Parent) -ErrorAction SilentlyContinue
-        exit 1
+    # PowerShell doesn't have a '-x' check like Unix, so just check existence.
+    if (-not (Test-Path $pyExe)) {
+        throw "ERROR: Python interpreter not found: $pyExe"
     }
-    # PowerShell doesn't have a direct '-x' check like Unix. Get-Command can sometimes help verify executability.
-    # We'll rely on the OS to fail if it's not runnable.
 
-    $stage2_bootstrap_path = Join-Path $RUNFILES_DIR $STAGE2_BOOTSTRAP
+    $stage2Path = Join-Path $RUNFILES_DIR $STAGE2_BOOTSTRAP
 
     # --- Prepare Arguments and Environment ---
-    $interpreter_env_vars = @{} # Use a hashtable for environment variables
+    $pyEnv = @{} # Use a hashtable for environment variables
     $interpreter_args_list = [System.Collections.Generic.List[string]]::new()
 
-    # Handle PYTHONSAFEPATH (equivalent logic)
-    if (-not (Test-Path Env:\PYTHONSAFEPATH)) {
+    # Default to PYTHONSAFEPATH=1, but respect the outer value if it's set.
+    if ($Env:PYTHONSAFEPATH -eq $null) {
         # If PYTHONSAFEPATH is not set at all in the environment, default it to 1
-        $interpreter_env_vars['PYTHONSAFEPATH'] = '1'
-        Write-Verbose "Setting PYTHONSAFEPATH=1"
+        $pyEnv['PYTHONSAFEPATH'] = '1'
     } else {
-         # If it is set (even to empty string), pass its value through
-         $interpreter_env_vars['PYTHONSAFEPATH'] = $Env:PYTHONSAFEPATH
-         Write-Verbose "Passing through existing PYTHONSAFEPATH value: '$($Env:PYTHONSAFEPATH)'"
+        # If it is set (even to empty string), pass its value through
+        $pyEnv['PYTHONSAFEPATH'] = $Env:PYTHONSAFEPATH
     }
 
 
+    # todo: handle zip files
     if ($IS_ZIPFILE -eq "1") {
         $interpreter_args_list.Add("-XRULES_PYTHON_ZIP_DIR=$zip_dir")
         Write-Verbose "Adding zip dir arg: -XRULES_PYTHON_ZIP_DIR=$zip_dir"
@@ -121,58 +142,56 @@ try { # Wrap main logic for potential cleanup using finally (mimics trap EXIT)
         # Remove-Item Env:\RULES_PYTHON_ADDITIONAL_INTERPRETER_ARGS # Equivalent to unset (optional)
     }
 
-    # --- Execute Python ---
-    # Set Runfiles Dir for the child process
-    $Env:RUNFILES_DIR = $RUNFILES_DIR
-    Write-Verbose "Exporting RUNFILES_DIR=$RUNFILES_DIR"
+    # Set after custom user env vars
+    $pyEnv["RUNFILES_DIR"] = $RUNFILES_DIR
 
     # Combine all arguments for the python process
-    $final_python_args = @()
-    $final_python_args += $interpreter_args_list # Add args derived in this script
-    $final_python_args += $INTERPRETER_ARGS_FROM_TARGET # Add args from build target
-    $final_python_args += $stage2_bootstrap_path # Add the stage2 script
-    $final_python_args += $args # Add arguments passed to this bootstrap script ($@)
-
-    Write-Verbose "Executing Python:"
-    Write-Verbose "  Interpreter: $python_exe"
-    Write-Verbose "  Arguments: $($final_python_args -join ' ')"
-    if ($interpreter_env_vars.Count -gt 0) {
-        Write-Verbose "  With additional environment:"
-        $interpreter_env_vars.GetEnumerator() | ForEach-Object { Write-Verbose "    $($_.Key)=$($_.Value)" }
-    }
-
-    # Build the command execution string/array Using Start-Process allows
-    # setting environment variables more cleanly for the child process, but
-    # makes capturing output/exit code slightly more complex and doesn't
-    # 'exec'.  Using '&' operator (Invoke-Expression style) is simpler but env
-    # var inheritance needs care.
-
-    # Let's use the '&' approach, modifying the *current* process env
-    # temporarily for simplicity, similar to how `env K=V cmd` works inline in
-    # bash.  Store original env values to restore them in 'finally' if needed
-    # (though maybe not strictly required if script exits)
-    ##$original_env_values = @{}
-    ##foreach ($key in $interpreter_env_vars.Keys) {
-    ##    if (Test-Path Env:\$key) {
-    ##        $original_env_values[$key] = $Env:$key
-    ##    } else { $original_env_values[$key] = $null }
-    ##    Set-Item -Path "Env:\$key" -Value $interpreter_env_vars[$key]
-    ##}
+    $argv = @()
+    $argv += $interpreter_args_list # Add args derived in this script
+    $argv += $INTERPRETER_ARGS_FROM_TARGET # Add args from build target
+    $argv += $stage2Path # Add the stage2 script
+    $argv += $args # Add arguments passed to this bootstrap script ($@)
 
     $Env:RULES_PYTHON_BOOTSTRAP_VERBOSE = ""
-    # Execute the python interpreter
-    & $python_exe $final_python_args
-    #& $python_exe -c "import sys; print(sys.prefix); print(sys.base_prefix)"
+    # IMPORTANT: Modifications to $Env affect the caller because powershell
+    # scripts are run *in-process*.
+    $origEnv = @{}
+    foreach ($key in $pyEnv.Keys) {
+        if (Test-Path Env:$key) {
+            $origEnv[$key] = Get-Item "Env:$key"
+        } else {
+            $origEnv[$key] = $null
+        }
+    }
+    try {
+        Write-Verbose "Executing:"
+        foreach($key in $pyEnv.Keys) {
+            $value = $pyEnv[$key]
+            Set-Item "Env:$key" $value
+            Write-Verbose "  $key=$value"
+        }
+        Write-Verbose "  Python: $pyExe"
+        Write-Verbose "  Arguments:"
+        for ($i=0; $i -lt $argv.Length; $i++) {
+            $value = $argv[$i]
+            Write-Verbose "  [$i] $value"
+        }
+        # NOTE: We use & (call operator) instead of Start-Process because
+        # it's more appropirate for running a synchronous console program.
+        # It connects the standards streams, perserves the exit code, etc.
+        & "$pyExe" $argv
+    } finally {
+        foreach ($key in $origEnv.Keys) {
+            Set-Item "Env:$key" $origEnv[$key]
+        }
+    }
 
     # Capture the exit code of the last command
     $lastExitCode = $LASTEXITCODE
-    Write-Verbose "Python process exited with code: $lastExitCode"
-
-    # Exit this script with the same code
+    Write-Verbose "Python process exit code: $lastExitCode"
     exit $lastExitCode
-
 } finally {
-  Write-Verbose "Finally block ran"
+  Write-Verbose "Deleting temp venv: $venvRoot"
   #Remove-Item -Path $venvRoot -Recurse -Force
 }
 
