@@ -21,7 +21,13 @@ load(":full_version.bzl", "full_version")
 load(":python_register_toolchains.bzl", "python_register_toolchains")
 load(":pythons_hub.bzl", "hub_repo")
 load(":repo_utils.bzl", "repo_utils")
-load(":toolchains_repo.bzl", "host_toolchain", "multi_toolchain_aliases", "sorted_host_platforms")
+load(
+    ":toolchains_repo.bzl",
+    "host_toolchain",
+    "multi_toolchain_aliases",
+    "sorted_host_platform_names",
+    "sorted_host_platforms",
+)
 load(":util.bzl", "IS_BAZEL_6_4_OR_HIGHER")
 load(":version.bzl", "version")
 
@@ -267,6 +273,8 @@ def parse_modules(*, module_ctx, _fail = fail):
 def _python_impl(module_ctx):
     py = parse_modules(module_ctx = module_ctx)
 
+    all_host_compatible_impls = []
+
     # list of structs; see inline struct call within the loop below.
     toolchain_impls = []
 
@@ -319,22 +327,96 @@ def _python_impl(module_ctx):
             ))
             if _is_compatible_with_host(module_ctx, platform_info):
                 host_platforms[platform_name] = platform_info
+                host_compat_entry = struct(
+                    full_python_version = full_python_version,
+                    platform = platform_info,
+                    platform_name = platform_name,
+                    impl_repo_name = repo_name,
+                )
+                all_host_compatible_impls.setdefault(full_python_version, []).append(
+                    host_compat_entry,
+                )
+                all_host_compatible_impls.setdefault(
+                    toolchain_info.python_version,
+                    [],
+                ).append(host_compat_entry)
 
-        host_platforms = sorted_host_platforms(host_platforms)
-        host_toolchain(
-            name = toolchain_info.name + "_host",
-            # NOTE: Order matters. The first found to be compatible is (usually) used.
-            platforms = host_platforms.keys(),
-            os_names = {
-                str(i): platform_info.os_name
-                for i, platform_info in enumerate(host_platforms.values())
-            },
-            archs = {
-                str(i): platform_info.arch
-                for i, platform_info in enumerate(host_platforms.values())
-            },
-            python_version = full_python_version,
-        )
+        host_repo_name = toolchain_info.name + "_host"
+        if not host_platforms:
+            needed_host_repos[toolchain_info.python_version] = struct(
+                compatible_version = toolchain_info.python_version,
+                full_python_version = full_python_version,
+            )
+        else:
+            host_platforms = sorted_host_platforms(host_platforms)
+            host_toolchain(
+                name = host_repo_name,
+                # NOTE: Order matters. The first found to be compatible is (usually) used.
+                platforms = host_platforms.keys(),
+                os_names = {
+                    str(i): platform_info.os_name
+                    for i, platform_info in enumerate(host_platforms.values())
+                },
+                archs = {
+                    str(i): platform_info.arch
+                    for i, platform_info in enumerate(host_platforms.values())
+                },
+                python_version = full_python_version,
+            )
+
+    """
+    We want to define e.g. python_3_13_host backed by e.g. python_3_13 (full
+    version 3.13.3)
+    but, we didn't see a host-compatible option when we initial did so.
+    So search from 3.13.3 down to 3.13.0, looking for compatible options.
+    """
+
+    def vt(s):
+        return tuple([int(x) for x in s.split(".")])
+
+    if needed_host_repos:
+        for key, entries in all_host_compatible_impls.items():
+            all_host_compatible_impls[key] = sorted(
+                entries,
+                reverse = True,
+                key = lambda e: vt(e.full_python_version),
+            )
+
+    for host_repo_name, info in needed_host_repos.items():
+        choices = []
+        for entry in all_host_compatible_impls[info.compatible_version]:
+            # todo: numeric version comparison
+            if vt(entry.full_python_version) <= vt(info.full_python_version):
+                choices.append(entry)
+        if choices:
+            platforms_keys = [
+                # We have to prepend the offset because the same platform
+                # name might occur accross different versions
+                "{}_{}".format(i, entry.platform_name)
+                for i, entry in enumerate(choices)
+            ]
+            platform_keys = sorted_host_platforms_names(platform_keys)
+
+            # AH no, this won't quite work.
+            # Multiple versions will have the same platform_name string.
+            # Thus when it builds the platform_map, some will get clobbered
+            # Maybe just throw an offset prefix onto it for uniqueness?
+            host_toolchain(
+                name = host_repo_name,
+                platforms = platform_keys,
+                impl_repo_suffixes = {
+                    # Internally, it prepends its own name arg, so we must remove
+                    # the common prefix
+                    str(i): entry.impl_repo_name.removeprefix(host_repo_name)
+                    for i, entry in enumerate(choices)
+                },
+                os_names = {str(i): entry.os_name for entry in enumerate(choices)},
+                archs = {str(i): entry.arch for entry in enumerate(choices)},
+                python_versions = {str(i): entry.full_python_version for entry in enumerate(choices)},
+            )
+        else:
+            # todo: figure out what to do. Define nothing, if we can.
+            fail("No host-compatible found")
 
     # List of the base names ("python_3_10") for the toolchain repos
     base_toolchain_repo_names = []
