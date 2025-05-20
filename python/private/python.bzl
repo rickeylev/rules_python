@@ -265,6 +265,7 @@ def parse_modules(*, module_ctx, _fail = fail):
     )
 
 def _python_impl(module_ctx):
+    fail("hit")
     py = parse_modules(module_ctx = module_ctx)
 
     # list of structs; see inline struct call within the loop below.
