@@ -130,7 +130,7 @@ def _get_toolchain_unix_cflags(rctx, python_interpreter, logger = None):
     return ["-isystem {}".format(include_path)]
 
 def _parse_optional_attrs(rctx, args, extra_pip_args = None):
-    """Helper function to parse common attributes of pip_repository and whl_file_repo repository rules.
+    """Helper function to parse common attributes of pip_repository and whl_library repository rules.
 
     This function also serializes the structured arguments as JSON
     so they can be passed on the command line to subprocesses.
@@ -558,7 +558,7 @@ attr makes `extra_pip_args` and `download_only` ignored.""",
         doc = """a label-keyed-string dict that has
             json.encode(struct([whl_file], patch_strip]) as values. This
             is to maintain flexibility and correct bzlmod extension interface
-            until we have a better way to define whl_file_repo and move whl
+            until we have a better way to define whl_library and move whl
             patching to a separate place. INTERNAL USE ONLY.""",
     ),
     "_python_path_entries": attr.label_list(

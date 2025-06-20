@@ -16,7 +16,7 @@
 
 load("@rules_testing//lib:test_suite.bzl", "test_suite")
 load("//python/private:glob_excludes.bzl", "glob_excludes")  # buildifier: disable=bzl-visibility
-load("//python/private/pypi:whl_file_repo_targets.bzl", whl_file_repo_targets = "whl_library_targets", whl_file_repo_targets_from_requires = "whl_library_targets_from_requires")  # buildifier: disable=bzl-visibility
+load("//python/private/pypi:whl_file_repo_targets.bzl", whl_file_repo_targets = "whl_file_repo_targets", whl_file_repo_targets_from_requires = "whl_file_repo_targets_from_requires")  # buildifier: disable=bzl-visibility
 
 _tests = []
 
@@ -27,7 +27,7 @@ def _test_filegroups(env):
         env.expect.that_bool(allow_empty).equals(True)
         return match
 
-    whl_library_targets(
+    whl_file_repo_targets(
         name = "",
         dep_template = "",
         native = struct(
@@ -61,7 +61,7 @@ _tests.append(_test_filegroups)
 def _test_platforms(env):
     calls = []
 
-    whl_library_targets(
+    whl_file_repo_targets(
         name = "",
         dep_template = None,
         dependencies_by_platform = {
@@ -117,7 +117,7 @@ _tests.append(_test_platforms)
 def _test_copy(env):
     calls = []
 
-    whl_library_targets(
+    whl_file_repo_targets(
         name = "",
         dep_template = None,
         dependencies_by_platform = {},
@@ -151,7 +151,7 @@ _tests.append(_test_copy)
 def _test_entrypoints(env):
     calls = []
 
-    whl_library_targets(
+    whl_file_repo_targets(
         name = "",
         dep_template = None,
         dependencies_by_platform = {},
@@ -182,7 +182,7 @@ def _test_whl_and_library_deps_from_requires(env):
     py_library_calls = []
     env_marker_setting_calls = []
 
-    whl_library_targets_from_requires(
+    whl_file_repo_targets_from_requires(
         name = "foo-0-py3-none-any.whl",
         metadata_name = "Foo",
         metadata_version = "0",
@@ -262,7 +262,7 @@ def _test_whl_and_library_deps(env):
     filegroup_calls = []
     py_library_calls = []
 
-    whl_library_targets(
+    whl_file_repo_targets(
         name = "foo.whl",
         dep_template = "@pypi_{name}//:{target}",
         dependencies = ["foo", "bar-baz"],
@@ -358,7 +358,7 @@ def _test_group(env):
     alias_calls = []
     py_library_calls = []
 
-    whl_library_targets(
+    whl_file_repo_targets(
         name = "foo.whl",
         dep_template = "@pypi_{name}//:{target}",
         dependencies = ["foo", "bar-baz", "qux"],
@@ -430,7 +430,7 @@ def _select(*args, **kwargs):
         kwargs = kwargs,
     )]
 
-def whl_library_targets_test_suite(name):
+def whl_file_repo_targets_test_suite(name):
     """create the test suite.
 
     args:
