@@ -46,7 +46,7 @@ package(default_visibility = ["//visibility:public"])
 )
 """
 
-def generate_whl_library_build_bazel(
+def generate_whl_file_repo_build_bazel(
         *,
         annotation = None,
         default_python_version = None,
