@@ -83,7 +83,7 @@ integration test.
 
 1. Modify the `./python/private/pypi/requirements.txt` file and run:
    ```
-   bazel run //private:whl_file_repo_requirements.update
+   bazel run //private:whl_library_requirements.update
    ```
 1. Run the following target to update `twine` dependencies:
    ```

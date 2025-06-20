@@ -178,7 +178,7 @@ Values:
 * `auto`: Prefer `whl` distributions if they are compatible with a target
   platform, but fallback to `sdist`. This is the default.
 * `only`: Only use `whl` distributions and error out if it is not available.
-* `no`: Only use `sdist` distributions. The wheels will be built non-hermetically in the `whl_file_repo` repository rule.
+* `no`: Only use `sdist` distributions. The wheels will be built non-hermetically in the `whl_library` repository rule.
 :::{versionadded} 0.33.0
 :::
 ::::

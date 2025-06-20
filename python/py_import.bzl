@@ -59,7 +59,7 @@ py_import = rule(
         "srcs": attr.label_list(
             doc = "The list of Python package files provided to Python targets " +
                   "that depend on this target. Note that currently only the .egg " +
-                  "format is accepted. For .whl files, try the whl_file_repo rule. " +
+                  "format is accepted. For .whl files, try the whl_library rule. " +
                   "We accept contributions to extend py_import to handle .whl.",
             allow_files = [".egg"],
         ),

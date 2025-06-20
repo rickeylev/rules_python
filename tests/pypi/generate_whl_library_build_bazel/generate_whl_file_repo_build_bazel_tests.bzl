@@ -58,7 +58,7 @@ whl_library_targets(
 
 # SOMETHING SPECIAL AT THE END
 """
-    actual = generate_whl_file_repo_build_bazel(
+    actual = generate_whl_library_build_bazel(
         dep_template = "@pypi//{name}:{target}",
         name = "foo.whl",
         dependencies = ["foo"],
@@ -124,7 +124,7 @@ whl_library_targets_from_requires(
 
 # SOMETHING SPECIAL AT THE END
 """
-    actual = generate_whl_file_repo_build_bazel(
+    actual = generate_whl_library_build_bazel(
         dep_template = "@pypi//{name}:{target}",
         name = "foo.whl",
         requires_dist = ["foo", "bar-baz", "qux"],
@@ -188,7 +188,7 @@ whl_library_targets_from_requires(
 
 # SOMETHING SPECIAL AT THE END
 """
-    actual = generate_whl_file_repo_build_bazel(
+    actual = generate_whl_library_build_bazel(
         dep_template = "@pypi//{name}:{target}",
         name = "foo.whl",
         requires_dist = ["foo", "bar-baz", "qux"],
@@ -211,7 +211,7 @@ whl_library_targets_from_requires(
 
 _tests.append(_test_all_with_loads)
 
-def generate_whl_file_repo_build_bazel_test_suite(name):
+def generate_whl_library_build_bazel_test_suite(name):
     """Create the test suite.
 
     Args:

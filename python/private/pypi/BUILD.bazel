@@ -117,7 +117,7 @@ bzl_library(
         ":pip_repository_attrs_bzl",
         ":simpleapi_download_bzl",
         ":whl_config_setting_bzl",
-        ":whl_library_bzl",
+        ":whl_file_repo_bzl",
         ":whl_repo_name_bzl",
         ":whl_target_platforms_bzl",
         "//python/private:full_version_bzl",
@@ -389,12 +389,12 @@ bzl_library(
 )
 
 bzl_library(
-    name = "whl_library_bzl",
-    srcs = ["whl_library.bzl"],
+    name = "whl_file_repo_bzl",
+    srcs = ["whl_file_repo.bzl"],
     deps = [
         ":attrs_bzl",
         ":deps_bzl",
-        ":generate_whl_library_build_bazel_bzl",
+        ":generate_whl_file_repo_build_bazel_bzl",
         ":patch_whl_bzl",
         ":pep508_requirement_bzl",
         ":pypi_repo_utils_bzl",

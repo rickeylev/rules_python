@@ -66,7 +66,7 @@ On `bzlmod` users have the option to use the `bazel_downloader` to download pack
 and work correctly when `host` platform is not the same as the `target` platform. This
 provides faster package download times and integration with the credentials helper.
 
-### Extra targets in `whl_file_repo` repos
+### Extra targets in `whl_library` repos
 
 Due to how `bzlmod` is designed and the visibility rules that it enforces, it is best to use
 the targets in the `whl` repos as they do not rely on using the `annotations` API to
