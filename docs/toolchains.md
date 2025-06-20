@@ -344,7 +344,7 @@ use_repo(python, "python_3_10", "python_3_10_host")
 ```
 
 Note, the user has to import the `*_host` repository to use the python interpreter in the
-{bzl:obj}`pip_parse` and `whl_library` repository rules and once that is done
+{bzl:obj}`pip_parse` and `whl_file_repo` repository rules and once that is done
 users should be able to ensure the setting of the default toolchain even during the
 transition period when some of the code is still defined in `WORKSPACE`.
 

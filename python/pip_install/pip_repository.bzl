@@ -17,10 +17,10 @@
 load("//python/private/pypi:group_library.bzl", _group_library = "group_library")
 load("//python/private/pypi:package_annotation.bzl", _package_annotation = "package_annotation")
 load("//python/private/pypi:pip_repository.bzl", _pip_repository = "pip_repository")
-load("//python/private/pypi:whl_library.bzl", _whl_library = "whl_library")
+load("//python/private/pypi:whl_library.bzl", _whl_file_repo = "whl_file_repo")
 
 # Re-exports for backwards compatibility
 group_library = _group_library
 pip_repository = _pip_repository
-whl_library = _whl_library
+whl_file_repo = _whl_file_repo
 package_annotation = _package_annotation

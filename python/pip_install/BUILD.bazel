@@ -25,7 +25,7 @@ bzl_library(
         "//python/private/pypi:group_library_bzl",
         "//python/private/pypi:package_annotation_bzl",
         "//python/private/pypi:pip_repository_bzl",
-        "//python/private/pypi:whl_library_bzl",
+        "//python/private/pypi:whl_library_bzl",  # TODO(https://github.com/bazelbuild/rules_python/issues/1993): Rename to whl_file_repo.bzl
     ],
 )
 

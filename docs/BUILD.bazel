@@ -123,7 +123,7 @@ sphinx_stardocs(
         "//python/private/pypi:env_marker_info_bzl",
         "//python/private/pypi:pkg_aliases_bzl",
         "//python/private/pypi:whl_config_setting_bzl",
-        "//python/private/pypi:whl_library_bzl",
+        "//python/private/pypi:whl_library_bzl",  # TODO(https://github.com/bazelbuild/rules_python/issues/1993): Rename to whl_file_repo_bzl
         "//python/uv:lock_bzl",
         "//python/uv:uv_bzl",
         "//python/uv:uv_toolchain_bzl",

@@ -1,5 +1,5 @@
-load(":whl_library_targets_tests.bzl", "whl_library_targets_test_suite")
+load(":whl_file_repo_targets_tests.bzl", "whl_file_repo_targets_test_suite")
 
-whl_library_targets_test_suite(
-    name = "whl_library_targets_tests",
+whl_file_repo_targets_test_suite(
+    name = "whl_file_repo_targets_tests",
 )

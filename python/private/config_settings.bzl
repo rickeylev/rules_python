@@ -129,7 +129,7 @@ def construct_config_settings(*, name, default_version, versions, minor_mapping,
         # is executed.
         #
         # NOTE: This should in practise only happen if there is a missing compatible
-        # `whl_library` in the hub repo created by `pip.parse`.
+        # `whl_file_repo` in the hub repo created by `pip.parse`.
         flag_values = {"current_config": "will-never-match"},
         # Only public so that PyPI hub repo can access it
         visibility = _NOT_ACTUALLY_PUBLIC,

@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Macro to generate all of the targets present in a {obj}`whl_library`."""
+"""Macro to generate all of the targets present in a {obj}`whl_file_repo`."""
 
 load("@bazel_skylib//rules:copy_file.bzl", "copy_file")
 load("//python:py_binary.bzl", "py_binary")
@@ -57,7 +57,7 @@ def whl_library_targets_from_requires(
             the whl `METADATA`.
         extras: {type}`list[str]` The list of requested extras. This essentially includes extra transitive dependencies in the final targets depending on the wheel `METADATA`.
         include: {type}`list[str]` The list of packages to include.
-        **kwargs: Extra args passed to the {obj}`whl_library_targets`
+        **kwargs: Extra args passed to the {obj}`whl_file_repo_targets`
     """
     package_deps = _parse_requires_dist(
         name = metadata_name,
@@ -121,7 +121,7 @@ def whl_library_targets(
             py_library = py_library,
             env_marker_setting = env_marker_setting,
         )):
-    """Create all of the whl_library targets.
+    """Create all of the whl_file_repo targets.
 
     Args:
         name: {type}`str` The file to match for including it into the `whl`

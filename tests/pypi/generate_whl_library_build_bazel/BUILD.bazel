@@ -1,3 +1,3 @@
-load(":generate_whl_library_build_bazel_tests.bzl", "generate_whl_library_build_bazel_test_suite")
+load(":generate_whl_file_repo_build_bazel_tests.bzl", "generate_whl_file_repo_build_bazel_test_suite")
 
-generate_whl_library_build_bazel_test_suite(name = "generate_whl_library_build_bazel_tests")
+generate_whl_file_repo_build_bazel_test_suite(name = "generate_whl_file_repo_build_bazel_tests")

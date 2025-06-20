@@ -228,7 +228,7 @@ def _create_repository_execution_environment(rctx, python_interpreter, logger = 
         env[_CPPFLAGS] = " ".join(cppflags)
     return env
 
-def _whl_library_impl(rctx):
+def _whl_file_repo_impl(rctx):
     logger = repo_utils.logger(rctx)
     python_interpreter = pypi_repo_utils.resolve_python_interpreter(
         rctx,
@@ -504,7 +504,7 @@ if __name__ == "__main__":
     return contents
 
 # NOTE @aignas 2024-03-21: The usage of dict({}, **common) ensures that all args to `dict` are unique
-whl_library_attrs = dict({
+whl_file_repo_attrs = dict({
     "annotation": attr.label(
         doc = (
             "Optional json encoded file containing annotation to apply to the extracted wheel. " +
@@ -583,16 +583,16 @@ attr makes `extra_pip_args` and `download_only` ignored.""",
             Label("//python/private/pypi/whl_installer:arguments.py"),
         ] + record_files.values(),
     ),
-    "_rule_name": attr.string(default = "whl_library"),
+    "_rule_name": attr.string(default = "whl_file_repo"),
 }, **ATTRS)
-whl_library_attrs.update(AUTH_ATTRS)
+whl_file_repo_attrs.update(AUTH_ATTRS)
 
-whl_library = repository_rule(
-    attrs = whl_library_attrs,
+whl_file_repo = repository_rule(
+    attrs = whl_file_repo_attrs,
     doc = """
 Download and extracts a single wheel based into a bazel repo based on the requirement string passed in.
 Instantiated from pip_repository and inherits config options from there.""",
-    implementation = _whl_library_impl,
+    implementation = _whl_file_repo_impl,
     environ = [
         "RULES_PYTHON_PIP_ISOLATED",
         REPO_DEBUG_ENV_VAR,
