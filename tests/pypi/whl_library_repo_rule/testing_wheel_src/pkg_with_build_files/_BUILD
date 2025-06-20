@@ -1,0 +1,5 @@
+# This is a _BUILD file inside a wheel package
+# It should remain _BUILD, and the original BUILD file should become __BUILD
+
+# To make it not empty
+exports_files(["conflict_data.txt"])

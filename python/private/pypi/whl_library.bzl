@@ -473,7 +473,132 @@ def _whl_library_impl(rctx):
 
     rctx.file("BUILD.bazel", build_file_contents)
 
+    # Rename BUILD files from the extracted wheel
+    _rename_build_files_in_wheel(rctx, logger)
+
     return
+
+def _rename_build_files_in_wheel(rctx, logger):
+    """Renames BUILD and BUILD.bazel files within the extracted wheel contents."""
+    # TODO(jules): Determine the correct path to the extracted wheel contents.
+    # This might be "site-packages" or something similar.
+    # For now, assuming it's "site-packages" relative to the repository root.
+    extracted_contents_dir = rctx.path("site-packages")
+
+    if not extracted_contents_dir.exists:
+        logger.debug("Extracted contents directory '{}' does not exist, skipping BUILD file renaming.".format(extracted_contents_dir))
+        return
+
+    # Glob for BUILD and BUILD.bazel files.
+    # Need to use ctx.execute for find, as ctx.path.glob is not available in repository_rule.
+    # Alternatively, list all files and filter, but that could be inefficient for large wheels.
+
+    # Using a simpler approach for now: iterate through known locations.
+    # This is not ideal and should be replaced with a more robust solution.
+    # For now, this demonstrates the renaming logic.
+
+    # Simplistic listing of files (not recursive, would need to improve)
+    # A better approach would be to get the list of installed files from metadata.json
+    # or use rctx.execute with 'find'.
+
+    # Attempting to read the layout from metadata.json if available
+    # to understand where files are installed.
+    # The actual renaming needs to happen on the files laid out by wheel_installer.py
+
+    # The wheel_installer.py installs files into various subdirectories (purelib, platlib, etc.)
+    # under the repository root. We need to find BUILD files in those locations.
+    # Common installation directories within a wheel repository context:
+    # - site-packages (for purelib/platlib)
+    # - data (for data files)
+    # - include (for headers)
+    # - bin (for scripts) - less likely to have BUILD files here from a wheel.
+
+    # For now, let's assume most problematic BUILD files are in a directory like "site-packages".
+    # The `wheel_installer.py` uses `installer.destinations.SchemeDictionaryDestination`
+    # which maps scheme keys like "purelib", "platlib" to paths *within* the destination directory.
+    # The `destdir` for `installer.install` in `wheel.py` is the top-level directory.
+    # So, files will be in `directory/site-packages`, `directory/include`, etc.
+    # In the context of `whl_library_impl`, `rctx.path(".")` is the repository root.
+
+    search_dirs = [
+        rctx.path("site-packages"), # Common location for Python packages
+        rctx.path("data"),          # Data files
+        # Add other potential locations if necessary
+    ]
+
+    files_to_rename = []
+
+    for base_dir in search_dirs:
+        if not base_dir.exists:
+            continue
+
+        # Need to recursively find BUILD and BUILD.bazel files.
+        # Starlark's path API in repository rules is limited.
+        # Using `rctx.execute` to call `find` is the most robust way.
+        find_cmd = [
+            "find",
+            base_dir.path, # Path relative to repository root
+            "-type",
+            "f",
+            "(",
+            "-name",
+            "BUILD",
+            "-o",
+            "-name",
+            "BUILD.bazel",
+            ")",
+        ]
+        result = rctx.execute(find_cmd, quiet = not repo_utils.is_debug(rctx))
+        if result.return_code != 0:
+            # Find might return non-zero if no files are found, which is okay.
+            # Check stderr for actual errors.
+            if result.stderr:
+                logger.warn("Error finding BUILD files in {}: {}".format(base_dir, result.stderr))
+            continue
+
+        found_files = [f.strip() for f in result.stdout.splitlines() if f.strip()]
+        for f_path_str in found_files:
+            # f_path_str is an absolute path in the execroot, need to make it relative to repo root
+            # However, rctx.path() expects paths relative to the workspace root if absolute,
+            # or relative to the repository directory if relative.
+            # Since `find` was run with `base_dir.path` (relative to repo root),
+            # the output paths from `find` will also be relative to the repo root.
+            files_to_rename.append(rctx.path(f_path_str))
+
+
+    for original_path in files_to_rename:
+        if not original_path.exists: # Should not happen if find worked correctly
+            continue
+
+        original_basename = original_path.basename
+        new_basename_base = "_" + original_basename # e.g., _BUILD or _BUILD.bazel
+
+        conflict_counter = 0
+        new_path = original_path.dirname.get_child(new_basename_base)
+
+        while new_path.exists:
+            conflict_counter += 1
+            new_basename = ("_" * conflict_counter) + new_basename_base
+            new_path = original_path.dirname.get_child(new_basename)
+            if conflict_counter > 100: # Safety break
+                logger.error("Too many conflicts trying to rename {}. Last tried {}.".format(original_path, new_path))
+                fail("Failed to rename BUILD file due to too many conflicts: {}".format(original_path))
+
+
+        logger.debug("Renaming {} to {}".format(original_path, new_path))
+        try:
+            # In repository_rule, use native.move or ctx.actions.rename if available and appropriate.
+            # For direct file system manipulation like this after extraction,
+            # using rctx.os.rename or execute("mv") is common.
+            # Let's use 'mv' for simplicity here.
+            mv_result = rctx.execute(["mv", original_path.path, new_path.path], quiet = not repo_utils.is_debug(rctx))
+            if mv_result.return_code != 0:
+                logger.error("Failed to rename {} to {}: {}".format(original_path, new_path, mv_result.stderr))
+                fail("Error renaming file: {}".format(original_path))
+        except Exception as e:
+            logger.error("Exception during rename of {} to {}: {}".format(original_path, new_path, e))
+            fail("Exception while renaming file: {}".format(original_path))
+
 
 def _generate_entry_point_contents(
         module,

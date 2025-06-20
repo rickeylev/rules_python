@@ -1,0 +1,60 @@
+load(":defs.bzl", "whl_build_file_renaming_test")
+load("@build_my_test_wheel//:wheel_name.bzl", "BUILT_WHEEL_NAME")
+load("//python/pip_install:pip_repository.bzl", "whl_library") # Adjusted path
+
+# This is a placeholder for where whl_library would be invoked.
+# In a real scenario, this would typically be in WORKSPACE or a MODULE.bazel file.
+# For testing, we can use a macro in defs.bzl if needed, or rely on setup in WORKSPACE.
+# The `testing_repositories()` function in defs.bzl is intended for WORKSPACE.
+# We will assume WORKSPACE is set up.
+
+# The actual whl_library target that consumes the locally built wheel.
+# This would normally be in a WORKSPACE file or a module extension.
+# For the test to work, we need to ensure this repository is fetched.
+# We can define it here if we adjust how WORKSPACE/MODULE.bazel files are handled in tests,
+# or ensure the test environment sets this up.
+
+# To make this self-contained for the test rule, we would typically
+# generate the WORKSPACE content needed for the test.
+# However, sh_test runs after the analysis phase, so repository rules are already fetched.
+
+# Let's assume the WORKSPACE file for this test will contain:
+# load("//tests/pypi/whl_library_repo_rule:defs.bzl", "testing_repositories")
+# testing_repositories() # This creates @build_my_test_wheel
+# load("@build_my_test_wheel//:wheel_name.bzl", "BUILT_WHEEL_NAME")
+# load("@rules_python//python/pip_install:pip_repository.bzl", "whl_library")
+# whl_library(
+# name = "test_wheel_with_renamed_build_files",
+# whl_file = "@build_my_test_wheel//:" + BUILT_WHEEL_NAME,
+# requirement = "testwheel_with_build_files==0.1.0",
+# )
+
+# The test target:
+whl_build_file_renaming_test(
+    name = "build_file_renaming_test",
+    whl_repo_name = "test_wheel_with_renamed_build_files",
+    # site_packages_path will be "site-packages" for most wheels
+    # data_files_path will be "data" if setup.py data_files installs there
+)
+
+# Expose the source files for the wheel building repository rule
+filegroup(
+    name = "testing_wheel_src",
+    srcs = glob(
+        ["testing_wheel_src/**"],
+        exclude = [
+            "testing_wheel_src/**/__pycache__/**",
+            "testing_wheel_src/**/*.pyc",
+        ],
+    ),
+    visibility = ["//visibility:public"],
+)
+
+# Test suite
+test_suite(
+    name = "whl_library_repo_rule_tests",
+    tests = [
+        ":build_file_renaming_test",
+    ],
+    visibility = ["//visibility:public"],
+)

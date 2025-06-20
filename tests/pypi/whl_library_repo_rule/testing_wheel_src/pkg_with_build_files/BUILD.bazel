@@ -1,0 +1,5 @@
+# This is a BUILD.bazel file inside a wheel package
+# It should be renamed to _BUILD.bazel
+
+# To make it not empty
+exports_files(["another_data.txt"])
