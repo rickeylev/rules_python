@@ -114,7 +114,7 @@ END_UNRELEASED_TEMPLATE
   various URL formats - URL encoded version strings get correctly resolved, sha256 value can be
   also retrieved from the URL as opposed to only the `--hash` parameter. Fixes
   [#2363](https://github.com/bazel-contrib/rules_python/issues/2363).
-* (pypi) `whl_file_repo` now infers file names from its `urls` attribute correctly.
+* (pypi) `whl_library` now infers file names from its `urls` attribute correctly.
 * (pypi) When running under `bazel test`, be sure that temporary `requirements` file
   remains writable.
 * (py_test, py_binary) Allow external files to be used for main
@@ -404,7 +404,7 @@ END_UNRELEASED_TEMPLATE
 ### Fixed
 * (py_wheel) Use the default shell environment when building wheels to allow
   toolchains that search PATH to be used for the wheel builder tool.
-* (pypi) The requirement argument parsed to `whl_file_repo` will now not have env
+* (pypi) The requirement argument parsed to `whl_library` will now not have env
   marker information allowing `bazel query` to work in cases where the `whl` is
   available for all of the platforms and the sdist can be built. This fix is
   for both WORKSPACE and `bzlmod` setups.
@@ -418,12 +418,12 @@ END_UNRELEASED_TEMPLATE
   are now printing more details and include the currently active flag
   values. Fixes [#2466](https://github.com/bazel-contrib/rules_python/issues/2466).
 * (py_proto_library) Fix import paths in Bazel 8.
-* (whl_file_repo) Now the changes to the dependencies are correctly tracked when
-  PyPI packages used in `whl_file_repo` during the repository rule phase
+* (whl_library) Now the changes to the dependencies are correctly tracked when
+  PyPI packages used in `whl_library` during the repository rule phase
   change. Fixes [#2468](https://github.com/bazel-contrib/rules_python/issues/2468).
 + (gazelle) Gazelle no longer ignores `setup.py` files by default. To restore
   this behavior, apply the `# gazelle:python_ignore_files setup.py` directive.
-* Don't re-fetch whl_file_repo, python_repository, etc. repository rules
+* Don't re-fetch whl_library, python_repository, etc. repository rules
   whenever `PATH` changes. Fixes
   [#2551](https://github.com/bazel-contrib/rules_python/issues/2551).
 
@@ -631,7 +631,7 @@ Other changes:
   ([2310](https://github.com/bazel-contrib/rules_python/issues/2310)).
 * (publish) The dependencies have been updated to the latest available versions
   for the `twine` publishing rule.
-* (whl_file_repo) Remove `--no-build-isolation` to allow non-hermetic sdist builds
+* (whl_library) Remove `--no-build-isolation` to allow non-hermetic sdist builds
   by default. Users wishing to keep this argument and to enforce more hermetic
   builds can do so by passing the argument in
   [`pip.parse#extra_pip_args`](https://rules-python.readthedocs.io/en/latest/api/rules_python/python/extensions/pip.html#pip.parse.extra_pip_args)
@@ -646,7 +646,7 @@ Other changes:
 
 {#v0-38-0-fixed}
 ### Fixed
-* (pypi) (Bazel 7.4+) Allow spaces in filenames included in `whl_file_repo`s
+* (pypi) (Bazel 7.4+) Allow spaces in filenames included in `whl_library`s
   ([617](https://github.com/bazel-contrib/rules_python/issues/617)).
 * (pypi) When {attr}`pip.parse.experimental_index_url` is set, we need to still
   pass the `extra_pip_args` value when building an `sdist`.
@@ -730,14 +730,14 @@ Other changes:
 * (bzlmod) The default value for the {obj}`--python_version` flag will now be
   always set to the default python toolchain version value.
 * (bzlmod) correctly wire the {attr}`pip.parse.extra_pip_args` all the
-  way to `whl_file_repo`. What is more we will pass the `extra_pip_args` to
-  `whl_file_repo` for `sdist` distributions when using
+  way to `whl_library`. What is more we will pass the `extra_pip_args` to
+  `whl_library` for `sdist` distributions when using
   {attr}`pip.parse.experimental_index_url`. See
   [#2239](https://github.com/bazel-contrib/rules_python/issues/2239).
 * (whl_filegroup): Provide per default also the `RECORD` file
 * (py_wheel): `RECORD` file entry elements are now quoted if necessary when a
   wheel is created
-* (whl_file_repo) truncate progress messages from the repo rule to better handle
+* (whl_library) truncate progress messages from the repo rule to better handle
   case where a requirement has many `--hash=sha256:...` flags
 * (rules) `compile_pip_requirements` passes `env` to the `X.update` target (and
   not only to the `X_test` target, a bug introduced in
@@ -810,7 +810,7 @@ Other changes:
 
 {#v0-36-0-fixed}
 ### Fixed
-* (whl_file_repo): Remove `--no-index` and add `--no-build-isolation` to the
+* (whl_library): Remove `--no-index` and add `--no-build-isolation` to the
   `pip install` command when installing a wheel from a local file, which happens
   when `experimental_index_url` flag is used.
 * (bzlmod) get the path to the host python interpreter in a way that results in
@@ -870,7 +870,7 @@ Other changes:
 
 {#v0-35-0-changed}
 ### Changed
-* (whl_file_repo) A better log message when the wheel is built from an sdist or
+* (whl_library) A better log message when the wheel is built from an sdist or
   when the wheel is downloaded using `download_only` feature to aid debugging.
 * (gazelle): Simplify and make gazelle_python.yaml have only top level package name.
   It would work well in cases to reduce merge conflicts.
@@ -988,7 +988,7 @@ Other changes:
   other toolchains support.
 * (providers) {obj}`PyRuntimeInfo` doesn't require passing the
   `interpreter_version_info` arg.
-* (bzlmod) Correctly pass `isolated`, `quiet` and `timeout` values to `whl_file_repo`
+* (bzlmod) Correctly pass `isolated`, `quiet` and `timeout` values to `whl_library`
   and drop the defaults from the lock file.
 * (whl_library) Correctly handle arch-specific dependencies when we encounter a
   platform specific wheel and use `experimental_target_platforms`.
