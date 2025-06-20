@@ -21,7 +21,7 @@ load("//python/private:is_standalone_interpreter.bzl", "is_standalone_interprete
 load("//python/private:repo_utils.bzl", "REPO_DEBUG_ENV_VAR", "repo_utils")
 load(":attrs.bzl", "ATTRS", "use_isolated")
 load(":deps.bzl", "all_repo_names", "record_files")
-load(":generate_whl_library_build_bazel.bzl", "generate_whl_library_build_bazel")
+load(":generate_whl_file_repo_build_bazel.bzl", "generate_whl_file_repo_build_bazel")
 load(":parse_whl_name.bzl", "parse_whl_name")
 load(":patch_whl.bzl", "patch_whl")
 load(":pypi_repo_utils.bzl", "pypi_repo_utils")
@@ -130,7 +130,7 @@ def _get_toolchain_unix_cflags(rctx, python_interpreter, logger = None):
     return ["-isystem {}".format(include_path)]
 
 def _parse_optional_attrs(rctx, args, extra_pip_args = None):
-    """Helper function to parse common attributes of pip_repository and whl_library repository rules.
+    """Helper function to parse common attributes of pip_repository and whl_file_repo repository rules.
 
     This function also serializes the structured arguments as JSON
     so they can be passed on the command line to subprocesses.
@@ -228,7 +228,7 @@ def _create_repository_execution_environment(rctx, python_interpreter, logger = 
         env[_CPPFLAGS] = " ".join(cppflags)
     return env
 
-def _whl_library_impl(rctx):
+def _whl_file_repo_impl(rctx):
     logger = repo_utils.logger(rctx)
     python_interpreter = pypi_repo_utils.resolve_python_interpreter(
         rctx,
@@ -286,11 +286,11 @@ def _whl_library_impl(rctx):
 
     if not whl_path:
         if rctx.attr.urls:
-            op_tmpl = "whl_library.BuildWheelFromSource({name}, {requirement})"
+            op_tmpl = "whl_file_repo.BuildWheelFromSource({name}, {requirement})"
         elif rctx.attr.download_only:
-            op_tmpl = "whl_library.DownloadWheel({name}, {requirement})"
+            op_tmpl = "whl_file_repo.DownloadWheel({name}, {requirement})"
         else:
-            op_tmpl = "whl_library.ResolveRequirement({name}, {requirement})"
+            op_tmpl = "whl_file_repo.ResolveRequirement({name}, {requirement})"
 
         pypi_repo_utils.execute_checked(
             rctx,
@@ -321,7 +321,7 @@ def _whl_library_impl(rctx):
         if patches:
             whl_path = patch_whl(
                 rctx,
-                op = "whl_library.PatchWhl({}, {})".format(rctx.attr.name, rctx.attr.requirement),
+                op = "whl_file_repo.PatchWhl({}, {})".format(rctx.attr.name, rctx.attr.requirement),
                 python_interpreter = python_interpreter,
                 whl_path = whl_path,
                 patches = patches,
@@ -332,7 +332,7 @@ def _whl_library_impl(rctx):
     if rp_config.enable_pipstar:
         pypi_repo_utils.execute_checked(
             rctx,
-            op = "whl_library.ExtractWheel({}, {})".format(rctx.attr.name, whl_path),
+            op = "whl_file_repo.ExtractWheel({}, {})".format(rctx.attr.name, whl_path),
             python = python_interpreter,
             arguments = args + [
                 "--whl-file",
@@ -379,7 +379,7 @@ def _whl_library_impl(rctx):
             logger = logger,
         )
 
-        build_file_contents = generate_whl_library_build_bazel(
+        build_file_contents = generate_whl_file_repo_build_bazel(
             name = whl_path.basename,
             dep_template = rctx.attr.dep_template or "@{}{{name}}//:{{target}}".format(rctx.attr.repo_prefix),
             entry_points = entry_points,
@@ -412,7 +412,7 @@ def _whl_library_impl(rctx):
 
         pypi_repo_utils.execute_checked(
             rctx,
-            op = "whl_library.ExtractWheel({}, {})".format(rctx.attr.name, whl_path),
+            op = "whl_file_repo.ExtractWheel({}, {})".format(rctx.attr.name, whl_path),
             python = python_interpreter,
             arguments = args + [
                 "--whl-file",
@@ -452,7 +452,7 @@ def _whl_library_impl(rctx):
             )
             entry_points[entry_point_without_py] = entry_point_script_name
 
-        build_file_contents = generate_whl_library_build_bazel(
+        build_file_contents = generate_whl_file_repo_build_bazel(
             name = whl_path.basename,
             dep_template = rctx.attr.dep_template or "@{}{{name}}//:{{target}}".format(rctx.attr.repo_prefix),
             entry_points = entry_points,
@@ -504,7 +504,7 @@ if __name__ == "__main__":
     return contents
 
 # NOTE @aignas 2024-03-21: The usage of dict({}, **common) ensures that all args to `dict` are unique
-whl_library_attrs = dict({
+whl_file_repo_attrs = dict({
     "annotation": attr.label(
         doc = (
             "Optional json encoded file containing annotation to apply to the extracted wheel. " +
@@ -558,7 +558,7 @@ attr makes `extra_pip_args` and `download_only` ignored.""",
         doc = """a label-keyed-string dict that has
             json.encode(struct([whl_file], patch_strip]) as values. This
             is to maintain flexibility and correct bzlmod extension interface
-            until we have a better way to define whl_library and move whl
+            until we have a better way to define whl_file_repo and move whl
             patching to a separate place. INTERNAL USE ONLY.""",
     ),
     "_python_path_entries": attr.label_list(
@@ -583,16 +583,16 @@ attr makes `extra_pip_args` and `download_only` ignored.""",
             Label("//python/private/pypi/whl_installer:arguments.py"),
         ] + record_files.values(),
     ),
-    "_rule_name": attr.string(default = "whl_library"),
+    "_rule_name": attr.string(default = "whl_file_repo"),
 }, **ATTRS)
-whl_library_attrs.update(AUTH_ATTRS)
+whl_file_repo_attrs.update(AUTH_ATTRS)
 
-whl_library = repository_rule(
-    attrs = whl_library_attrs,
+whl_file_repo = repository_rule(
+    attrs = whl_file_repo_attrs,
     doc = """
 Download and extracts a single wheel based into a bazel repo based on the requirement string passed in.
 Instantiated from pip_repository and inherits config options from there.""",
-    implementation = _whl_library_impl,
+    implementation = _whl_file_repo_impl,
     environ = [
         "RULES_PYTHON_PIP_ISOLATED",
         REPO_DEBUG_ENV_VAR,
