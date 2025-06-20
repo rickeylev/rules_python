@@ -21,11 +21,11 @@ _tests = []
 
 def _test_all_legacy(env):
     want = """\
-load("@rules_python//python/private/pypi:whl_library_targets.bzl", "whl_library_targets")
+load("@rules_python//python/private/pypi:whl_file_repo_targets.bzl", "whl_file_repo_targets")
 
 package(default_visibility = ["//visibility:public"])
 
-whl_library_targets(
+whl_file_repo_targets(
     copy_executables = {
         "exec_src": "exec_dest",
     },
@@ -86,11 +86,11 @@ _tests.append(_test_all_legacy)
 def _test_all(env):
     want = """\
 load("@pypi//:config.bzl", "whl_map")
-load("@rules_python//python/private/pypi:whl_library_targets.bzl", "whl_library_targets_from_requires")
+load("@rules_python//python/private/pypi:whl_file_repo_targets.bzl", "whl_file_repo_targets_from_requires")
 
 package(default_visibility = ["//visibility:public"])
 
-whl_library_targets_from_requires(
+whl_file_repo_targets_from_requires(
     copy_executables = {
         "exec_src": "exec_dest",
     },
@@ -150,11 +150,11 @@ _tests.append(_test_all)
 def _test_all_with_loads(env):
     want = """\
 load("@pypi//:config.bzl", "whl_map")
-load("@rules_python//python/private/pypi:whl_library_targets.bzl", "whl_library_targets_from_requires")
+load("@rules_python//python/private/pypi:whl_file_repo_targets.bzl", "whl_file_repo_targets_from_requires")
 
 package(default_visibility = ["//visibility:public"])
 
-whl_library_targets_from_requires(
+whl_file_repo_targets_from_requires(
     copy_executables = {
         "exec_src": "exec_dest",
     },

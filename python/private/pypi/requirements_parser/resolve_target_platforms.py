@@ -6,7 +6,7 @@ may handle more things. We require a `python` interpreter that can run on the
 host platform and then we depend on the [packaging] PyPI wheel.
 
 In order to be able to resolve requirements files for any platform, we are
-re-using the same code that is used in the `whl_library` installer. See
+re-using the same code that is used in the `whl_file_repo` installer. See
 [here](../whl_installer/wheel.py).
 
 Requirements for the code are:

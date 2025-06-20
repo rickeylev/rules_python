@@ -34,7 +34,7 @@ load(":pip_repository_attrs.bzl", "ATTRS")
 load(":requirements_files_by_platform.bzl", "requirements_files_by_platform")
 load(":simpleapi_download.bzl", "simpleapi_download")
 load(":whl_config_setting.bzl", "whl_config_setting")
-load(":whl_library.bzl", "whl_library")
+load(":whl_file_repo.bzl", "whl_file_repo")
 load(":whl_repo_name.bzl", "pypi_repo_name", "whl_repo_name")
 
 def _major_minor_version(version_str):
@@ -113,7 +113,7 @@ def _create_whl_repos(
             represent a set of string values.
         whl_libraries: {type}`dict[str, dict[str, Any]]` the keys are the
             aparent repository names for the hub repo and the values are the
-            arguments that will be passed to {bzl:obj}`whl_library` repository
+            arguments that will be passed to {bzl:obj}`whl_file_repo` repository
             rule.
     """
     logger = repo_utils.logger(module_ctx, "pypi:create_whl_repos")
@@ -242,7 +242,7 @@ def _create_whl_repos(
 
         # Construct args separately so that the lock file can be smaller and does not include unused
         # attrs.
-        whl_library_args = dict(
+        whl_file_repo_args = dict(
             dep_template = "@{}//{{name}}:{{target}}".format(hub_name),
         )
         maybe_args = dict(
@@ -266,14 +266,14 @@ def _create_whl_repos(
         if not config.enable_pipstar:
             maybe_args["experimental_target_platforms"] = pip_attr.experimental_target_platforms
 
-        whl_library_args.update({k: v for k, v in maybe_args.items() if v})
+        whl_file_repo_args.update({k: v for k, v in maybe_args.items() if v})
         maybe_args_with_default = dict(
             # The following values have defaults next to them
             isolated = (use_isolated(module_ctx, pip_attr), True),
             quiet = (pip_attr.quiet, True),
             timeout = (pip_attr.timeout, 600),
         )
-        whl_library_args.update({
+        whl_file_repo_args.update({
             k: v
             for k, (v, default) in maybe_args_with_default.items()
             if v != default
@@ -282,7 +282,7 @@ def _create_whl_repos(
         for src in whl.srcs:
             repo = _whl_repo(
                 src = src,
-                whl_library_args = whl_library_args,
+                whl_file_repo_args = whl_file_repo_args,
                 download_only = pip_attr.download_only,
                 netrc = pip_attr.netrc,
                 auth_patterns = pip_attr.auth_patterns,
@@ -308,14 +308,14 @@ def _create_whl_repos(
         whl_libraries = whl_libraries,
     )
 
-def _whl_repo(*, src, whl_library_args, is_multiple_versions, download_only, netrc, auth_patterns, python_version, enable_pipstar = False):
-    args = dict(whl_library_args)
+def _whl_repo(*, src, whl_file_repo_args, is_multiple_versions, download_only, netrc, auth_patterns, python_version, enable_pipstar = False):
+    args = dict(whl_file_repo_args)
     args["requirement"] = src.requirement_line
     is_whl = src.filename.endswith(".whl")
 
     if src.extra_pip_args and not is_whl:
         # pip is not used to download wheels and the python
-        # `whl_library` helpers are only extracting things, however
+        # `whl_file_repo` helpers are only extracting things, however
         # for sdists, they will be built by `pip`, so we still
         # need to pass the extra args there, so only pop this for whls
         args["extra_pip_args"] = src.extra_pip_args
@@ -372,7 +372,7 @@ def _whl_repo(*, src, whl_library_args, is_multiple_versions, download_only, net
         ),
     )
 
-def _configure(config, *, platform, os_name, arch_name, constraint_values, env = {}, override = False):
+def _configure(config, *, platform, os_name, arch_name, override = False, env = {}):
     """Set the value in the config if the value is provided"""
     config.setdefault("platforms", {})
     if platform:
@@ -387,7 +387,6 @@ def _configure(config, *, platform, os_name, arch_name, constraint_values, env =
             name = platform.replace("-", "_").lower(),
             os_name = os_name,
             arch_name = arch_name,
-            constraint_values = constraint_values,
             env = env,
         )
     else:
@@ -414,10 +413,6 @@ def _create_config(defaults):
             arch_name = cpu,
             os_name = "linux",
             platform = "linux_{}".format(cpu),
-            constraint_values = [
-                "@platforms//os:linux",
-                "@platforms//cpu:{}".format(cpu),
-            ],
             env = {"platform_version": "0"},
         )
     for cpu in [
@@ -429,25 +424,17 @@ def _create_config(defaults):
             arch_name = cpu,
             # We choose the oldest non-EOL version at the time when we release `rules_python`.
             # See https://endoflife.date/macos
+            env = {"platform_version": "14.0"},
             os_name = "osx",
             platform = "osx_{}".format(cpu),
-            constraint_values = [
-                "@platforms//os:osx",
-                "@platforms//cpu:{}".format(cpu),
-            ],
-            env = {"platform_version": "14.0"},
         )
 
     _configure(
         defaults,
         arch_name = "x86_64",
+        env = {"platform_version": "0"},
         os_name = "windows",
         platform = "windows_x86_64",
-        constraint_values = [
-            "@platforms//os:windows",
-            "@platforms//cpu:x86_64",
-        ],
-        env = {"platform_version": "0"},
     )
     return struct(**defaults)
 
@@ -513,7 +500,6 @@ You cannot use both the additive_build_content and additive_build_content_file a
             _configure(
                 defaults,
                 arch_name = tag.arch_name,
-                constraint_values = tag.constraint_values,
                 env = tag.env,
                 os_name = tag.os_name,
                 platform = tag.platform,
@@ -693,13 +679,6 @@ You cannot use both the additive_build_content and additive_build_content_file a
             }
             for hub_name, extra_whl_aliases in extra_aliases.items()
         },
-        platform_constraint_values = {
-            hub_name: {
-                platform_name: sorted([str(Label(cv)) for cv in p.constraint_values])
-                for platform_name, p in config.platforms.items()
-            }
-            for hub_name in hub_whl_map
-        },
         whl_libraries = {
             k: dict(sorted(args.items()))
             for k, args in sorted(whl_libraries.items())
@@ -778,7 +757,7 @@ def _pip_impl(module_ctx):
     _whl_mods_impl(mods.whl_mods)
 
     for name, args in mods.whl_libraries.items():
-        whl_library(name = name, **args)
+        whl_file_repo(name = name, **args)
 
     for hub_name, whl_map in mods.hub_whl_map.items():
         hub_repository(
@@ -790,7 +769,6 @@ def _pip_impl(module_ctx):
                 for key, values in whl_map.items()
             },
             packages = mods.exposed_packages.get(hub_name, []),
-            platform_constraint_values = mods.platform_constraint_values.get(hub_name, {}),
             groups = mods.hub_group_map.get(hub_name),
         )
 
@@ -810,12 +788,6 @@ The CPU architecture name to be used.
 :::{note}
 Either this or {attr}`env` `platform_machine` key should be specified.
 :::
-""",
-    ),
-    "constraint_values": attr.label_list(
-        mandatory = True,
-        doc = """\
-The constraint_values to use in select statements.
 """,
     ),
     "os_name": attr.string(
@@ -1100,7 +1072,7 @@ patches.""",
         ),
         "patches": attr.label_list(
             doc = """\
-A list of patches to apply to the repository *after* 'whl_library' is extracted
+A list of patches to apply to the repository *after* 'whl_file_repo' is extracted
 and BUILD.bazel file is generated.""",
             mandatory = True,
         ),

@@ -45,7 +45,7 @@ _process_requirements(
             sanitized_python_version = sanitized_python_version,
         )
         process_requirements_calls.append(process_requirements_call)
-        install_deps_call = """    _{sanitized_python_version}_install_deps(**whl_library_kwargs)""".format(
+        install_deps_call = """    _{sanitized_python_version}_install_deps(**whl_file_repo_kwargs)""".format(
             sanitized_python_version = sanitized_python_version,
         )
         install_deps_calls.append(install_deps_call)
@@ -91,7 +91,7 @@ def data_requirement(name):
 def dist_info_requirement(name):
     return "{macro_tmpl}".format(pip_utils.normalize_name(name), "dist_info")
 
-def install_deps(**whl_library_kwargs):
+def install_deps(**whl_file_repo_kwargs):
 {install_deps_calls}
     for wheel_name in _wheel_names:
         whl_library_alias(

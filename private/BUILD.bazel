@@ -23,7 +23,7 @@ multirun(
 # wheels to resolve the `requirements.in` file.  Hence we do not lump the
 # target with the other targets above.
 alias(
-    name = "whl_library_requirements.update",
+    name = "whl_file_repo_requirements.update",
     actual = "//tools/private/update_deps:update_pip_deps",
     tags = ["manual"],
 )

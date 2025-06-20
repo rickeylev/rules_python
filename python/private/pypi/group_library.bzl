@@ -29,12 +29,12 @@ group_library = repository_rule(
             doc = "A mapping of group names to requirements within that group.",
         ),
         "repo_prefix": attr.string(
-            doc = "Prefix used for the whl_library created components of each group",
+            doc = "Prefix used for the whl_file_repo created components of each group",
         ),
     },
     implementation = _group_library_impl,
     doc = """
-Create a package containing only wrapper py_library and whl_library rules for implementing dependency groups.
+Create a package containing only wrapper py_library and whl_file_repo rules for implementing dependency groups.
 This is an implementation detail of dependency groups and should not be used alone.
     """,
 )

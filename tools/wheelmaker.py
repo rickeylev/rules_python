@@ -553,7 +553,7 @@ def main() -> None:
         metadata = arguments.metadata_file.read_text(encoding="utf-8")
 
         # This is not imported at the top of the file due to the reliance
-        # on this file in the `whl_library` repository rule which does not
+        # on this file in the `whl_file_repo` repository rule which does not
         # provide `packaging` but does import symbols defined here.
         from packaging.requirements import Requirement
 

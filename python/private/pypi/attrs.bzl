@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"common attributes for whl_library and pip_repository"
+"common attributes for whl_file_repo and pip_repository"
 
 ATTRS = {
     "add_libdir_to_library_search_path": attr.bool(

@@ -35,10 +35,10 @@ setting maps to and their precedence, refer to documentation on that page.
 The first group of config settings that are as follows:
 
 * `//_config:is_cp3<minor_version><suffix>` is used to select legacy `pip`
-  based `whl` and `sdist` {obj}`whl_library` instances. Whereas other config
+  based `whl` and `sdist` {obj}`whl_file_repo` instances. Whereas other config
   settings are created when {obj}`pip.parse.experimental_index_url` is used.
 * `//_config:is_cp3<minor_version>_sdist<suffix>` is for wheels built from
-  `sdist` in {obj}`whl_library`.
+  `sdist` in {obj}`whl_file_repo`.
 * `//_config:is_cp3<minor_version>_py_<abi_tag>_any<suffix>` for wheels with
   `py2.py3` `python_tag` value.
 * `//_config:is_cp3<minor_version>_py3_<abi_tag>_any<suffix>` for wheels with

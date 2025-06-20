@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Generate the BUILD.bazel contents for a repo defined by a whl_library."""
+"""Generate the BUILD.bazel contents for a repo defined by a whl_file_repo."""
 
 load("//python/private:text_util.bzl", "render")
 
@@ -57,7 +57,7 @@ def generate_whl_file_repo_build_bazel(
         annotation: The annotation for the build file.
         default_python_version: The python version to use to parse the METADATA.
         **kwargs: Extra args serialized to be passed to the
-            {obj}`whl_library_targets`.
+            {obj}`whl_file_repo_targets`.
 
     Returns:
         A complete BUILD file as a string
@@ -65,7 +65,7 @@ def generate_whl_file_repo_build_bazel(
 
     loads = []
     if kwargs.get("tags"):
-        fn = "whl_library_targets"
+        fn = "whl_file_repo_targets"
 
         # legacy path
         unsupported_args = [
@@ -99,7 +99,7 @@ def generate_whl_file_repo_build_bazel(
             fail("BUG, unsupported arg: '{}'".format(arg))
 
     loads.extend([
-        """load("@rules_python//python/private/pypi:whl_library_targets.bzl", "{}")""".format(fn),
+        """load("@rules_python//python/private/pypi:whl_file_repo_targets.bzl", "{}")""".format(fn),
     ])
 
     additional_content = []

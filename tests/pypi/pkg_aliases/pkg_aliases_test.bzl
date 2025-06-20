@@ -419,16 +419,10 @@ def _test_config_settings_exist_legacy(env):
             alias = _mock_alias(available_config_settings),
             config_setting = _mock_config_setting(available_config_settings),
         ),
-        platform_constraint_values = {
-            "linux_aarch64": [
-                "@platforms//cpu:aarch64",
-                "@platforms//os:linux",
-            ],
-            "linux_x86_64": [
-                "@platforms//cpu:x86_64",
-                "@platforms//os:linux",
-            ],
-        },
+        target_platforms = [
+            "linux_aarch64",
+            "linux_x86_64",
+        ],
     )
 
     got_aliases = multiplatform_whl_aliases(
@@ -454,39 +448,19 @@ def _test_config_settings_exist(env):
                 "any": {},
                 "macosx_11_0_arm64": {
                     "osx_versions": [(11, 0)],
-                    "platform_constraint_values": {
-                        "osx_aarch64": [
-                            "@platforms//cpu:aarch64",
-                            "@platforms//os:osx",
-                        ],
-                    },
+                    "target_platforms": ["osx_aarch64"],
                 },
                 "manylinux_2_17_x86_64": {
                     "glibc_versions": [(2, 17), (2, 18)],
-                    "platform_constraint_values": {
-                        "linux_x86_64": [
-                            "@platforms//cpu:x86_64",
-                            "@platforms//os:linux",
-                        ],
-                    },
+                    "target_platforms": ["linux_x86_64"],
                 },
                 "manylinux_2_18_x86_64": {
                     "glibc_versions": [(2, 17), (2, 18)],
-                    "platform_constraint_values": {
-                        "linux_x86_64": [
-                            "@platforms//cpu:x86_64",
-                            "@platforms//os:linux",
-                        ],
-                    },
+                    "target_platforms": ["linux_x86_64"],
                 },
                 "musllinux_1_1_aarch64": {
                     "muslc_versions": [(1, 2), (1, 1), (1, 0)],
-                    "platform_constraint_values": {
-                        "linux_aarch64": [
-                            "@platforms//cpu:aarch64",
-                            "@platforms//os:linux",
-                        ],
-                    },
+                    "target_platforms": ["linux_aarch64"],
                 },
             }.items():
                 aliases = {

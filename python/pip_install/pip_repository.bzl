@@ -22,5 +22,5 @@ load("//python/private/pypi:whl_file_repo.bzl", _whl_file_repo = "whl_file_repo"
 # Re-exports for backwards compatibility
 group_library = _group_library
 pip_repository = _pip_repository
-whl_library = _whl_library
+whl_file_repo = _whl_file_repo
 package_annotation = _package_annotation

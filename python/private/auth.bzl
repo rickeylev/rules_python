@@ -57,7 +57,7 @@ Authorization: Bearer RANDOM-TOKEN
 </pre>
 """
 
-# AUTH_ATTRS are used within whl_library and pip bzlmod extension.
+# AUTH_ATTRS are used within whl_file_repo and pip bzlmod extension.
 AUTH_ATTRS = {
     "auth_patterns": attr.string_dict(
         doc = _AUTH_PATTERN_DOC,

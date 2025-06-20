@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""whl_library aliases for multi_pip_parse."""
+"""whl_file_repo aliases for multi_pip_parse."""
 
 load("//python/private:full_version.bzl", "full_version")
 load(":render_pkg_aliases.bzl", "NO_MATCH_ERROR_MESSAGE_TEMPLATE")
