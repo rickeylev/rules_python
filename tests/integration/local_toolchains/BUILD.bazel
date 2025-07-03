@@ -22,16 +22,26 @@ py_test(
     env_inherit = ["PYENV_VERSION"],
 )
 
+# Config setting for the in-build local toolchain
 config_setting(
-    name = "is_py_local",
+    name = "is_py_local_in_build",
     flag_values = {
-        ":py": "local",
+        ":py_runtime_mode": "local_in_build",
     },
 )
 
-# Set `--//:py=local` to use the local toolchain
-# (This is set in this example's .bazelrc)
+# Config setting for the system (non-in-build) local toolchain
+config_setting(
+    name = "is_py_local_system",
+    flag_values = {
+        ":py_runtime_mode": "local_system",
+    },
+)
+
+# Flag to select the Python runtime mode for tests in this package
+# Users can set e.g. `--//tests/integration/local_toolchains:py_runtime_mode=local_in_build`
+# The .bazelrc file for this test sets it to "local_in_build" by default.
 string_flag(
-    name = "py",
-    build_setting_default = "",
+    name = "py_runtime_mode",
+    build_setting_default = "local_in_build", # Default to testing the new in-build mode
 )

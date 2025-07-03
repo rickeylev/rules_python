@@ -27,22 +27,45 @@ local_runtime_repo = use_repo_rule("@rules_python//python/local_toolchains:repos
 local_runtime_toolchains_repo = use_repo_rule("@rules_python//python/local_toolchains:repos.bzl", "local_runtime_toolchains_repo")
 
 local_runtime_repo(
-    name = "local_python3",
+    name = "local_python3_system",
     interpreter_path = "python3",
     on_failure = "fail",
+    in_build = False,
+)
+
+local_runtime_repo(
+    name = "local_python3_in_build",
+    interpreter_path = "python3",
+    on_failure = "fail",
+    in_build = True,
 )
 
 local_runtime_toolchains_repo(
-    name = "local_toolchains",
-    runtimes = ["local_python3"],
+    name = "local_toolchains_system",
+    runtimes = ["local_python3_system"],
     target_compatible_with = {
-        "local_python3": [
+        "local_python3_system": [ # Renaming this for clarity
             "HOST_CONSTRAINTS",
         ],
     },
     target_settings = {
-        "local_python3": [
-            "@//:is_py_local",
+        "local_python3_system": [ # Renaming this for clarity
+            "@//:is_py_local_system",
+        ],
+    },
+)
+
+local_runtime_toolchains_repo(
+    name = "local_toolchains_in_build",
+    runtimes = ["local_python3_in_build"],
+    target_compatible_with = {
+        "local_python3_in_build": [ # Matching the runtime name
+            "HOST_CONSTRAINTS",
+        ],
+    },
+    target_settings = {
+        "local_python3_in_build": [ # Matching the runtime name
+            "@//:is_py_local_in_build", # Will need a new config_setting for this
         ],
     },
 )
@@ -50,4 +73,6 @@ local_runtime_toolchains_repo(
 python = use_extension("@rules_python//python/extensions:python.bzl", "python")
 use_repo(python, "rules_python_bzlmod_debug")
 
-register_toolchains("@local_toolchains//:all")
+# Register both toolchain repos
+register_toolchains("@local_toolchains_system//:all")
+register_toolchains("@local_toolchains_in_build//:all")

@@ -31,7 +31,8 @@ def define_local_runtime_toolchain_impl(
         micro,
         interpreter_path,
         implementation_name,
-        os):
+        os,
+        in_build):
     """Defines a toolchain implementation for a local Python runtime.
 
     Generates public targets:
@@ -84,10 +85,13 @@ def define_local_runtime_toolchain_impl(
         hdrs = [":_python_headers"],
     )
 
-    py_runtime(
-        name = "_py3_runtime",
-        interpreter = interpreter_path,  # Set the interpreter attribute
-        files = native.glob(
+    py_runtime_interpreter = None
+    py_runtime_files = []
+    py_runtime_interpreter_path = interpreter_path
+
+    if in_build:
+        py_runtime_interpreter = interpreter_path
+        py_runtime_files = native.glob(
             ["runtime_*/**"],  # Glob for files in the symlinked runtime directories
             exclude = [
                 "runtime_*/**/*.pyc",
@@ -98,13 +102,24 @@ def define_local_runtime_toolchain_impl(
             ["lib/*"],  # Include files directly in lib like libpython.so
             allow_empty = True,
         ) + native.glob(
-            ["include/**"], # Include header files
-             allow_empty = True,
+            ["include/**"],  # Include header files
+            allow_empty = True,
         ) + native.glob(
-            [interpreter_path], # Ensure interpreter itself is included if it's a file within the repo (which it is for local_runtime)
-            allow_empty = True, # Though it should exist
-        ),
-        interpreter_path = interpreter_path, # Keep this for compatibility if other parts of the system use it directly
+            [interpreter_path],  # Ensure interpreter itself is included
+            allow_empty = False, # It must exist for an in_build runtime
+        )
+    else:
+        # For a non-in-build (system) runtime, interpreter_path is still key,
+        # but `files` should be empty and `interpreter` attribute of py_runtime should be None.
+        py_runtime_interpreter_path = interpreter_path # This is the path to the system interpreter
+        # py_runtime_interpreter remains None
+        # py_runtime_files remains []
+
+    py_runtime(
+        name = "_py3_runtime",
+        interpreter = py_runtime_interpreter,
+        files = py_runtime_files,
+        interpreter_path = py_runtime_interpreter_path, # This is used by rules_python for non-hermetic toolchains
         python_version = "PY3",
         interpreter_version_info = {
             "major": major,

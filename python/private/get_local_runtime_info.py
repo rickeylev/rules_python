@@ -12,9 +12,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import argparse
 import json
 import sys
 import sysconfig
+
+parser = argparse.ArgumentParser()
+parser.add_argument("--in-build", action="store_true")
+args = parser.parse_args()
 
 data = {
     "major": sys.version_info.major,
@@ -23,7 +28,11 @@ data = {
     "include": sysconfig.get_path("include"),
     "implementation_name": sys.implementation.name,
     "base_executable": sys._base_executable,
-    "runtime_paths": {
+    "runtime_paths": {},
+}
+
+if args.in_build:
+    data["runtime_paths"] = {
         name: sysconfig.get_path(name)
         for name in [
             "stdlib",
@@ -33,8 +42,7 @@ data = {
         ]
         # Some paths might not be available or defined for a particular installation
         if sysconfig.get_path(name) is not None
-    },
-}
+    }
 
 config_vars = [
     # The libpythonX.Y.so file. Usually?

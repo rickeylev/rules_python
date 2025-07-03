@@ -38,6 +38,7 @@ define_local_runtime_toolchain_impl(
     interpreter_path = "{interpreter_path}",
     implementation_name = "{implementation_name}",
     os = "{os}",
+    in_build = {in_build},
 )
 """
 
@@ -67,7 +68,7 @@ def _local_runtime_repo_impl(rctx):
         arguments = [
             interpreter_path,
             rctx.path(rctx.attr._get_local_runtime_info),
-        ],
+        ] + (["--in-build"] if rctx.attr.in_build else []),
         quiet = True,
         logger = logger,
     )
@@ -133,11 +134,32 @@ def _local_runtime_repo_impl(rctx):
             repo_utils.watch(rctx, origin)
             rctx.symlink(origin, "lib/" + name)
 
-    runtime_paths = info.get("runtime_paths", {})
-    if runtime_paths:
-        logger.info(lambda: "Symlinking runtime paths: {}".format(runtime_paths))
-        for name, path_str in runtime_paths.items():
-            if not path_str:  # Path might be empty or None
+    if rctx.attr.in_build:
+        runtime_paths = info.get("runtime_paths", {})
+        if runtime_paths:
+            logger.info(lambda: "Symlinking runtime paths for in-build toolchain: {}".format(runtime_paths))
+            for name, path_str in runtime_paths.items():
+                if not path_str:  # Path might be empty or None
+                    logger.warn(lambda: "Skipping empty runtime path for '{}'".format(name))
+                    continue
+
+                origin_path = rctx.path(path_str)
+                if origin_path.exists:
+                    # Create a reasonably unique and descriptive destination path.
+                    # e.g. runtime_stdlib, runtime_purelib
+                    dest_path = "runtime_{}".format(name)
+                    logger.info(lambda: "Symlinking {} to {}".format(origin_path, dest_path))
+                    repo_utils.watch_tree(rctx, origin_path)
+                    rctx.symlink(origin_path, dest_path)
+                else:
+                    logger.warn(lambda: "Runtime path for '{}' does not exist: {}".format(name, path_str))
+        elif info.get("runtime_paths") != None: # Explicitly check if runtime_paths was empty vs not present
+            logger.info("No runtime paths found to symlink for in-build toolchain, though 'runtime_paths' was expected in info.")
+        # If info.get("runtime_paths") is None, it means get_local_runtime_info.py didn't add it,
+        # which is the correct behavior when --in-build was not passed to it.
+
+    rctx.file("WORKSPACE", "")
+    rctx.file("MODULE.bazel", "")
                 logger.warn(lambda: "Skipping empty runtime path for '{}'".format(name))
                 continue
 
@@ -163,6 +185,7 @@ def _local_runtime_repo_impl(rctx):
         lib_ext = info["SHLIB_SUFFIX"],
         implementation_name = info["implementation_name"],
         os = "@platforms//os:{}".format(repo_utils.get_platforms_os_name(rctx)),
+        in_build = rctx.attr.in_build,
     ))
 
 local_runtime_repo = repository_rule(
@@ -215,6 +238,10 @@ How to handle errors when trying to automatically determine settings.
             default = "//python/private:get_local_runtime_info.py",
         ),
         "_rule_name": attr.string(default = "local_runtime_repo"),
+        "in_build": attr.bool(
+            doc = "If true, create an in-build Python toolchain where the py_runtime contains the interpreter and all necessary files.",
+            default = False,
+        ),
     },
     environ = ["PATH", REPO_DEBUG_ENV_VAR],
 )
