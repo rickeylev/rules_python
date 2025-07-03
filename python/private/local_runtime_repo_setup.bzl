@@ -86,7 +86,25 @@ def define_local_runtime_toolchain_impl(
 
     py_runtime(
         name = "_py3_runtime",
-        interpreter_path = interpreter_path,
+        interpreter = interpreter_path,  # Set the interpreter attribute
+        files = native.glob(
+            ["runtime_*/**"],  # Glob for files in the symlinked runtime directories
+            exclude = [
+                "runtime_*/**/*.pyc",
+                "runtime_*/**/__pycache__/**",
+            ],
+            allow_empty = True,
+        ) + native.glob(
+            ["lib/*"],  # Include files directly in lib like libpython.so
+            allow_empty = True,
+        ) + native.glob(
+            ["include/**"], # Include header files
+             allow_empty = True,
+        ) + native.glob(
+            [interpreter_path], # Ensure interpreter itself is included if it's a file within the repo (which it is for local_runtime)
+            allow_empty = True, # Though it should exist
+        ),
+        interpreter_path = interpreter_path, # Keep this for compatibility if other parts of the system use it directly
         python_version = "PY3",
         interpreter_version_info = {
             "major": major,

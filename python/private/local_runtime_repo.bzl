@@ -133,6 +133,25 @@ def _local_runtime_repo_impl(rctx):
             repo_utils.watch(rctx, origin)
             rctx.symlink(origin, "lib/" + name)
 
+    runtime_paths = info.get("runtime_paths", {})
+    if runtime_paths:
+        logger.info(lambda: "Symlinking runtime paths: {}".format(runtime_paths))
+        for name, path_str in runtime_paths.items():
+            if not path_str:  # Path might be empty or None
+                logger.warn(lambda: "Skipping empty runtime path for '{}'".format(name))
+                continue
+
+            origin_path = rctx.path(path_str)
+            if origin_path.exists:
+                # Create a reasonably unique and descriptive destination path.
+                # e.g. runtime_stdlib, runtime_purelib
+                dest_path = "runtime_{}".format(name)
+                logger.info(lambda: "Symlinking {} to {}".format(origin_path, dest_path))
+                repo_utils.watch_tree(rctx, origin_path)
+                rctx.symlink(origin_path, dest_path)
+            else:
+                logger.warn(lambda: "Runtime path for '{}' does not exist: {}".format(name, path_str))
+
     rctx.file("WORKSPACE", "")
     rctx.file("MODULE.bazel", "")
     rctx.file("REPO.bazel", "")

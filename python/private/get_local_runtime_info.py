@@ -23,6 +23,17 @@ data = {
     "include": sysconfig.get_path("include"),
     "implementation_name": sys.implementation.name,
     "base_executable": sys._base_executable,
+    "runtime_paths": {
+        name: sysconfig.get_path(name)
+        for name in [
+            "stdlib",
+            "platstdlib",
+            "purelib",
+            "platlib",
+        ]
+        # Some paths might not be available or defined for a particular installation
+        if sysconfig.get_path(name) is not None
+    },
 }
 
 config_vars = [
