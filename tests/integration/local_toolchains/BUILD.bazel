@@ -39,9 +39,9 @@ config_setting(
 )
 
 # Flag to select the Python runtime mode for tests in this package
-# Users can set e.g. `--//tests/integration/local_toolchains:py_runtime_mode=local_in_build`
+# Users can set e.g. `--//tests/integration/local_toolchains:py=local_in_build`
 # The .bazelrc file for this test sets it to "local_in_build" by default.
 string_flag(
     name = "py",
-    build_setting_default = "local_in_build",  # Default to testing the new in-build mode
+    build_setting_default = "local_in_build", # Default to testing the new in-build mode
 )

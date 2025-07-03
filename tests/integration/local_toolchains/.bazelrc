@@ -5,5 +5,5 @@ test --test_output=errors
 build --enable_runfiles
 common:bazel7.x --incompatible_python_disallow_native_rules
 # Default to testing the in-build local toolchain for this test package
-build --//tests/integration/local_toolchains:py_runtime_mode=local_in_build
+build --//tests/integration/local_toolchains:py=local_in_build
 common --announce_rc
