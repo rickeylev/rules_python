@@ -47,6 +47,17 @@ BEGIN_UNRELEASED_TEMPLATE
 END_UNRELEASED_TEMPLATE
 -->
 
+{#1-5-3}
+## [1.5.3] - 2025-08-11
+
+[1.5.3]: https://github.com/bazel-contrib/rules_python/releases/tag/1.5.3
+
+{#v1-5-3-fixed}
+### Fixed
+* (toolchains) `local_runtime_repo` now checks if the include directory exists
+  before attempting to watch it, fixing issues on macOS with system Python
+  ({gh-issue}`3043`).
+
 {#1-5-2}
 ## [1.5.2] - 2025-08-11
 
@@ -64,6 +75,7 @@ END_UNRELEASED_TEMPLATE
   ([#3131](https://github.com/bazel-contrib/rules_python/pull/3131)).
 * (core) builds work again on `7.x` `WORKSPACE` configurations
   ([#3119](https://github.com/bazel-contrib/rules_python/issues/3119)).
+
 
 {#1-5-1}
 ## [1.5.1] - 2025-07-06
