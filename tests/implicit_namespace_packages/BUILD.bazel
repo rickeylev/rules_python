@@ -1,0 +1,10 @@
+load("//python:py_test.bzl", "py_test")
+
+py_test(
+    name = "namespace_packages_test",
+    srcs = ["namespace_packages_test.py"],
+    deps = [
+        "@implicit_namespace_ns_sub1//:pkg",
+        "@implicit_namespace_ns_sub2//:pkg",
+    ],
+)
