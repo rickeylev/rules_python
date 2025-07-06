@@ -47,6 +47,18 @@ BEGIN_UNRELEASED_TEMPLATE
 END_UNRELEASED_TEMPLATE
 -->
 
+{#1-5-1}
+## [1.5.1] - 2025-07-06
+
+[1.5.1]: https://github.com/bazel-contrib/rules_python/releases/tag/1.5.1
+
+{#v1-5-1-fixed}
+### Fixed
+
+* (pypi) Namespace packages work by default (pkgutil shims are generated
+  by default again)
+  ([#3038](https://github.com/bazel-contrib/rules_python/issues/3038)).
+
 {#1-5-0}
 ## [1.5.0] - 2025-06-11
 
@@ -70,7 +82,7 @@ END_UNRELEASED_TEMPLATE
 * (py_wheel) py_wheel always creates zip64-capable wheel zips
 * (providers) (experimental) {obj}`PyInfo.venv_symlinks` replaces
   `PyInfo.site_packages_symlinks`
-* (deps) Updating setuptools to patch CVE-2025-47273.
+* (deps) Updating setuptools to patch CVE-2025-47273. This effectively makes Python 3.9 the minimum supported version for using `pip_parse`.
 
 {#1-5-0-fixed}
 ### Fixed
