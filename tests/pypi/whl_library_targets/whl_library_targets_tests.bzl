@@ -461,9 +461,6 @@ def _test_group(env):
 
 _tests.append(_test_group)
 
-def _glob(*args, **kwargs):
-    return [_glob_call(*args, **kwargs)]
-
 def _glob_call(*args, **kwargs):
     return struct(
         glob = args,
@@ -471,6 +468,7 @@ def _glob_call(*args, **kwargs):
     )
 
 def _mock_glob():
+    # buildifier: disable=uninitialized
     def glob(*args, **kwargs):
         mock.calls.append(_glob_call(*args, **kwargs))
         if not mock.results:
