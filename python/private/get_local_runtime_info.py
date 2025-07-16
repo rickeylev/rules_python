@@ -45,6 +45,11 @@ config_vars = [
     # The platform-specific filename suffix for library files.
     # Includes the dot, e.g. `.so`
     "SHLIB_SUFFIX",
+    # Debian has a "multiarch" layout that has libs for different archs
+    # in slightly other locations. The MULTIARCH sysconfig varible tells
+    # which directory under `LIBDIR` these exist in, if any.
+    # See https://wiki.debian.org/Python/MultiArch
+    "MULTIARCH",
 ]
 data.update(zip(config_vars, sysconfig.get_config_vars(*config_vars)))
 print(json.dumps(data))

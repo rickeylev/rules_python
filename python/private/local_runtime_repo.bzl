@@ -126,6 +126,7 @@ def _local_runtime_repo_impl(rctx):
     # In some cases, the same value is returned for multiple keys. Not clear why.
     shared_lib_names = {v: None for v in shared_lib_names}.keys()
     shared_lib_dir = info["LIBDIR"]
+    multiarch = info["MULTIARCH"]
 
     # The specific files are symlinked instead of the whole directory
     # because it can point to a directory that has more than just
@@ -140,6 +141,11 @@ def _local_runtime_repo_impl(rctx):
         if origin.exists:
             repo_utils.watch(rctx, origin)
             rctx.symlink(origin, "lib/" + name)
+
+        origin_multiarch = rctx.path("{}/{}/{}".format(shared_lib_dir, multiarch, name))
+        if origin_multiarch.exists:
+            repo_utils.watch(rctx, origin)
+            rctx.symlink(origin, "lib/{}/{}".format(multiarch, name))
 
     rctx.file("WORKSPACE", "")
     rctx.file("MODULE.bazel", "")
