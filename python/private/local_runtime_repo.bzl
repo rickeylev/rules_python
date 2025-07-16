@@ -136,16 +136,15 @@ def _local_runtime_repo_impl(rctx):
     for name in shared_lib_names:
         origin = rctx.path("{}/{}".format(shared_lib_dir, name))
 
+        # If the origin doesn't exist, try the multiarch location
+        if not origin.exists and multiarch:
+            origin = rctx.path("{}/{}/{}".format(shared_lib_dir, multiarch, name))
+
         # The reported names don't always exist; it depends on the particulars
         # of the runtime installation.
         if origin.exists:
             repo_utils.watch(rctx, origin)
             rctx.symlink(origin, "lib/" + name)
-
-        origin_multiarch = rctx.path("{}/{}/{}".format(shared_lib_dir, multiarch, name))
-        if origin_multiarch.exists:
-            repo_utils.watch(rctx, origin)
-            rctx.symlink(origin, "lib/{}/{}".format(multiarch, name))
 
     rctx.file("WORKSPACE", "")
     rctx.file("MODULE.bazel", "")

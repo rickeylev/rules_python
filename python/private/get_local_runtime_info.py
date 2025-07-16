@@ -35,7 +35,15 @@ config_vars = [
     # of settings.
     # https://stackoverflow.com/questions/47423246/get-pythons-lib-path
     # For now, it seems LIBDIR has what is needed, so just use that.
+    # See also: MULTIARCH
     "LIBDIR",
+    # On Debian, with multiarch enabled, prior to Python 3.10, `LIBDIR` didn't
+    # tell the location of the libs, just the base directory. The `MULTIARCH`
+    # sysconfig variable tells the subdirectory within it with the libs.
+    # See:
+    # https://wiki.debian.org/Python/MultiArch
+    # https://git.launchpad.net/ubuntu/+source/python3.12/tree/debian/changelog#n842
+    "MULTIARCH",
     # The versioned libpythonX.Y.so.N file. Usually?
     # It might be a static archive (.a) file instead.
     "INSTSONAME",
@@ -45,11 +53,6 @@ config_vars = [
     # The platform-specific filename suffix for library files.
     # Includes the dot, e.g. `.so`
     "SHLIB_SUFFIX",
-    # Debian has a "multiarch" layout that has libs for different archs
-    # in slightly other locations. The MULTIARCH sysconfig varible tells
-    # which directory under `LIBDIR` these exist in, if any.
-    # See https://wiki.debian.org/Python/MultiArch
-    "MULTIARCH",
 ]
 data.update(zip(config_vars, sysconfig.get_config_vars(*config_vars)))
 print(json.dumps(data))
