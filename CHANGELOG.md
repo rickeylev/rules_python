@@ -85,10 +85,12 @@ END_UNRELEASED_TEMPLATE
   ([#2503](https://github.com/bazel-contrib/rules_python/issues/2503)).
 * (toolchains) `local_runtime_repo` now checks if the include directory exists
   before attempting to watch it, fixing issues on macOS with system Python
-  ({gh-issue}`3043`).
+  ([#3043](https://github.com/bazel-contrib/rules_python/issues/3043)).
 * (pypi) The pipstar `defaults` configuration now supports any custom platform
   name.
 * Multi-line python imports (e.g. with escaped newlines) are now correctly processed by Gazelle.
+* (toolchains) `local_runtime_repo` works with multiarch Debian with Python 3.8
+  ([#3099](https://github.com/bazel-contrib/rules_python/issues/3099)).
 
 {#v0-0-0-added}
 ### Added
