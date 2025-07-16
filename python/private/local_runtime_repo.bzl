@@ -136,7 +136,8 @@ def _local_runtime_repo_impl(rctx):
     for name in shared_lib_names:
         origin = rctx.path("{}/{}".format(shared_lib_dir, name))
 
-        # If the origin doesn't exist, try the multiarch location
+        # If the origin doesn't exist, try the multiarch location, in case
+        # it's an older Python / Debian release.
         if not origin.exists and multiarch:
             origin = rctx.path("{}/{}/{}".format(shared_lib_dir, multiarch, name))
 
