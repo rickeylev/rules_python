@@ -47,6 +47,16 @@ BEGIN_UNRELEASED_TEMPLATE
 END_UNRELEASED_TEMPLATE
 -->
 
+{#1-5-2}
+## [1.5.2] - 2025-08-11
+
+[1.5.2]: https://github.com/bazel-contrib/rules_python/releases/tag/1.5.2
+
+{#v1-5-2-fixed}
+### Fixed
+* (pypi) Correctly pull `sdist` distributions using `pip`
+  ([#3131](https://github.com/bazel-contrib/rules_python/pull/3131)).
+
 {#1-5-1}
 ## [1.5.1] - 2025-07-06
 
