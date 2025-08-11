@@ -52,6 +52,12 @@ END_UNRELEASED_TEMPLATE
 
 [1.5.2]: https://github.com/bazel-contrib/rules_python/releases/tag/1.5.2
 
+{#v1-5-2-changed}
+### Changed
+* (deps) (bzlmod) Upgraded to `bazel-skylib` version
+  [1.8.1](https://github.com/bazelbuild/bazel-skylib/releases/tag/1.8.1)
+  to remove deprecation warnings.
+
 {#v1-5-2-fixed}
 ### Fixed
 * (pypi) Correctly pull `sdist` distributions using `pip`
