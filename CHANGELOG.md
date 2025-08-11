@@ -62,6 +62,8 @@ END_UNRELEASED_TEMPLATE
 ### Fixed
 * (pypi) Correctly pull `sdist` distributions using `pip`
   ([#3131](https://github.com/bazel-contrib/rules_python/pull/3131)).
+* (core) builds work again on `7.x` `WORKSPACE` configurations
+  ([#3119](https://github.com/bazel-contrib/rules_python/issues/3119)).
 
 {#1-5-1}
 ## [1.5.1] - 2025-07-06
