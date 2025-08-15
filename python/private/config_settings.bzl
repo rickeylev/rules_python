@@ -158,6 +158,18 @@ def construct_config_settings(*, name, default_version, versions, minor_mapping,
         visibility = _NOT_ACTUALLY_PUBLIC,
     )
 
+    zip_stdlib = Label("//python/config_settings:zip_stdlib")
+    native.config_setting(
+        name = "_is_zip_stdlib_yes",
+        flag_values = {zip_stdlib: "yes"},
+        visibility = _NOT_ACTUALLY_PUBLIC,
+    )
+    native.config_setting(
+        name = "_is_zip_stdlib_no",
+        flag_values = {zip_stdlib: "no"},
+        visibility = _NOT_ACTUALLY_PUBLIC,
+    )
+
 def _python_version_flag_impl(ctx):
     value = ctx.build_setting_value
     return [

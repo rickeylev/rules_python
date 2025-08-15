@@ -233,6 +233,10 @@ accepting arbitrary Python versions.
             cfg = "exec",
             executable = True,
         ),
+        "_zip_stdlib_flag": lambda: attrb.Label(
+            default = "//python/config_settings:zip_stdlib",
+            providers = [BuildSettingInfo],
+        ),
         "_zipper": lambda: attrb.Label(
             cfg = "exec",
             executable = True,
@@ -1108,6 +1112,19 @@ def py_executable_base_impl(ctx, *, semantics, is_test, inherited_environment = 
     imports = collect_imports(ctx, semantics)
 
     runtime_details = _get_runtime_details(ctx, semantics)
+    if ctx.attr._zip_stdlib_flag[BuildSettingInfo].value == "yes":
+        zip_file = None
+        # effective_runtime can be None
+        if runtime_details.effective_runtime:
+            for f in runtime_details.effective_runtime.files.to_list():
+                if f.path.endswith("stdlib.zip"):
+                    zip_file = f
+                    break
+        if zip_file:
+            imports = depset(
+                direct = [runfiles_root_path(ctx, zip_file.short_path)],
+                transitive = [imports],
+            )
     if ctx.configuration.coverage_enabled:
         extra_deps = semantics.get_coverage_deps(ctx, runtime_details)
     else:

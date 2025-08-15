@@ -167,6 +167,16 @@ VenvsSitePackages = FlagEnum(
 # Used for matching freethreaded toolchains and would have to be used in wheels
 # as well.
 # buildifier: disable=name-conventions
+ZipStdlibFlag = enum(
+    # Use a zipped stdlib.
+    YES = "yes",
+    # Do not use a zipped stdlib.
+    NO = "no",
+)
+
+# Used for matching freethreaded toolchains and would have to be used in wheels
+# as well.
+# buildifier: disable=name-conventions
 FreeThreadedFlag = enum(
     # Use freethreaded python toolchain and wheels.
     YES = "yes",

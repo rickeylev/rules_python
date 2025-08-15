@@ -11,6 +11,7 @@ load(
     "PrecompileSourceRetentionFlag",
     "VenvsSitePackages",
     "VenvsUseDeclareSymlinkFlag",
+    "ZipStdlibFlag",
     rp_string_flag = "string_flag",
 )
 load(
@@ -122,6 +123,13 @@ string_flag(
     name = "py_freethreaded",
     build_setting_default = FreeThreadedFlag.NO,
     values = sorted(FreeThreadedFlag.__members__.values()),
+    visibility = ["//visibility:public"],
+)
+
+string_flag(
+    name = "zip_stdlib",
+    build_setting_default = ZipStdlibFlag.NO,
+    values = sorted(ZipStdlibFlag.__members__.values()),
     visibility = ["//visibility:public"],
 )
 

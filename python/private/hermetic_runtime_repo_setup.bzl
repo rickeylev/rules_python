@@ -21,9 +21,12 @@ load("//python/cc:py_cc_toolchain.bzl", "py_cc_toolchain")
 load(":glob_excludes.bzl", "glob_excludes")
 load(":py_exec_tools_toolchain.bzl", "py_exec_tools_toolchain")
 load(":version.bzl", "version")
+load(":zip_stdlib.bzl", "zip_stdlib")
 
 _IS_FREETHREADED_YES = Label("//python/config_settings:_is_py_freethreaded_yes")
 _IS_FREETHREADED_NO = Label("//python/config_settings:_is_py_freethreaded_no")
+_IS_ZIP_STDLIB_YES = Label("//python/config_settings:_is_zip_stdlib_yes")
+_IS_ZIP_STDLIB_NO = Label("//python/config_settings:_is_zip_stdlib_no")
 
 def define_hermetic_runtime_toolchain_impl(
         *,
@@ -59,8 +62,9 @@ def define_hermetic_runtime_toolchain_impl(
         "major": version_info.release[0],
         "minor": version_info.release[1],
     }
+
     native.filegroup(
-        name = "files",
+        name = "non_stdlib_files",
         srcs = native.glob(
             include = [
                 "bin/**",
@@ -69,7 +73,6 @@ def define_hermetic_runtime_toolchain_impl(
                 "libs/**",
                 "share/**",
             ] + extra_files_glob_include,
-            # Platform-agnostic filegroup can't match on all patterns.
             allow_empty = True,
             exclude = [
                 # Unused shared libraries. `python` executable and the `:libpython` target
@@ -77,14 +80,31 @@ def define_hermetic_runtime_toolchain_impl(
                 "lib/libpython{major}.{minor}*.so".format(**version_dict),
                 # static libraries
                 "lib/**/*.a",
-                # tests for the standard libraries.
-                "lib/python{major}.{minor}*/**/test/**".format(**version_dict),
-                "lib/python{major}.{minor}*/**/tests/**".format(**version_dict),
                 # During pyc creation, temp files named *.pyc.NNN are created
                 "**/__pycache__/*.pyc.*",
             ] + glob_excludes.version_dependent_exclusions() + extra_files_glob_exclude,
         ),
     )
+    native.filegroup(
+        name = "stdlib_files",
+        srcs = native.glob(
+            include = ["lib/python{major}.{minor}*/**".format(**version_dict)],
+            exclude = [
+                # During pyc creation, temp files named *.pyc.NNN are created
+                "**/__pycache__/*.pyc.*",
+            ] + glob_excludes.version_dependent_exclusions() + extra_files_glob_exclude,
+        ),
+    )
+    native.filegroup(
+        name = "files",
+        srcs = [":stdlib_files", ":non_stdlib_files"],
+    )
+    zip_stdlib(
+        name = "zipped_stdlib",
+        srcs = [":stdlib_files"],
+        zip = "lib/python{major}{minor}.zip".format(**version_dict),
+    )
+
     cc_import(
         name = "interface",
         interface_library = select({
@@ -207,7 +227,14 @@ def define_hermetic_runtime_toolchain_impl(
 
     py_runtime(
         name = "py3_runtime",
-        files = [":files"],
+        files = [
+            ":non_stdlib_files",
+            ":zipped_stdlib",
+        ],
+        ##] + select({
+        ##    _IS_ZIP_STDLIB_YES: [":zipped_stdlib"],
+        ##    "//conditions:default": [":stdlib_files"],
+        ##}),
         interpreter = python_bin,
         interpreter_version_info = {
             "major": str(version_info.release[0]),
