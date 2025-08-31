@@ -42,6 +42,8 @@ def _perform_transition_impl(input_settings, attr, base_impl):
         settings["//python/config_settings:venvs_use_declare_symlink"] = attr.venvs_use_declare_symlink
     if attr.venvs_site_packages:
         settings["//python/config_settings:venvs_site_packages"] = attr.venvs_site_packages
+    for key, value in attr.custom_config.items():
+        settings[str(key)] = value
     return settings
 
 _RECONFIG_INPUTS = [
@@ -74,6 +76,7 @@ toolchain.
     "repl_dep": attrb.Label(),
     "venvs_site_packages": attrb.String(),
     "venvs_use_declare_symlink": attrb.String(),
+    "custom_config": attrb.LabelKeyedStringDict(),
 }
 
 def _create_reconfig_rule(builder):

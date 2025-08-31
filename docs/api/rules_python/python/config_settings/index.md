@@ -289,6 +289,15 @@ Values:
 
 ::::
 
+:::{bzl:flag} pypi
+The `pypi` flag allows you to build and test a `py_binary` or `py_test` target
+against different sets of dependencies from different PyPI repositories.
+
+:::{seealso}
+{doc}`/howto/common-deps-with-multipe-pypi-versions`
+:::
+::::
+
 ::::{bzl:flag} venvs_use_declare_symlink
 
 Determines if relative symlinks are created using `declare_symlink()` at build

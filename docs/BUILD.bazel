@@ -47,6 +47,7 @@ sphinx_docs(
         include = [
             "*.md",
             "**/*.md",
+            "howto/common-deps-with-multipe-pypi-versions.md",
             "_static/**",
             "_includes/**",
         ],

@@ -19,6 +19,7 @@ settings for rules to later use.
 """
 
 load(":repo_utils.bzl", "repo_utils")
+load(":text_util.bzl", "render")
 
 _ENABLE_PIPSTAR_ENVVAR_NAME = "RULES_PYTHON_ENABLE_PIPSTAR"
 _ENABLE_PIPSTAR_DEFAULT = "0"
@@ -63,6 +64,11 @@ bzl_library(
     name = "py_internal_bzl",
     srcs = ["py_internal.bzl"],
     deps = [{py_internal_dep}],
+)
+
+bzl_library(
+    name = "extra_transition_labels_bzl",
+    srcs = ["extra_transition_labels.bzl"],
 )
 """
 
@@ -113,12 +119,20 @@ def _internal_config_repo_impl(rctx):
         visibility = visibility,
     ))
     rctx.file("py_internal.bzl", shim_content)
+
+    extra_labels_bzl = "EXTRA_TRANSITION_LABELS = {}".format(
+        render.list(rctx.attr.extra_transition_labels),
+    )
+    rctx.file("extra_transition_labels.bzl", extra_labels_bzl)
     return None
 
 internal_config_repo = repository_rule(
     implementation = _internal_config_repo_impl,
     configure = True,
     environ = [_ENABLE_PYSTAR_ENVVAR_NAME],
+    attrs = {
+        "extra_transition_labels": attr.string_list(),
+    },
 )
 
 def _bool_from_environ(rctx, key, default):

@@ -18,6 +18,7 @@ load("@bazel_skylib//lib:paths.bzl", "paths")
 load("@bazel_skylib//lib:structs.bzl", "structs")
 load("@bazel_skylib//rules:common_settings.bzl", "BuildSettingInfo")
 load("@rules_cc//cc/common:cc_common.bzl", "cc_common")
+load("@rules_python_internal//:extra_transition_labels.bzl", "EXTRA_TRANSITION_LABELS")
 load(":attr_builders.bzl", "attrb")
 load(
     ":attributes.bzl",
@@ -1875,12 +1876,16 @@ def _create_run_environment_info(ctx, inherited_environment):
         inherited_environment = inherited_environment,
     )
 
-def _transition_executable_impl(input_settings, attr):
-    settings = {
-        _PYTHON_VERSION_FLAG: input_settings[_PYTHON_VERSION_FLAG],
-    }
+def _transition_executable_impl(settings, attr):
+    settings = dict(settings)
+
     if attr.python_version and attr.python_version not in ("PY2", "PY3"):
         settings[_PYTHON_VERSION_FLAG] = attr.python_version
+
+    #if attr.external_deps_name:
+    #    settings[_EXTERNAL_DEPS_NAME_FLAG] = attr.external_deps_name
+    for key, value in attr.custom_config.items():
+        settings[str(key)] = value
     return settings
 
 def create_executable_rule(*, attrs, **kwargs):
@@ -1931,8 +1936,12 @@ def create_executable_rule_builder(implementation, **kwargs):
         ],
         cfg = dict(
             implementation = _transition_executable_impl,
-            inputs = [_PYTHON_VERSION_FLAG],
-            outputs = [_PYTHON_VERSION_FLAG],
+            inputs = [
+                _PYTHON_VERSION_FLAG,
+            ] + EXTRA_TRANSITION_LABELS,
+            outputs = [
+                _PYTHON_VERSION_FLAG,
+            ] + EXTRA_TRANSITION_LABELS,
         ),
         **kwargs
     )

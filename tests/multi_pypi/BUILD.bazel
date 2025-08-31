@@ -1,0 +1,50 @@
+load("@bazel_skylib//rules:common_settings.bzl", "string_flag")
+
+string_flag(
+    name = "external_deps_name",
+    build_setting_default = "",
+    visibility = ["//visibility:public"],
+)
+
+load("//python:defs.bzl", "py_library")
+load("//tests/support:py_reconfig.bzl", "py_reconfig_test")
+
+py_reconfig_test(
+    name = "pypi_alpha_test",
+    srcs = ["pypi_alpha_test.py"],
+    custom_config = {
+        "//tests/multi_pypi:external_deps_name": "alpha",
+    },
+    main = "pypi_alpha_test.py",
+    deps = [":common"],
+)
+
+py_reconfig_test(
+    name = "pypi_beta_test",
+    srcs = ["pypi_beta_test.py"],
+    custom_config = {
+        "//tests/multi_pypi:external_deps_name": "beta",
+    },
+    main = "pypi_beta_test.py",
+    deps = [":common"],
+)
+
+py_library(
+    name = "common",
+    srcs = [],
+    deps = select({
+        ":is_external_alpha": ["@pypi_alpha//more_itertools"],
+        ":is_external_beta": ["@pypi_beta//more_itertools"],
+        "//conditions:default": [],
+    }),
+)
+
+config_setting(
+    name = "is_external_alpha",
+    flag_values = {"//tests/multi_pypi:external_deps_name": "alpha"},
+)
+
+config_setting(
+    name = "is_external_beta",
+    flag_values = {"//tests/multi_pypi:external_deps_name": "beta"},
+)

@@ -409,13 +409,19 @@ AGNOSTIC_EXECUTABLE_ATTRS = dicts.add(
     DATA_ATTRS,
     {
         "env": lambda: attrb.StringDict(
-            doc = """\
+            doc = """
 Dictionary of strings; optional; values are subject to `$(location)` and "Make
 variable" substitution.
 
 Specifies additional environment variables to set when the target is executed by
 `test` or `run`.
 """,
+        ),
+        "external_deps_name": lambda: attrb.String(
+            doc = "The name of an external dependency that provides this binary.",
+        ),
+        "custom_config": lambda: attrb.LabelKeyedStringDict(
+            doc = "Custom config settings.",
         ),
         "stamp": lambda: attrb.Int(
             values = _STAMP_VALUES,
@@ -479,7 +485,9 @@ AGNOSTIC_TEST_ATTRS = _init_agnostic_test_attrs()
 # Attributes specific to Python binary-equivalent executable rules. Such rules may
 # not accept Python sources (e.g. some packaged-version of a py_test/py_binary),
 # but still accept Python source-agnostic settings.
-AGNOSTIC_BINARY_ATTRS = dicts.add(AGNOSTIC_EXECUTABLE_ATTRS)
+AGNOSTIC_BINARY_ATTRS = dicts.add(
+    AGNOSTIC_EXECUTABLE_ATTRS,
+)
 
 # Attribute names common to all Python rules
 COMMON_ATTR_NAMES = [

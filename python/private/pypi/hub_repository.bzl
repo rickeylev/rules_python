@@ -18,12 +18,13 @@ load("//python/private:text_util.bzl", "render")
 load(":render_pkg_aliases.bzl", "render_multiplatform_pkg_aliases")
 load(":whl_config_setting.bzl", "whl_config_setting")
 
-_BUILD_FILE_CONTENTS = """\
+_BUILD_FILE_CONTENTS = """
 package(default_visibility = ["//visibility:public"])
 
 # Ensure the `requirements.bzl` source can be accessed by stardoc, since users load() from it
 exports_files(["requirements.bzl"])
 """
+
 
 def _impl(rctx):
     bzl_packages = rctx.attr.packages or rctx.attr.whl_map.keys()
