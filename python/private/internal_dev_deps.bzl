@@ -67,6 +67,19 @@ def _internal_dev_deps_impl(mctx):
         enable_implicit_namespace_pkgs = False,
     )
 
+    # Setup for //tests/
+    ##whl_from_dir_repo(
+    ##    name = "pkgutil_namespace_top_whl",
+    ##    root = "//tests/",
+    ##    output = "pkgutil_top-1.0-any-none-any.whl",
+    ##)
+    ##whl_library(
+    ##    name = "pkgutil_namespace_top",
+    ##    whl_file = "@pkgutil_namespace_top//:pkgutil_top-1.0-any-none-any.whl",
+    ##    requirement = "pkgutil-top",
+    ##    enable_implicit_namespace_pkgs = False,
+    ##)
+
 internal_dev_deps = module_extension(
     implementation = _internal_dev_deps_impl,
     doc = "This extension creates internal rules_python dev dependencies.",

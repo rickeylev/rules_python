@@ -86,6 +86,9 @@ A path relative to the `kind` directory within the venv.
 Represents the PyPI package version that the code originates from. It is normalized according to the
 PEP440 standard.
 """,
+        "files": """
+todo
+""",
     },
 )
 

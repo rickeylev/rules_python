@@ -495,6 +495,9 @@ _BOOL_TYPE = type(True)
 def is_bool(v):
     return type(v) == _BOOL_TYPE
 
+def is_file(v):
+    return type(v) == "File"
+
 def target_platform_has_any_constraint(ctx, constraints):
     """Check if target platform has any of a list of constraints.
 

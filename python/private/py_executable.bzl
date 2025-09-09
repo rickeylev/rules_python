@@ -48,6 +48,7 @@ load(
     "filter_to_py_srcs",
     "get_imports",
     "is_bool",
+    "is_file",
     "runfiles_root_path",
     "target_platform_has_any_constraint",
 )
@@ -689,26 +690,31 @@ def _create_venv_symlinks(ctx, venv_dir_map):
         ],
     ).to_list()
 
-    link_map = _build_link_map(entries)
+    link_map = _build_link_map(ctx, entries)
     venv_files = []
     for kind, kind_map in link_map.items():
         base = venv_dir_map[kind]
         for venv_path, link_to in kind_map.items():
-            venv_link = ctx.actions.declare_symlink(paths.join(base, venv_path))
-            venv_link_rf_path = runfiles_root_path(ctx, venv_link.short_path)
-            rel_path = relative_path(
-                # dirname is necessary because a relative symlink is relative to
-                # the directory the symlink resides within.
-                from_ = paths.dirname(venv_link_rf_path),
-                to = link_to,
-            )
-            ctx.actions.symlink(output = venv_link, target_path = rel_path)
+            bin_venv_path = paths.join(base, venv_path)
+            if is_file(link_to):
+                venv_link = ctx.actions.declare_file(bin_venv_path)
+                ctx.actions.symlink(output = venv_link, target_file = link_to)
+            else:
+                venv_link = ctx.actions.declare_symlink(bin_venv_path)
+                venv_link_rf_path = runfiles_root_path(ctx, venv_link.short_path)
+                rel_path = relative_path(
+                    # dirname is necessary because a relative symlink is relative to
+                    # the directory the symlink resides within.
+                    from_ = paths.dirname(venv_link_rf_path),
+                    to = link_to,
+                )
+                ctx.actions.symlink(output = venv_link, target_path = rel_path)
             venv_files.append(venv_link)
 
     return venv_files
 
-def _build_link_map(entries):
-    # dict[str package, dict[str kind, dict[str rel_path, str link_to_path]]]
+def _build_link_map(ctx, entries):
+    # dict[str package, dict[str kind, dict[str rel_path, str|File link_to_path]]]
     pkg_link_map = {}
 
     # dict[str package, str version]
@@ -725,15 +731,15 @@ def _build_link_map(entries):
             # We ignore duplicates by design.
             continue
         else:
-            kind_map[entry.venv_path] = entry.link_to_path
+            kind_map[entry.venv_path] = entry
 
     # An empty link_to value means to not create the site package symlink. Because of the
     # ordering, this allows binaries to remove entries by having an earlier dependency produce
     # empty link_to values.
     for link_map in pkg_link_map.values():
         for kind, kind_map in link_map.items():
-            for dir_path, link_to in kind_map.items():
-                if not link_to:
+            for dir_path, entry in kind_map.items():
+                if not entry.link_to_path:
                     kind_map.pop(dir_path)
 
     # dict[str kind, dict[str rel_path, str link_to_path]]
@@ -743,18 +749,51 @@ def _build_link_map(entries):
     # Earlier entries have precedence to match how exact matches are handled.
     for link_map in pkg_link_map.values():
         for kind, kind_map in link_map.items():
-            keep_kind_map = keep_link_map.setdefault(kind, {})
-            for _ in range(len(kind_map)):
-                if not kind_map:
-                    break
-                dirname, value = kind_map.popitem()
-                keep_kind_map[dirname] = value
-                prefix = dirname + "/"  # Add slash to prevent /X matching /XY
-                for maybe_suffix in kind_map.keys():
-                    maybe_suffix += "/"  # Add slash to prevent /X matching /XY
-                    if maybe_suffix.startswith(prefix) or prefix.startswith(maybe_suffix):
-                        kind_map.pop(maybe_suffix)
+            entries = sorted(kind_map.items(), key = lambda item: item[0])
+
+            # list[dict[str prefix, info]]
+            groups = []
+            current_group = None
+            current_group_prefix = None
+            for prefix, info in entries:
+                anchored_prefix = prefix + "/"
+                if (current_group_prefix == None or
+                    not anchored_prefix.startswith(current_group_prefix)):
+                    current_group_prefix = anchored_prefix
+                    current_group = {prefix: info}
+                    groups.append(current_group)
+                else:
+                    current_group[prefix] = info
+
+            # dict[str venv_path, str|File link_to]
+            keep_kind_link_map = {}
+
+            for group in groups:
+                # If there's just one group, we can symlink to the directory
+                if len(group) == 1:
+                    prefix, link_info = group.popitem()
+                    keep_kind_link_map[prefix] = link_info.link_to_path
+                else:
+                    for prefix, link_info in group.items():
+                        for file in link_info.files.to_list():
+                            short_path = runfiles_root_path(ctx, file.short_path)
+                            venv_path = "{}/{}".format(
+                                prefix,
+                                short_path.removeprefix(link_info.link_to_path + "/"),
+                            )
+                            if venv_path not in keep_kind_link_map:
+                                keep_kind_link_map[venv_path] = file
+
+            keep_link_map[kind] = keep_kind_link_map
+
     return keep_link_map
+
+def _repo_relative_short_path(short_path):
+    # Convert `../+pypi+foo/some/file.py` to `some/file.py`
+    if short_path.startswith("../"):
+        return short_path[3:].partition("/")[2]
+    else:
+        return short_path
 
 def _map_each_identity(v):
     return v
