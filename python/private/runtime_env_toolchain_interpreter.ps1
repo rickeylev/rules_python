@@ -4,26 +4,26 @@ $ErrorActionPreference = "Stop"
 
 function Die {
     param([string]$message)
-    $header = "Error occurred while attempting to use the deprecated Python " `
-        + "toolchain `n(@rules_python//python/runtime_env_toolchain:all)."
+    $header = ("Error occurred while attempting to use the deprecated Python "
+        + "toolchain `n(@rules_python//python/runtime_env_toolchain:all).")
     Write-Error "$header`n$message"
     exit 1
 }
 
 # Try the "python3" command name first, then fall back on "python".
 $pythonBin = Get-Command python3 -ErrorAction SilentlyContinue
-if ($null -eq $pythonBin) {
+if (-not $pythonBin) {
     $pythonBin = Get-Command python -ErrorAction SilentlyContinue
 }
 
-if ($null -eq $pythonBin) {
-    Die "Neither 'python3' nor 'python' were found on the target platform's " `
-        + "PATH, which is:`n`n$($env:PATH)`n`nPlease ensure an interpreter " `
-        + "is available on this platform (and marked executable), or else " `
-        + "register an appropriate Python toolchain as per the " `
-        + "documentation for py_runtime_pair " `
-        + "(https://github.com/bazel-contrib/rules_python/blob/master/" `
-        + "docs/python.md#py_runtime_pair)."
+if (-not $pythonBin) {
+    Die ("Neither 'python3' nor 'python' were found on the target platform's "
+        + "PATH, which is:`n`n$($env:PATH)`n`nPlease ensure an interpreter "
+        + "is available on this platform (and marked executable), or else "
+        + "register an appropriate Python toolchain as per the "
+        + "documentation for py_runtime_pair "
+        + "(https://github.com/bazel-contrib/rules_python/blob/master/"
+        + "docs/python.md#py_runtime_pair).")
 }
 
 # Because this is a wrapper script that invokes Python, it prevents Python
