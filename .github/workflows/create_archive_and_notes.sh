@@ -24,7 +24,8 @@ grep --exclude=CONTRIBUTING.md \
   --exclude=release_test.py \
   --exclude-dir=.* \
   VERSION_NEXT_ -r
-if $?; then
+grep_exit_code=$?
+if $grep_exit_code -ne 0; then
   echo
   echo "Found VERSION_NEXT markers indicating version needs to be specified"
   exit 1
