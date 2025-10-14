@@ -30,9 +30,6 @@ if $?; then
   exit 1
 fi
 
-echo "done"
-exit 1
-
 # Set by GH actions, see
 # https://docs.github.com/en/actions/learn-github-actions/environment-variables#default-environment-variables
 TAG=${GITHUB_REF_NAME}
