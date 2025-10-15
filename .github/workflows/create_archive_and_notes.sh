@@ -13,8 +13,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-set -o errexit -o nounset -o pipefail
+set -o nounset
+set -o pipefail
+set -o errexit
 
+set -x
 # Exclude dot directories, specifically, this file so that we don't
 # find the substring we're looking for in our own file.
 # Exclude CONTRIBUTING.md, RELEASING.md because they document how to use these strings.
@@ -23,8 +26,9 @@ grep --exclude=CONTRIBUTING.md \
   --exclude=release.py \
   --exclude=release_test.py \
   --exclude-dir=.* \
-  VERSION_NEXT_ -r
-if $?; then
+  VERSION_NEXT_ -r || grep_exit_code=$?
+
+if [[ $grep_exit_code -eq 0 ]]; then
   echo
   echo "Found VERSION_NEXT markers indicating version needs to be specified"
   exit 1
