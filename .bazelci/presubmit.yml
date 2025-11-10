@@ -94,16 +94,13 @@ matrix:
     - macos
     - windows
   bazel: [7.*, 8.*, 9.*]
-  bcr_variant:
-    - examples/bzlmod
-    - gazelle/examples/bzlmod_build_file_generation
 tasks:
   # Keep in sync with .bcr/presubmit.yml
   bcr_tests:
     name: BCR test module
     platform: ${{ platform }}
     bazel: ${{ bazel }}
-    working_directory: ${{ bcr_variant }}
+    working_directory: examples/bzlmod
     platform: ${{ platform }}
     bazel: ${{ bazel }}
     shell_commands:
@@ -123,7 +120,7 @@ tasks:
     name: BCR gazelle test module
     platform: ${{ platform }}
     bazel: ${{ bazel }}
-    working_directory: ${{ bcr_variant }}
+    working_directory: gazelle/examples/bzlmod_build_file_generation
     # Regenerate the BUILD files for the test module using Gazelle.
     # Also verify -repo_config are generated correctly in gazelle.bash
     shell_commands:
