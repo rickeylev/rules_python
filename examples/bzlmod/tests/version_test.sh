@@ -26,6 +26,7 @@ bin="${bin[@]//*.py}"
 
 bindir=$(dirname $bin)
 
+#
 ##set +e
 ##
 ##ls -la $bindir
