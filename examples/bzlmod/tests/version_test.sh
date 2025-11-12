@@ -26,27 +26,27 @@ bin="${bin[@]//*.py}"
 
 bindir=$(dirname $bin)
 
-set +e
-
-ls -la $bindir
-dir $bindir
-
-stat $bin
-stat -L $bin
-icacls $bin
-
-cp $bin mybin.exe
-./mybin.exe
-
-cmd.exe //c tests\\version_3_10.exe
-
-cmd.exe //c "tests\\version_3_10.exe"
-
-cmd.exe //c "tests\version_3_10.exe"
-
-set -e
-cp tests/version_3_10.zip mybin.zip
-./mybin.exe
+##set +e
+##
+##ls -la $bindir
+##dir $bindir
+##
+##stat $bin
+##stat -L $bin
+##icacls $bin
+##
+##cp $bin mybin.exe
+##./mybin.exe
+##
+##cmd.exe //c tests\\version_3_10.exe
+##
+##cmd.exe //c "tests\\version_3_10.exe"
+##
+##cmd.exe //c "tests\version_3_10.exe"
+##
+##set -e
+##cp tests/version_3_10.zip mybin.zip
+##./mybin.exe
 
 ./$bin
 

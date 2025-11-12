@@ -1,4 +1,4 @@
-startup --windows_enable_symlinks
+#startup --windows_enable_symlinks
 
 common --enable_bzlmod
 common --lockfile_mode=update
