@@ -24,15 +24,21 @@ env
 bin=($VERSION_PY_BINARY)
 bin="${bin[@]//*.py}"
 
-ls -l $(dirname $bin)
+bindir=$(dirname $bin)
+
+set +e
+
+ls -l $bindir
+dir $bindir
 
 stat $bin
 stat -L $bin
-
+icacls $bin
 
 cp $bin mybin.exe
-set +e
 ./mybin.exe
+
+cmd.exe $bin
 
 set -e
 cp tests/version_3_10.zip mybin.zip
