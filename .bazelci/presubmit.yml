@@ -91,7 +91,7 @@ buildifier:
 matrix:
   platform:
     - windows
-  bazel: [8.*]
+  bazel: [7.*, 8.*]
 tasks:
   # Keep in sync with .bcr/presubmit.yml
   bcr_tests:

@@ -15,6 +15,7 @@
 
 
 set -o errexit -o nounset -o pipefail
+set -x
 
 # VERSION_PY_BINARY is a space separate list of the executable and its main
 # py file. We just want the executable.
