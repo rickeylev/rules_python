@@ -27,6 +27,7 @@ bin="${bin[@]//*.py}"
 ls -l $(dirname $bin)
 
 stat $bin
+stat -L $bin
 version_py_binary=$($bin)
 
 if [[ "${version_py_binary}" != "${VERSION_CHECK}" ]]; then
