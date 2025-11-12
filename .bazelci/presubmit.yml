@@ -111,6 +111,7 @@ tasks:
         # Without these cxxopts, BCR's Mac builds fail
       - '--cxxopt=-std=c++14'
       - '--host_cxxopt=-std=c++14'
+      - '--test_output=streamed'
     test_targets:
       #- "//tests/..."
       - "//tests:version_test_binary_3_10"
