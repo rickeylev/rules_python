@@ -17,6 +17,8 @@
 set -o errexit -o nounset -o pipefail
 set -x
 
+env
+
 # VERSION_PY_BINARY is a space separate list of the executable and its main
 # py file. We just want the executable.
 bin=($VERSION_PY_BINARY)
@@ -24,6 +26,7 @@ bin="${bin[@]//*.py}"
 
 ls -l $(dirname $bin)
 
+stat $bin
 version_py_binary=$($bin)
 
 if [[ "${version_py_binary}" != "${VERSION_CHECK}" ]]; then

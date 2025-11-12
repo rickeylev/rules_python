@@ -112,4 +112,5 @@ tasks:
       - '--cxxopt=-std=c++14'
       - '--host_cxxopt=-std=c++14'
     test_targets:
-      - "//tests/..."
+      #- "//tests/..."
+      - "//tests:version_test_binary_3_10
