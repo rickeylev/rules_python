@@ -29,7 +29,8 @@ ls -l $(dirname $bin)
 stat $bin
 stat -L $bin
 
-python.exe --version
+cp $bin mybin.exe
+./mybin.exe
 
 version_py_binary=$($bin)
 
