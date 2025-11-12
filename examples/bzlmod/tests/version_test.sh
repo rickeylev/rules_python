@@ -30,6 +30,7 @@ stat $bin
 stat -L $bin
 
 cp $bin mybin.exe
+cp tests/version_3_10.zip mybin.zip
 ./mybin.exe
 
 version_py_binary=$($bin)
