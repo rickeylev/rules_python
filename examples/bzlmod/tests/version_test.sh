@@ -21,6 +21,9 @@ set -x
 # py file. We just want the executable.
 bin=($VERSION_PY_BINARY)
 bin="${bin[@]//*.py}"
+
+ls -l $(dirname $bin)
+
 version_py_binary=$($bin)
 
 if [[ "${version_py_binary}" != "${VERSION_CHECK}" ]]; then
