@@ -95,7 +95,7 @@ matrix:
 tasks:
   # Keep in sync with .bcr/presubmit.yml
   bcr_tests:
-    name: BCR test module ${{ bazel }}
+    name: BCR test module
     platform: ${{ platform }}
     bazel: ${{ bazel }}
     working_directory: examples/bzlmod
