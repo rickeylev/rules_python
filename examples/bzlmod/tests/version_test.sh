@@ -29,7 +29,12 @@ ls -l $(dirname $bin)
 stat $bin
 stat -L $bin
 
+
 cp $bin mybin.exe
+set +e
+./mybin.exe
+
+set -e
 cp tests/version_3_10.zip mybin.zip
 ./mybin.exe
 
