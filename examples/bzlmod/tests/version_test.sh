@@ -38,7 +38,11 @@ icacls $bin
 cp $bin mybin.exe
 ./mybin.exe
 
+cmd.exe //c tests\\version_3_10.exe
+
 cmd.exe //c "tests\\version_3_10.exe"
+
+cmd.exe //c "tests\version_3_10.exe"
 
 set -e
 cp tests/version_3_10.zip mybin.zip
