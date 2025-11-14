@@ -22,6 +22,11 @@ bcr_test_module:
       name: "Run test module"
       platform: ${{ platform }}
       bazel: ${{ bazel }}
+      # NOTE: Necessary to work around an error with sh_test and symlinks
+      # on Windows.
+      # See https://github.com/bazel-contrib/rules_python/issues/3407
+      batch_commands:
+        - "echo startup --windows_enable_symlinks >> .bazelrc"
       test_flags:
         - "--keep_going"
           # Without these cxxopts, BCR's Mac builds fail
