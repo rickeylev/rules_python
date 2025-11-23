@@ -1,6 +1,7 @@
 [project]
 name = "rules_python_docs"
 version = "0.0.0"
+requires-python = ">= 3.9"
 
 dependencies = [
     # NOTE: This is only used as input to create the resolved requirements.txt
@@ -16,4 +17,10 @@ dependencies = [
     "pefile",
     "pyelftools",
     "macholib",
+]
+
+[tool.uv]
+environments = [
+  "sys_platform == 'linux'",
+  "sys_platform == 'darwin'",
 ]
