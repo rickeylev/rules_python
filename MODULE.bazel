@@ -50,9 +50,13 @@ python.defaults(
 python.toolchain(
     python_version = "3.11",
 )
+python.toolchain(
+    python_version = "3.14",
+)
 use_repo(
     python,
     "python_3_11",
+    "python_3_14_host",
     "pythons_hub",
     python = "python_versions",
 )
@@ -457,4 +461,16 @@ uv_dev = use_extension(
 )
 uv_dev.configure(
     version = "0.6.2",
+)
+
+uv_external_deps = use_extension(
+    "@//python/extensions:uv_external_deps.bzl",
+    "uv_external_deps",
+)
+use_repo(uv_external_deps, "uvstuff")
+
+# TODO: Add examples for hub
+uv_external_deps.hub(
+    name = "uvstuff",
+    srcs = ["//docs:uv.lock"],
 )

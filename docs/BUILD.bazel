@@ -196,3 +196,10 @@ lock(
     python_version = "3.9",
     visibility = ["//:__subpackages__"],
 )
+
+genrule(
+    name = "cpout",
+    srcs = ["@uvstuff//sphinx:BUILD.bazel"],
+    outs = ["uvstuff.txt"],
+    cmd = "cp $(SRCS) $(OUTS)",
+)
