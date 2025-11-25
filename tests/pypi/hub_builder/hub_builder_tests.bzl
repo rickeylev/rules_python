@@ -44,6 +44,7 @@ def hub_builder(
         debug = False,
         config = None,
         minor_mapping = {},
+        whl_overrides = {},
         evaluate_markers_fn = None,
         simpleapi_download_fn = None,
         available_interpreters = {}):
@@ -76,7 +77,7 @@ def hub_builder(
             netrc = None,
             auth_patterns = None,
         ),
-        whl_overrides = {},
+        whl_overrides = whl_overrides,
         minor_mapping = minor_mapping or {"3.15": "3.15.19"},
         available_interpreters = available_interpreters or {
             "python_3_15_host": "unit_test_interpreter_target",
@@ -320,7 +321,6 @@ def _test_simple_extras_vs_no_extras_simpleapi(env):
             "config_load": "@pypi//:config.bzl",
             "dep_template": "@pypi//{name}:{target}",
             "filename": "simple-0.0.1-py3-none-any.whl",
-            "python_interpreter_target": "unit_test_interpreter_target",
             "requirement": "simple[foo]==0.0.1",
             "sha256": "deadbeef",
             "urls": ["https://example.com/simple-0.0.1-py3-none-any.whl"],
@@ -329,7 +329,6 @@ def _test_simple_extras_vs_no_extras_simpleapi(env):
             "config_load": "@pypi//:config.bzl",
             "dep_template": "@pypi//{name}:{target}",
             "filename": "simple-0.0.1-py3-none-any.whl",
-            "python_interpreter_target": "unit_test_interpreter_target",
             "requirement": "simple==0.0.1",
             "sha256": "deadbeef",
             "urls": ["https://example.com/simple-0.0.1-py3-none-any.whl"],
@@ -656,7 +655,6 @@ torch==2.4.1+cpu ; platform_machine == 'x86_64' \
             "config_load": "@pypi//:config.bzl",
             "dep_template": "@pypi//{name}:{target}",
             "filename": "torch-2.4.1+cpu-cp312-cp312-linux_x86_64.whl",
-            "python_interpreter_target": "unit_test_interpreter_target",
             "requirement": "torch==2.4.1+cpu",
             "sha256": "8800deef0026011d502c0c256cc4b67d002347f63c3a38cd8e45f1f445c61364",
             "urls": ["https://torch.index/whl/cpu/torch-2.4.1%2Bcpu-cp312-cp312-linux_x86_64.whl"],
@@ -665,7 +663,6 @@ torch==2.4.1+cpu ; platform_machine == 'x86_64' \
             "config_load": "@pypi//:config.bzl",
             "dep_template": "@pypi//{name}:{target}",
             "filename": "torch-2.4.1-cp312-cp312-manylinux_2_17_aarch64.manylinux2014_aarch64.whl",
-            "python_interpreter_target": "unit_test_interpreter_target",
             "requirement": "torch==2.4.1",
             "sha256": "36109432b10bd7163c9b30ce896f3c2cca1b86b9765f956a1594f0ff43091e2a",
             "urls": ["https://torch.index/whl/cpu/torch-2.4.1-cp312-cp312-manylinux_2_17_aarch64.manylinux2014_aarch64.whl"],
@@ -674,7 +671,6 @@ torch==2.4.1+cpu ; platform_machine == 'x86_64' \
             "config_load": "@pypi//:config.bzl",
             "dep_template": "@pypi//{name}:{target}",
             "filename": "torch-2.4.1+cpu-cp312-cp312-win_amd64.whl",
-            "python_interpreter_target": "unit_test_interpreter_target",
             "requirement": "torch==2.4.1+cpu",
             "sha256": "3a570e5c553415cdbddfe679207327b3a3806b21c6adea14fba77684d1619e97",
             "urls": ["https://torch.index/whl/cpu/torch-2.4.1%2Bcpu-cp312-cp312-win_amd64.whl"],
@@ -683,7 +679,6 @@ torch==2.4.1+cpu ; platform_machine == 'x86_64' \
             "config_load": "@pypi//:config.bzl",
             "dep_template": "@pypi//{name}:{target}",
             "filename": "torch-2.4.1-cp312-none-macosx_11_0_arm64.whl",
-            "python_interpreter_target": "unit_test_interpreter_target",
             "requirement": "torch==2.4.1",
             "sha256": "72b484d5b6cec1a735bf3fa5a1c4883d01748698c5e9cfdbeb4ffab7c7987e0d",
             "urls": ["https://torch.index/whl/cpu/torch-2.4.1-cp312-none-macosx_11_0_arm64.whl"],
@@ -845,6 +840,11 @@ def _test_simple_get_index(env):
     builder = hub_builder(
         env,
         simpleapi_download_fn = mocksimpleapi_download,
+        whl_overrides = {
+            "direct_without_sha": {
+                "my_patch": 1,
+            },
+        },
     )
     builder.pip_parse(
         _mock_mctx(
@@ -1003,6 +1003,10 @@ git_dep @ git+https://git.server/repo/project@deadbeefdeadbeef
             "requirement": "direct_without_sha==0.0.1",
             "sha256": "",
             "urls": ["example-direct.org/direct_without_sha-0.0.1-py3-none-any.whl"],
+            # NOTE @aignas 2025-11-24: any patching still requires the python interpreter from the
+            # hermetic toolchain or the system. This is so that we can rezip it back to a wheel and
+            # verify the metadata so that it is installable by any installer out there.
+            "whl_patches": {"my_patch": "1"},
         },
         "pypi_315_git_dep": {
             "config_load": "@pypi//:config.bzl",
@@ -1022,7 +1026,6 @@ git_dep @ git+https://git.server/repo/project@deadbeefdeadbeef
             "config_load": "@pypi//:config.bzl",
             "dep_template": "@pypi//{name}:{target}",
             "filename": "plat-pkg-0.0.4-py3-none-linux_x86_64.whl",
-            "python_interpreter_target": "unit_test_interpreter_target",
             "requirement": "plat_pkg==0.0.4",
             "sha256": "deadb44f",
             "urls": ["example2.org/index/plat_pkg/"],
@@ -1031,7 +1034,6 @@ git_dep @ git+https://git.server/repo/project@deadbeefdeadbeef
             "config_load": "@pypi//:config.bzl",
             "dep_template": "@pypi//{name}:{target}",
             "filename": "simple-0.0.1-py3-none-any.whl",
-            "python_interpreter_target": "unit_test_interpreter_target",
             "requirement": "simple==0.0.1",
             "sha256": "deadb00f",
             "urls": ["example2.org"],
@@ -1040,7 +1042,6 @@ git_dep @ git+https://git.server/repo/project@deadbeefdeadbeef
             "config_load": "@pypi//:config.bzl",
             "dep_template": "@pypi//{name}:{target}",
             "filename": "some_pkg-0.0.1-py3-none-any.whl",
-            "python_interpreter_target": "unit_test_interpreter_target",
             "requirement": "some_pkg==0.0.1",
             "sha256": "deadbaaf",
             "urls": ["example-direct.org/some_pkg-0.0.1-py3-none-any.whl"],
@@ -1049,7 +1050,6 @@ git_dep @ git+https://git.server/repo/project@deadbeefdeadbeef
             "config_load": "@pypi//:config.bzl",
             "dep_template": "@pypi//{name}:{target}",
             "filename": "some-other-pkg-0.0.1-py3-none-any.whl",
-            "python_interpreter_target": "unit_test_interpreter_target",
             "requirement": "some_other_pkg==0.0.1",
             "sha256": "deadb33f",
             "urls": ["example2.org/index/some_other_pkg/"],
