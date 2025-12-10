@@ -214,7 +214,7 @@ def _merge_venv_path_group(ctx, group, keep_map):
             if venv_path not in keep_map:
                 keep_map[venv_path] = file
 
-def get_venv_symlinks(ctx, files, package, version_str, site_packages_root):
+def get_venv_symlinks(ctx, files, package, version_str, site_packages_root, repo_site_packages_roots = {}):
     """Compute the VenvSymlinkEntry objects for a library.
 
     Args:
@@ -246,12 +246,22 @@ def get_venv_symlinks(ctx, files, package, version_str, site_packages_root):
     # venv paths that cannot be directly linked. Dict acting as set.
     cannot_be_linked_directly = {}
 
+    # The repos associated with each venv path.
+    # dict[str venv_path, set[str] repos]
+    venv_path_repos = {}
+
     # dict[str path, VenvSymlinkEntry]
     # Where path is the venv path (i.e. relative to site_packages_prefix)
     venv_symlinks = {}
 
     # List of (File, str venv_path) tuples
     files_left_to_link = []
+
+    repo_site_packages_roots = {
+        l.repo_name: v + "/"
+        for l, v in repo_site_packages_roots.items()
+    }
+    print(repo_site_packages_roots)
 
     # We want to minimize the number of files symlinked. Ideally, only the
     # top-level directories are symlinked. Unfortunately, shared libraries
@@ -263,8 +273,9 @@ def get_venv_symlinks(ctx, files, package, version_str, site_packages_root):
     # directly.
     for src in all_files:
         rf_root_path = runfiles_root_path(ctx, src.short_path)
-        _, _, repo_rel_path = rf_root_path.partition("/")
-        head, found_sp_root, venv_path = repo_rel_path.partition(site_packages_root)
+        repo, _, repo_rel_path = rf_root_path.partition("/")
+        sp_root = repo_site_packages_roots.get(repo, site_packages_root)
+        head, found_sp_root, venv_path = repo_rel_path.partition(sp_root)
         if head or not found_sp_root:
             # If head is set, then the path didn't start with site_packages_root
             # if found_sp_root is empty, then it means it wasn't found at all.
@@ -291,6 +302,20 @@ def get_venv_symlinks(ctx, files, package, version_str, site_packages_root):
                 cannot_be_linked_directly[parent] = True
                 parent = paths.dirname(parent)
         else:
+            parent = paths.dirname(venv_path)
+            for _ in range(len(venv_path) + 1):  # Iterate enough times to traverse up
+                if not parent:
+                    break
+                if cannot_be_linked_directly.get(parent, False):
+                    # Already seen
+                    break
+                venv_path_repos.setdefault(parent, {})
+                venv_path_repos[parent][repo] = True
+                if len(venv_path_repos[parent]) >= 2:
+                    cannot_be_linked_directly[parent] = True
+
+                parent = paths.dirname(parent)
+
             files_left_to_link.append((src, venv_path))
 
     # At this point, venv_symlinks has entries for the shared libraries

@@ -12,3 +12,8 @@ py_library(
     experimental_venvs_site_packages = "@rules_python//python/config_settings:venvs_site_packages",
     imports = [package_name() + "/site-packages"],
 )
+
+filegroup(
+    name = "all_files",
+    srcs = glob(["site-packages/**/*"]),
+)

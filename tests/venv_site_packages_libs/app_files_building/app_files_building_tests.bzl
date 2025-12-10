@@ -263,6 +263,44 @@ def _test_optimized_grouping_single_toplevel_impl(env, target):
     # The point of the optimization is to avoid having to merge conflicts.
     env.expect.that_collection(conflicts).contains_exactly([])
 
+def _test_optimized_grouping_multiple_repos(name):
+    empty_files(
+        name = name + "_samerepo_files",
+        paths = [
+            "site-packages/simple/m1.txt",
+            "site-packages/simple/m/m2.txt",
+        ],
+    )
+    native.filegroup(
+        name = name + "_files",
+        srcs = [
+            name + "_samerepo_files",
+            "@other//simple_v1:simple_v1",
+        ],
+    )
+    analysis_test(
+        name = name,
+        impl = _test_optimized_grouping_multiple_repos_impl,
+        target = name + "_files",
+    )
+
+_tests.append(_test_optimized_grouping_multiple_repos)
+
+def _test_optimized_grouping_multiple_repos_impl(env, target):
+    test_ctx = _ctx(workspace_name = env.ctx.workspace_name)
+    entries = get_venv_symlinks(
+        test_ctx,
+        target.files.to_list(),
+        package = "pkg2",
+        version_str = "1.0",
+        site_packages_root = env.ctx.label.package + "/site-packages",
+        repo_site_packages_roots = {
+            Label("@other"): "simple_v1/site-packages",
+        },
+    )
+    actual = _venv_symlinks_from_entries(entries)
+    print("\n\n" + "\n".join([str(x) for x in actual]) + "\n\n")
+
 def _test_package_version_filtering(name):
     analysis_test(
         name = name,
