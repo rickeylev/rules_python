@@ -398,6 +398,8 @@ def _create_executable(
 
     should_create_executable_zip = False
     bootstrap_output = None
+
+    ##stage2_bootstrap = None
     if not is_windows:
         if build_zip_enabled:
             should_create_executable_zip = True
@@ -455,6 +457,10 @@ def _create_executable(
                 build_zip_enabled = build_zip_enabled,
             ))
 
+    app_runfiles = runfiles_details.runfiles_without_exe.merge(extra_runfiles)
+    if not stage2_bootstrap:
+        fail("hit")
+
     # The interpreter is added this late in the process so that it isn't
     # added to the zipped files.
     if venv and venv.interpreter:
@@ -463,6 +469,9 @@ def _create_executable(
         extra_files_to_build = depset(extra_files_to_build),
         output_groups = {"python_zip_file": depset([zip_file])},
         extra_runfiles = extra_runfiles,
+        stage2_bootstrap = stage2_bootstrap,
+        app_runfiles = app_runfiles,
+        venv_python_exe = venv.interpreter,
     )
 
 def _create_zip_main(ctx, *, stage2_bootstrap, runtime_details, venv):
@@ -1108,6 +1117,10 @@ def py_executable_base_impl(ctx, *, semantics, is_test, inherited_environment = 
         cc_info = cc_details.cc_info_for_propagating,
         inherited_environment = inherited_environment,
         output_groups = exec_result.output_groups,
+        stage2_bootstrap = exec_result.stage2_bootstrap,
+        app_runfiles = exec_result.app_runfiles,
+        venv_python_exe = exec_result.venv_python_exe,
+        interpreter_args = ctx.attr.interpreter_args,
     )
 
 def _get_build_info(ctx, cc_toolchain):
@@ -1645,7 +1658,11 @@ def _create_providers(
         cc_info,
         inherited_environment,
         runtime_details,
-        output_groups):
+        output_groups,
+        stage2_bootstrap,
+        app_runfiles,
+        venv_python_exe,
+        interpreter_args):
     """Creates the providers an executable should return.
 
     Args:
@@ -1698,6 +1715,10 @@ def _create_providers(
             runfiles_without_exe = runfiles_details.runfiles_without_exe,
             build_data_file = runfiles_details.build_data_file,
             interpreter_path = runtime_details.executable_interpreter_path,
+            stage2_bootstrap = stage2_bootstrap,
+            app_runfiles = app_runfiles,
+            venv_python_exe = venv_python_exe,
+            interpreter_args = interpreter_args,
         ),
     ]
 

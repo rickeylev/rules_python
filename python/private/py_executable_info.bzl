@@ -10,11 +10,13 @@ This provider is for executable-specific information (e.g. tests and binaries).
 :::
 """,
     fields = {
+        "app_runfiles": "todo",
         "build_data_file": """
 :type: None | File
 
 A symlink to build_data.txt if stamping is enabled, otherwise None.
 """,
+        "interpreter_args": "todo",
         "interpreter_path": """
 :type: None | str
 
@@ -36,5 +38,7 @@ The runfiles the program needs, but without the original executable,
 files only added to support the original executable, or files specific to the
 original program.
 """,
+        "stage2_bootstrap": "todo",
+        "venv_python_exe": "File; the bin/python3 for the venv this binary runs within",
     },
 )

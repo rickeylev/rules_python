@@ -109,7 +109,7 @@ def create_cc_details_struct(
         **kwargs
     )
 
-def create_executable_result_struct(*, extra_files_to_build, output_groups, extra_runfiles = None):
+def create_executable_result_struct(*, extra_files_to_build, output_groups, extra_runfiles = None, **kwargs):
     """Creates a `CreateExecutableResult` struct.
 
     This is the return value type of the semantics create_executable function.
@@ -128,6 +128,7 @@ def create_executable_result_struct(*, extra_files_to_build, output_groups, extr
         extra_files_to_build = extra_files_to_build,
         output_groups = output_groups,
         extra_runfiles = extra_runfiles,
+        **kwargs
     )
 
 def csv(values):

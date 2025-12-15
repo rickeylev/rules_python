@@ -3,11 +3,15 @@
 # NOTE: This file is a "stage 1" bootstrap, so it's responsible for locating the
 # desired runtime and having it run the stage 2 bootstrap. This means it can't
 # assume much about the current runtime and environment. e.g., the current
-# runtime may not be the correct one, the zip may not have been extract, the
+# runtime may not be the correct one, the zip may not have been extracted, the
 # runfiles env vars may not be set, etc.
 #
 # NOTE: This program must retain compatibility with a wide variety of Python
 # versions since it is run by an unknown Python interpreter.
+#
+# NOTE: For a self-executable zip, this file may not be the entry point
+# for the program and may be skipped entirely; the self-executable zip
+# preamble may jump directly to the stage2 bootstrap.
 
 import sys
 

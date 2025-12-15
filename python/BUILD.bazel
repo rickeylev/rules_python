@@ -75,6 +75,7 @@ bzl_library(
         ":py_runtime_info_bzl",
         ":py_runtime_pair_bzl",
         ":py_test_bzl",
+        ":py_zipapp_binary_bzl",
     ],
 )
 
@@ -206,6 +207,14 @@ bzl_library(
     srcs = ["py_test.bzl"],
     deps = [
         "//python/private:py_test_macro_bzl",
+    ],
+)
+
+bzl_library(
+    name = "py_zipapp_binary_bzl",
+    srcs = ["py_zipapp_binary.bzl"],
+    deps = [
+        "//python/private/zipapp:py_zipapp_macro_bzl",
     ],
 )
 

@@ -787,14 +787,6 @@ filegroup(
 )
 
 filegroup(
-    name = "zip_main_template",
-    srcs = ["zip_main_template.py"],
-    # Not actually public. Only public because it's an implicit dependency of
-    # py_runtime.
-    visibility = ["//visibility:public"],
-)
-
-filegroup(
     name = "site_init_template",
     srcs = ["site_init_template.py"],
     # Not actually public. Only public because it's an implicit dependency of
