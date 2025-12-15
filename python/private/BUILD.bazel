@@ -578,6 +578,24 @@ bzl_library(
 )
 
 bzl_library(
+    name = "py_zipapp_macro_bzl",
+    srcs = ["py_zipapp_macro.bzl"],
+    deps = [
+        ":py_zipapp_rule_bzl",
+        "//python:py_binary_bzl",
+    ],
+)
+
+bzl_library(
+    name = "py_zipapp_rule_bzl",
+    srcs = ["py_zipapp_rule.bzl"],
+    deps = [
+        ":py_executable_info_bzl",
+        "@bazel_tools//tools/zip:zipper", # Add zipper as a dependency
+    ],
+)
+
+bzl_library(
     name = "py_toolchain_suite_bzl",
     srcs = ["py_toolchain_suite.bzl"],
     deps = [
@@ -774,6 +792,12 @@ filegroup(
     srcs = ["zip_main_template.py"],
     # Not actually public. Only public because it's an implicit dependency of
     # py_runtime.
+    visibility = ["//visibility:public"],
+)
+
+filegroup(
+    name = "zipapp_launcher_tpl",
+    srcs = ["zipapp_launcher.sh.tpl"],
     visibility = ["//visibility:public"],
 )
 

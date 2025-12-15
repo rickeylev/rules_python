@@ -1,0 +1,220 @@
+# Copyright 2024 The Bazel Authors. All rights reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+"""Implementation of the `py_zipapp_binary` rule."""
+
+"""Implementation notes
+
+py_zipapp_binary(
+    name = "bin_zipapp",
+    binary = ":bin",
+    self_executable = True,
+    include_runtime = True,
+    shebang = "//some:shebang"
+)
+
+"""
+
+load(
+    "//python/private:py_executable_info.bzl",
+    "PyExecutableInfo",
+)
+load("//python/private:py_info.bzl", "PyInfo")
+load("//python/private:py_runtime_info.bzl", "PyRuntimeInfo")
+
+def _map_file_to_zip_arg(f):
+    return f.path + ":" + f.short_path
+
+def _create_zipapp_main_py(ctx, ...):
+    # Creates __main__.py, which handles when
+    # `python foo.pyz` is run.
+    # It is a stage1 bootstrap. It only extracts enough to re-exec the
+    # python interpreter within the zip file to execute the
+    # stage 2 bootstrap as soon as possible.
+    # In this execution style, we don't know what python was used to
+    # invoke the zip file.
+    zip_main_py = declare_file(...)
+    ctx.actions.expand_template(
+        template = py_runtime.zip_main_template,
+        output = zip_main_py,
+        substitutions = {...}
+    )
+
+def _build_manifest(ctx, manifest, ...):
+    # Adds path mapping lines to the manifest for zip to process
+    # A zip manifest line is `{zip_path}={input path}` where
+    # `zip_path` is the path to set in the zip. `input path` is
+    # a path to the file in the execution environment for what should
+    # be storted athe zip path. I can be empty to indicate an empty file.
+
+    manifest.add("__main__.py={}".format(zip_main.path))
+    def map_zip_empty_filenames(list_paths_cb):
+        return [
+            # FIXME @aignas 2025-12-06: what kind of paths do we expect here? Will they
+            # ever start with `../` or `external`?
+            _get_zip_runfiles_path_legacy(path, workspace_name, legacy_external_runfiles) + "="
+            for path in list_paths_cb().to_list()
+        ]
+
+    manifest.add_all(
+        # NOTE: Accessing runfiles.empty_filenames implicitly flattens the runfiles.
+        # Smuggle a lambda in via a list to defer that flattening.
+        [lambda: runfiles.empty_filenames],
+        map_each = map_zip_empty_filenames,
+        allow_closure = True,
+    )
+
+    def map_zip_runfiles(file):
+        return (
+            # NOTE: Use "+" for performance
+            _get_zip_runfiles_path_legacy(file.short_path, workspace_name, legacy_external_runfiles) +
+            "=" + file.path
+        )
+
+    manifest.add_all(runfiles.files, map_each = map_zip_runfiles, allow_closure = True)
+
+    inputs = [zip_main]
+    if _py_builtins.is_bzlmod_enabled(ctx):
+        zip_repo_mapping_manifest = ctx.actions.declare_file(
+            output.basename + ".repo_mapping",
+            sibling = output,
+        )
+        _py_builtins.create_repo_mapping_manifest(
+            ctx = ctx,
+            runfiles = runfiles,
+            output = zip_repo_mapping_manifest,
+        )
+        manifest.add("{}/_repo_mapping={}".format(
+            _ZIP_RUNFILES_DIRECTORY_NAME,
+            zip_repo_mapping_manifest.path,
+        ))
+        inputs.append(zip_repo_mapping_manifest)
+
+
+def _create_zip(ctx, ...):
+    # Creates a zip file of the application's files.
+    # The files are laid out in a way the application can understand.
+    manifest = ctx.actions.args()
+    manifest.use_param_file("@%s", use_always = True)
+    manifest.set_param_file_format("multiline")
+
+    _build_manifest(ctx, manifest)
+
+    zip_cli_args = ctx.actions.args()
+    zip_cli_args.add("cC")
+    zip_cli_args.add(output)
+
+    zip_file = ctx.actions.declare_file(ctx.label.name + ".zip")
+    ctx.actions.run(
+        executable = ctx.executable._zipper,
+        arguments = [zip_args, manifest],
+        inputs = depset(inputs, transitive = [runfiles.files]),
+        outputs = [zip_file],
+        mnemonic = "PyZipAppCreateZip",
+        progress_message = "Pre-reticulating zip archive: {}".format(ctx.label),
+    )
+
+def _create_shell_bootstrap(ctx, ...):
+    # Creates some shell code that will be prepended to the zip file
+    # to make it a self-executing file.
+    # The shell code extracts enough of the zip to execute the python
+    # runtime within the zip file, then re-execs with that.
+    # The shell code is plain sh code to try and keep it portable.
+    preamble_content = """
+#!/usr/bin/env sh
+# Generated by rules_python py_zipapp_binary
+
+cleanup_arg=""
+
+if RULES_PYTHON_EXTRACT_ROOT is set:
+  extract_to=$RULES_PYTHON_EXTRACT_ROOT/$full_target_name
+  unzip to $extract_to
+else
+  extract_to=mktemp -d
+  cleanup_arg="-XRULES_PYTHON_CLEANUP_ZIPDIR=$extract_to"
+  unzip to $extract_to
+fi
+
+python=$(locate python within $extract_to)
+
+interpreter_opts=<array of values from rule>
+
+for key, value in <env vars from rule>:
+    export key=value
+
+exec "$python" $cleanup_arg "${interpreter_opts[@]}" "$@"
+"""
+
+def _create_self_executable_zip(ctx, preamble, zip_file):
+    executable = ctx.actions.declare_file(ctx.label.name + ".pyz")
+    ctx.actions.run_shell(
+        command = "cat {prelude} {zip} > {executable}".format(
+            prelude = prelude.path,
+            zip = zip_file.path,
+            executable = executable.path,
+        ),
+        inputs = [prelude, zip_file],
+        outputs = [executable],
+        use_default_shell_env = True,
+        mnemonic = "PyZipAppCreateExecutableZip",
+        progress_message = "Reticulating zipapp: %{label}",
+    )
+    return executable
+
+def _py_zipapp_binary_impl(ctx):
+    py_executable = ctx.attr.py_binary[PyExecutableInfo]
+    main_file = py_executable.main
+    bin_runtime = ctx.attr.py_binary[PyRuntimeInfo]
+
+    toolchain_info = ctx.toolchains["@rules_python//python:toolchain_type"]
+    py_runtime = toolchain_info.py3_runtime
+
+    zip_file = _create_zip(ctx, ...)
+    preamble = _create_shell_preamble(ctx, ...)
+    executable = _create_self_executable_zip(preamble, zip_file)
+
+    # Add the zip file, interpreter, and temp_launcher to the runfiles of the executable
+
+    return [
+        DefaultInfo(
+            files = depset([executable]),
+            runfiles = ctx.runfiles(files = [executable])
+            executable = executable,
+        ),
+    ]
+
+py_zipapp_binary_rule = rule(
+    implementation = _py_zipapp_binary_impl,
+    attrs = {
+        "py_binary": attr.label(
+            providers = [PyExecutableInfo],
+            mandatory = True,
+        ),
+        "srcs": attr.label_list(allow_files = True),
+        "deps": attr.label_list(providers = [PyInfo], allow_files = True),
+        "config_settings": attr.label_keyed_string_dict(),
+        "_zipper": attr.label(
+            cfg = "exec",
+            executable = True,
+            default = "@bazel_tools//tools/zip:zipper",
+        ),
+        "_zipapp_launcher_template": attr.label(
+            default = "//python/private:zipapp_launcher_tpl",
+            allow_single_file = True,
+        ),
+    },
+    executable = True,
+    toolchains = ["@rules_python//python:toolchain_type"],
+    fragments = ["py"],
+)
