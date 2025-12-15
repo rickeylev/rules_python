@@ -1,0 +1,28 @@
+load("//python:py_binary.bzl", "py_binary")
+load("//python:py_test.bzl", "py_test")
+load("//python/zipapp:py_zipapp_binary.bzl", "py_zipapp_binary")
+
+py_binary(
+    name = "bin",
+    srcs = ["main.py"],
+    config_settings = {
+        "//python/config_settings:bootstrap_impl": "script",
+        "//python/config_settings:venvs_site_packages": "yes",
+    },
+    main = "main.py",
+    deps = ["@dev_pip//absl_py"],
+)
+
+py_zipapp_binary(
+    name = "bin_zipapp",
+    binary = ":bin",
+)
+
+py_test(
+    name = "zipapp_test",
+    srcs = ["zipapp_test.py"],
+    data = [":bin_zipapp"],
+    env = {
+        "TEST_ZIPAPP": "$(location :bin_zipapp)",
+    },
+)

@@ -76,6 +76,10 @@ END_UNRELEASED_TEMPLATE
 * (binaries/tests) Build information is now included in binaries and tests.
   Use the `bazel_binary_info` module to access it. The {flag}`--stamp` flag will
   add {flag}`--workspace_status` information.
+* (zipapp) {obj}`py_zipapp_binary` and {obj}`py_zipapp_test` rules added. These
+  will replace `--build_python_zip` and the zip output group of
+  `py_binary/py_test`. The zipapp rules support more functionality, correctness,
+  and have better build performance.
 
 {#v1-8-0}
 ## [1.8.0] - 2025-12-19
