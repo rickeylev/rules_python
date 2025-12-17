@@ -384,11 +384,13 @@ def _whl_library_impl(rctx):
             supports_whl_extraction = rp_config.supports_whl_extraction,
         )
 
+        install_dir_path = whl_path.dirname.get_child("site-packages")
         metadata = whl_metadata(
-            install_dir = whl_path.dirname.get_child("site-packages"),
+            install_dir = install_dir_path,
             read_fn = rctx.read,
             logger = logger,
         )
+        namespace_package_files = pypi_repo_utils.find_namespace_package_files(rctx, install_dir_path)
 
         # NOTE @aignas 2024-06-22: this has to live on until we stop supporting
         # passing `twine` as a `:pkg` library via the `WORKSPACE` builds.
@@ -432,6 +434,7 @@ def _whl_library_impl(rctx):
             data_exclude = rctx.attr.pip_data_exclude,
             group_deps = rctx.attr.group_deps,
             group_name = rctx.attr.group_name,
+            namespace_package_files = namespace_package_files,
         )
     else:
         target_platforms = rctx.attr.experimental_target_platforms or []
@@ -491,6 +494,8 @@ def _whl_library_impl(rctx):
             )
             entry_points[entry_point_without_py] = entry_point_script_name
 
+        namespace_package_files = pypi_repo_utils.find_namespace_package_files(rctx, rctx.path("site-packages"))
+
         build_file_contents = generate_whl_library_build_bazel(
             name = whl_path.basename,
             sdist_filename = sdist_filename,
@@ -509,6 +514,7 @@ def _whl_library_impl(rctx):
                 "pypi_name={}".format(metadata["name"]),
                 "pypi_version={}".format(metadata["version"]),
             ],
+            namespace_package_files = namespace_package_files,
         )
 
     # Delete these in case the wheel had them. They generally don't cause
