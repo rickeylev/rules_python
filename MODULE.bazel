@@ -228,6 +228,14 @@ bazel_dep(name = "another_module", version = "0", dev_dependency = True)
 # We use `WORKSPACE.bzlmod` because it is impossible to have dev-only local overrides.
 bazel_dep(name = "rules_go", version = "0.41.0", dev_dependency = True, repo_name = "io_bazel_rules_go")
 
+archive_override(
+    module_name = "rules_pkg",
+    urls = [
+        "https://mirror.bazel.build/github.com/bazelbuild/rules_pkg/releases/download/1.2.0/rules_pkg-1.2.0.tar.gz",
+        "https://github.com/bazelbuild/rules_pkg/releases/download/1.2.0/rules_pkg-1.2.0.tar.gz",
+    ],
+)
+
 internal_dev_deps = use_extension(
     "//python/private:internal_dev_deps.bzl",
     "internal_dev_deps",
