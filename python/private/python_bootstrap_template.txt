@@ -357,6 +357,9 @@ def _RunExecv(python_program, argv, env):
     raise
 
 def Main():
+  print_verbose("sys.executable:", sys.executable)
+  print_verbose("sys._base_executable:", sys._base_executable)
+  print_verbose("sys.version:", sys.version)
   print_verbose("initial argv:", values=sys.argv)
   print_verbose("initial cwd:", os.getcwd())
   print_verbose("initial environ:", mapping=os.environ)

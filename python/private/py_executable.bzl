@@ -548,7 +548,13 @@ def _create_venv(ctx, output_prefix, imports, runtime_details, add_runfiles_root
         # needed or used at runtime. However, the zip code uses the interpreter
         # File object to figure out some paths.
         interpreter = ctx.actions.declare_file("{}/{}".format(bin_dir, py_exe_basename))
-        ctx.actions.write(interpreter, "actual:{}".format(interpreter_actual_path))
+
+        # todo: system_python not handling this case
+        ##ctx.actions.write(interpreter, "actual:{}".format(interpreter_actual_path))
+        ctx.actions.write(
+            interpreter,
+            "#!/bin/sh\necho 'tried to use venv interpreter when it should not'; exit 1",
+        )
 
     elif runtime.interpreter:
         # Even though ctx.actions.symlink() is used, using
