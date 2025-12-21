@@ -349,7 +349,12 @@ def _RunExecv(python_program, argv, env):
   print_verbose("RunExecv: environ:", mapping=os.environ)
   print_verbose("RunExecv: python:", python_program)
   print_verbose("RunExecv: argv:", values=argv)
-  os.execv(python_program, argv)
+  try:
+    os.execv(python_program, argv)
+  except:
+    with open(python_program, 'rb') as f:
+      print_verbose("pyprog head:" + str(f.read(50)))
+    raise
 
 def Main():
   print_verbose("initial argv:", values=sys.argv)
