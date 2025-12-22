@@ -526,8 +526,6 @@ def _create_venv(ctx, output_prefix, imports, runtime_details, add_runfiles_root
     venvs_use_declare_symlink_enabled = (
         VenvsUseDeclareSymlinkFlag.get_value(ctx) == VenvsUseDeclareSymlinkFlag.YES
     )
-
-    # todo: default this to True for bootstrap=system_python ?
     recreate_venv_at_runtime = False
 
     if runtime.interpreter:
@@ -549,12 +547,7 @@ def _create_venv(ctx, output_prefix, imports, runtime_details, add_runfiles_root
         # File object to figure out some paths.
         interpreter = ctx.actions.declare_file("{}/{}".format(bin_dir, py_exe_basename))
 
-        # todo: system_python not handling this case
-        ##ctx.actions.write(interpreter, "actual:{}".format(interpreter_actual_path))
-        ctx.actions.write(
-            interpreter,
-            "#!/bin/sh\necho 'ERROR: tried to use build-time venv when it should recreate venv'; exit 1",
-        )
+        ctx.actions.write(interpreter, "actual:{}".format(interpreter_actual_path))
 
     elif runtime.interpreter:
         # Even though ctx.actions.symlink() is used, using

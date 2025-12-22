@@ -19,17 +19,12 @@ load(":runtime_env_toolchain_tests.bzl", "runtime_env_toolchain_test_suite")
 
 runtime_env_toolchain_test_suite(name = "runtime_env_toolchain_tests")
 
-print(PYTHON_VERSION)
-
 py_reconfig_test(
     name = "toolchain_runs_test",
     srcs = ["toolchain_runs_test.py"],
     data = [
         "//tests/support:current_build_settings",
     ],
-    env = {
-        "RULES_PYTHON_BOOTSTRAP_VERBOSE": "1",
-    },
     extra_toolchains = [
         "//python/runtime_env_toolchains:all",
         # Necessary for RBE CI

@@ -280,7 +280,7 @@ print(site.getsitepackages(["{venv}"])[-1])
         output = output.strip().split("\n")
         python_exe_actual = output[0]
         venv_site_packages = output[1]
-        os.makedirs(dirname(venv_site_package), exist_ok=True)
+        os.makedirs(dirname(venv_site_packages), exist_ok=True)
         runfiles_venv_site_packages = join(runfiles_venv, VENV_REL_SITE_PACKAGES)
     else:
         python_exe_actual = FindBinary(runfiles_root, PYTHON_BINARY_ACTUAL)
@@ -362,7 +362,8 @@ def ExecuteFile(python_program, main_filename, args, env, runfiles_root,
     runfiles_root: (str) Path to the module space/runfiles tree directory
     workspace: (str|None) Name of the workspace to execute in. This is expected to be a
         directory under the runfiles tree.
-    delete_dirs: (list[str])
+    delete_dirs: (list[str]) directories that should be deleted after the user
+        program has finished running.
   """
   argv = [python_program]
   argv.extend(INTERPRETER_ARGS)
