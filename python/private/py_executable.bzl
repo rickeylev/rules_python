@@ -553,7 +553,7 @@ def _create_venv(ctx, output_prefix, imports, runtime_details, add_runfiles_root
         ##ctx.actions.write(interpreter, "actual:{}".format(interpreter_actual_path))
         ctx.actions.write(
             interpreter,
-            "#!/bin/sh\necho 'tried to use venv interpreter when it should not'; exit 1",
+            "#!/bin/sh\necho 'ERROR: tried to use build-time venv when it should recreate venv'; exit 1",
         )
 
     elif runtime.interpreter:
