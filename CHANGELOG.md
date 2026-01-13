@@ -47,7 +47,6 @@ BEGIN_UNRELEASED_TEMPLATE
 END_UNRELEASED_TEMPLATE
 -->
 
-
 {#v1-8-0}
 ## [1.8.0] - 2025-12-19
 
@@ -125,6 +124,8 @@ END_UNRELEASED_TEMPLATE
 * (gazelle) Fix `gazelle_python_manifest.test` so that it accesses manifest files via `runfile` path handling rather than directly ([#3397](https://github.com/bazel-contrib/rules_python/issues/3397)).
 * (core rules) For the system_python bootstrap, the runfiles root is added to
   sys.path.
+* (gazelle) Ancestor `conftest.py` files are added in addition to sibling `conftest.py`.
+  ([#3497](https://github.com/bazel-contrib/rules_python/issues/3497))
 
 {#v1-8-0-added}
 ### Added
