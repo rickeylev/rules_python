@@ -138,6 +138,7 @@ END_UNRELEASED_TEMPLATE
 ### Fixed
 * (gazelle) Remove {obj}`py_binary` targets with invalid `srcs`. This includes files
   that are not generated or regular files.
+  [#3046](https://github.com/bazel-contrib/rules_python/pull/3046)
 * (runfiles) Fix incorrect Python runfiles path assumption - the existing
   implementation assumes that it is always four levels below the runfiles
   directory, leading to incorrect path checks
