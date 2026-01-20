@@ -47,6 +47,14 @@ BEGIN_UNRELEASED_TEMPLATE
 END_UNRELEASED_TEMPLATE
 -->
 
+{#v1-8-1}
+## [1.8.1] - 2026-01-20
+
+{#v1-8-1-fixed}
+### Fixed
+* (pipstar) Extra resolution that refers back to the package being resolved works again.
+  Fixes [#3524](https://github.com/bazel-contrib/rules_python/issues/3524).
+
 {#v1-8-0}
 ## [1.8.0] - 2025-12-19
 
