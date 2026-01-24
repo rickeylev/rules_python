@@ -78,6 +78,10 @@ END_UNRELEASED_TEMPLATE
 * (binaries/tests) Build information is now included in binaries and tests.
   Use the `bazel_binary_info` module to access it. The {flag}`--stamp` flag will
   add {flag}`--workspace_status` information.
+* (gazelle) A new directive `python_generate_pyi_deps` has been added. When
+  `true`, a `py_*` target's `pyi_srcs` attribute will be set if any `.pyi` files
+  that are associated with the target's `srcs` are present.
+  ([#3354](https://github.com/bazel-contrib/rules_python/issues/3354)).
 
 {#v1-8-1}
 ## [1.8.1] - 2026-01-20
