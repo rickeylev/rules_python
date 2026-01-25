@@ -8,6 +8,12 @@ load("//python/private:py_internal.bzl", "py_internal")
 load("//python/private:py_runtime_info.bzl", "PyRuntimeInfo")
 load("//python/private:toolchain_types.bzl", "EXEC_TOOLS_TOOLCHAIN_TYPE")
 
+def _is_symlink(f):
+    if hasattr(f, "is_symlink"):
+        return str(int(f.is_symlink))
+    else:
+        return "-1"
+
 def _create_zipapp_main_py(ctx, py_runtime, py_executable, stage2_bootstrap):
     python_exe = py_executable.venv_python_exe
     python_exe_path = runfiles_root_path(ctx, python_exe.short_path)
@@ -34,13 +40,13 @@ def _map_zip_empty_filenames(list_paths_cb):
     return ["rf-empty|" + path for path in list_paths_cb().to_list()]
 
 def _map_zip_runfiles(file):
-    return "rf-file|" + str(int(file.is_symlink)) + "|" + file.short_path + "|" + file.path
+    return "rf-file|" + _is_symlink(file) + "|" + file.short_path + "|" + file.path
 
 def _map_zip_symlinks(entry):
-    return "rf-symlink|" + str(int(entry.target_file.is_symlink)) + "|" + entry.path + "|" + entry.target_file.path
+    return "rf-symlink|" + _is_symlink(entry.target_file) + "|" + entry.path + "|" + entry.target_file.path
 
 def _map_zip_root_symlinks(entry):
-    return "rf-root-symlink|" + str(int(entry.target_file.is_symlink)) + "|" + entry.path + "|" + entry.target_file.path
+    return "rf-root-symlink|" + _is_symlink(entry.target_file) + "|" + entry.path + "|" + entry.target_file.path
 
 def _build_manifest(ctx, manifest, runfiles, zip_main):
     manifest.add("regular|0|__main__.py|{}".format(zip_main.path))

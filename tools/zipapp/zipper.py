@@ -102,6 +102,12 @@ def _write_entry(zf, entry, compress_type):
         zf.writestr(zi, "")
         return
 
+    if is_symlink_str == "-1":
+      if not os.path.exists(content_path):
+        is_symlink_str = "1"
+      else:
+        is_symlink_str = "0"
+
     is_symlink = is_symlink_str == "1"
 
     if is_symlink:
@@ -170,9 +176,13 @@ Path to the manifest file. Lines have one of the following formats:
 5. `rf-root-symlink|is_symlink|runfile_root_path|content_path`: Store a
    runfiles-root-relative path in the zip.
 
-In all cases, `is_symlink` is `1` or `0` if the path should be stored
-as a symlink whose value is read (using `readlink()`) from `content_path`.
-The `runfiles_path`
+In all cases, `is_symlink` has the following values:
+* `1` means it should be stored as a symlink whose value is read
+  (using `readlink()`) from `content_path`.
+* `0` means to store it as a regular file, read from `content_path`
+* `-1` occurs with Bazel 7 (because it lacks `File.is_symlink`), which means
+  to infer whether it's a symlink (files to be stored as symlinks can be
+  determined by looking for symlinks that point to non-existent files).
 
 For runfiles entries, they have `--runfiles-dir` prepended to their computed
 zip path.
