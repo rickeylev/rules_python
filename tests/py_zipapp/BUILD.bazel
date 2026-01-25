@@ -2,7 +2,6 @@ load("//python:py_binary.bzl", "py_binary")
 load("//python:py_test.bzl", "py_test")
 load("//python/private:bzlmod_enabled.bzl", "BZLMOD_ENABLED")
 load("//python/zipapp:py_zipapp_binary.bzl", "py_zipapp_binary")
-load("//tests/support:support.bzl", "BAZEL_8_OR_LATER")
 
 py_binary(
     name = "venv_bin",
@@ -18,7 +17,6 @@ py_binary(
 py_zipapp_binary(
     name = "venv_zipapp",
     binary = ":venv_bin",
-    #target_compatible_with = BAZEL_8_OR_LATER,
 )
 
 py_test(
