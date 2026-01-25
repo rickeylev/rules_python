@@ -47,6 +47,14 @@ BEGIN_UNRELEASED_TEMPLATE
 END_UNRELEASED_TEMPLATE
 -->
 
+{#v1-8-2}
+## [1.8.2] - 2026-01-24
+
+{#v1-8-2-fixed}
+### Fixed
+* (venvs) relax the C library filename check to make tensorflow work
+  Fixes [#3524](https://github.com/bazel-contrib/rules_python/issues/3529).
+
 {#v1-8-1}
 ## [1.8.1] - 2026-01-20
 
