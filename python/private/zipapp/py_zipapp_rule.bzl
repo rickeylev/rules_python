@@ -1,12 +1,14 @@
 """Implementation of the zipapp rules."""
 
 load("@bazel_skylib//lib:paths.bzl", "paths")
+load("//python/private:attributes.bzl", "apply_config_settings_attr")
 load("//python/private:builders.bzl", "builders")
 load("//python/private:common.bzl", "actions_run", "maybe_create_repo_mapping", "runfiles_root_path")
 load("//python/private:py_executable_info.bzl", "PyExecutableInfo")
 load("//python/private:py_internal.bzl", "py_internal")
 load("//python/private:py_runtime_info.bzl", "PyRuntimeInfo")
 load("//python/private:toolchain_types.bzl", "EXEC_TOOLS_TOOLCHAIN_TYPE")
+load("//python/private:transition_labels.bzl", "TRANSITION_LABELS")
 
 def _is_symlink(f):
     if hasattr(f, "is_symlink"):
@@ -193,6 +195,15 @@ def _py_zipapp_executable_impl(ctx):
         ),
     ]
 
+def _transition_zipapp_impl(settings, attr):
+    return apply_config_settings_attr(dict(settings), attr)
+
+_zipapp_transition = transition(
+    implementation = _transition_zipapp_impl,
+    inputs = TRANSITION_LABELS,
+    outputs = TRANSITION_LABELS,
+)
+
 _ATTRS = {
     "binary": attr.label(
         doc = """
@@ -209,11 +220,44 @@ Typically 0 to 9, with higher numbers being to compress more.
 """,
         default = "",
     ),
+    "config_settings": attr.label_keyed_string_dict(
+        doc = """
+Config settings to change for this target.
+
+The keys are labels for settings, and the values are strings for the new value
+to use. Pass `Label` objects or canonical label strings for the keys to ensure
+they resolve as expected (canonical labels start with `@@` and can be
+obtained by calling `str(Label(...))`).
+
+Most `@rules_python//python/config_setting` settings can be used here, which
+allows, for example, making only a certain `py_binary` use
+{obj}`--boostrap_impl=script`.
+
+Additional or custom config settings can be registered using the
+{obj}`add_transition_setting` API. This allows, for example, forcing a
+particular CPU, or defining a custom setting that `select()` uses elsewhere
+to pick between `pip.parse` hubs. See the [How to guide on multiple
+versions of a library] for a more concrete example.
+
+:::{note}
+These values are transitioned on, so will affect the analysis graph and the
+associated memory overhead. The more unique configurations in your overall
+build, the more memory and (often unnecessary) re-analysis and re-building
+can occur. See
+https://bazel.build/extending/config#memory-performance-considerations for
+more information about risks and considerations.
+:::
+""",
+    ),
     "executable": attr.bool(
         doc = """
 Whether the output should be an executable zip file.
 """,
         default = True,
+    ),
+    # Required to opt-in to the transition feature.
+    "_allowlist_function_transition": attr.label(
+        default = "@bazel_tools//tools/allowlists/function_transition_allowlist",
     ),
     "_exe_zip_maker": attr.label(
         cfg = "exec",
@@ -240,6 +284,7 @@ Packages a `py_binary` as a Python zipapp.
     # based on the `executable` attribute.
     executable = True,
     toolchains = _TOOLCHAINS,
+    cfg = _zipapp_transition,
 )
 
 py_zipapp_test = rule(
@@ -254,4 +299,5 @@ This target is also a valid test target to run.
     # based on the `executable` attribute.
     test = True,
     toolchains = _TOOLCHAINS,
+    cfg = _zipapp_transition,
 )
