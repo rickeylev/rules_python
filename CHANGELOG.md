@@ -61,6 +61,8 @@ END_UNRELEASED_TEMPLATE
 * (binaries/tests) The `PYTHONBREAKPOINT` environment variable is automatically inherited
 * (binaries/tests) The {obj}`stamp` attribute now transitions the Bazel builtin
   {obj}`--stamp` flag.
+* (pypi) Now the RECORD file patches will follow the quoted or unquoted filenames convention
+  in order to make `pytorch` and friends easier to patch.
 
 {#v0-0-0-fixed}
 ### Fixed
@@ -76,10 +78,31 @@ END_UNRELEASED_TEMPLATE
 * (binaries/tests) Build information is now included in binaries and tests.
   Use the `bazel_binary_info` module to access it. The {flag}`--stamp` flag will
   add {flag}`--workspace_status` information.
+* (gazelle) A new directive `python_generate_pyi_deps` has been added. When
+  `true`, a `py_*` target's `pyi_srcs` attribute will be set if any `.pyi` files
+  that are associated with the target's `srcs` are present.
+  ([#3354](https://github.com/bazel-contrib/rules_python/issues/3354)).
 * (zipapp) {obj}`py_zipapp_binary` and {obj}`py_zipapp_test` rules added. These
   will replace `--build_python_zip` and the zip output group of
   `py_binary/py_test`. The zipapp rules support more functionality, correctness,
   and have better build performance.
+
+{#v1-8-2}
+## [1.8.2] - 2026-01-24
+
+{#v1-8-2-fixed}
+### Fixed
+* (venvs) relax the C library filename check to make tensorflow work
+  Fixes [#3524](https://github.com/bazel-contrib/rules_python/issues/3529).
+
+{#v1-8-1}
+## [1.8.1] - 2026-01-20
+
+{#v1-8-1-fixed}
+### Fixed
+* (pipstar) Extra resolution that refers back to the package being resolved works again.
+  Fixes [#3524](https://github.com/bazel-contrib/rules_python/issues/3524).
+>>>>>>> b4ec825850fb27e5568165d0a388f5cc4b2b84a2
 
 {#v1-8-0}
 ## [1.8.0] - 2025-12-19
@@ -142,6 +165,7 @@ END_UNRELEASED_TEMPLATE
 ### Fixed
 * (gazelle) Remove {obj}`py_binary` targets with invalid `srcs`. This includes files
   that are not generated or regular files.
+  [#3046](https://github.com/bazel-contrib/rules_python/pull/3046)
 * (runfiles) Fix incorrect Python runfiles path assumption - the existing
   implementation assumes that it is always four levels below the runfiles
   directory, leading to incorrect path checks
