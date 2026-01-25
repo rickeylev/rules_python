@@ -1,10 +1,11 @@
 load("//python:py_binary.bzl", "py_binary")
 load("//python:py_test.bzl", "py_test")
+load("//python/private:bzlmod_enabled.bzl", "BZLMOD_ENABLED")
 load("//python/zipapp:py_zipapp_binary.bzl", "py_zipapp_binary")
 load("//tests/support:support.bzl", "BAZEL_8_OR_LATER")
 
 py_binary(
-    name = "bin",
+    name = "venv_bin",
     srcs = ["main.py"],
     config_settings = {
         "//python/config_settings:bootstrap_impl": "script",
@@ -15,16 +16,17 @@ py_binary(
 )
 
 py_zipapp_binary(
-    name = "bin_zipapp",
-    binary = ":bin",
+    name = "venv_zipapp",
+    binary = ":venv_bin",
     #target_compatible_with = BAZEL_8_OR_LATER,
 )
 
 py_test(
-    name = "zipapp_test",
-    srcs = ["zipapp_test.py"],
-    data = [":bin_zipapp"],
+    name = "venv_zipapp_test",
+    srcs = ["venv_zipapp_test.py"],
+    data = [":venv_zipapp"],
     env = {
-        "TEST_ZIPAPP": "$(location :bin_zipapp)",
+        "TEST_ZIPAPP": "$(location :venv_zipapp)",
+        "BZLMOD_ENABLED": str(int(BZLMOD_ENABLED)),
     },
 )
