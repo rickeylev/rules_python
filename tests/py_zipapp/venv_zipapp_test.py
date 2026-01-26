@@ -37,7 +37,7 @@ class PyZipAppTest(unittest.TestCase):
             self.fail(msg or f"Path '{path}' is not a symlink")
 
     def _is_bzlmod_enabled(self):
-      return os.environ["BZLMOD_ENABLED"] == "1"
+        return os.environ["BZLMOD_ENABLED"] == "1"
 
     def test_zipapp_structure(self):
         zipapp_path = os.environ["TEST_ZIPAPP"]
@@ -46,7 +46,7 @@ class PyZipAppTest(unittest.TestCase):
             namelist = zf.namelist()
 
             if self._is_bzlmod_enabled():
-              self.assertIn("runfiles/_repo_mapping", namelist)
+                self.assertIn("runfiles/_repo_mapping", namelist)
 
             self.assertHasPathMatchingSuffix(namelist, "/pyvenv.cfg")
 

@@ -24,7 +24,7 @@ py_test(
     srcs = ["venv_zipapp_test.py"],
     data = [":venv_zipapp"],
     env = {
-        "TEST_ZIPAPP": "$(location :venv_zipapp)",
         "BZLMOD_ENABLED": str(int(BZLMOD_ENABLED)),
+        "TEST_ZIPAPP": "$(location :venv_zipapp)",
     },
 )

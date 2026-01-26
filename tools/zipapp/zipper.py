@@ -103,10 +103,10 @@ def _write_entry(zf, entry, compress_type):
         return
 
     if is_symlink_str == "-1":
-      if not os.path.exists(content_path):
-        is_symlink_str = "1"
-      else:
-        is_symlink_str = "0"
+        if not os.path.exists(content_path):
+            is_symlink_str = "1"
+        else:
+            is_symlink_str = "0"
 
     is_symlink = is_symlink_str == "1"
 
