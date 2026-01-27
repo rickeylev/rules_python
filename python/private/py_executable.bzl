@@ -480,7 +480,7 @@ def _create_executable(
         # runtime files)
         app_runfiles = app_runfiles.build(ctx),
         # File|None; the venv `bin/python3` file, if any.
-        venv_python_exe = venv.interpreter,
+        venv_python_exe = venv.interpreter if venv else None,
     )
 
 def _create_zip_main(ctx, *, stage2_bootstrap, runtime_details, venv):
