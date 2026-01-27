@@ -213,7 +213,10 @@ def _transition_zipapp_impl(settings, attr):
 _zipapp_transition = transition(
     implementation = _transition_zipapp_impl,
     inputs = TRANSITION_LABELS,
-    outputs = TRANSITION_LABELS + [labels.BUILD_PYTHON_ZIP],
+    outputs = TRANSITION_LABELS + [
+        labels.BUILD_PYTHON_ZIP,
+        "//command_line_option:build_python_zip",
+    ],
 )
 
 _ATTRS = {
