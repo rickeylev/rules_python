@@ -4,6 +4,7 @@ load("@bazel_skylib//lib:paths.bzl", "paths")
 load("//python/private:attributes.bzl", "apply_config_settings_attr")
 load("//python/private:builders.bzl", "builders")
 load("//python/private:common.bzl", "actions_run", "maybe_create_repo_mapping", "runfiles_root_path")
+load("//python/private:common_labels.bzl", "labels")
 load("//python/private:py_executable_info.bzl", "PyExecutableInfo")
 load("//python/private:py_internal.bzl", "py_internal")
 load("//python/private:py_runtime_info.bzl", "PyRuntimeInfo")
@@ -202,12 +203,16 @@ def _py_zipapp_executable_impl(ctx):
     ]
 
 def _transition_zipapp_impl(settings, attr):
-    return apply_config_settings_attr(dict(settings), attr)
+    settings = apply_config_settings_attr(dict(settings), attr)
+
+    # Force this to false, otherwise the binary is already a zipapp
+    settings[labels.BUILD_PYTHON_ZIP] = False
+    return settings
 
 _zipapp_transition = transition(
     implementation = _transition_zipapp_impl,
     inputs = TRANSITION_LABELS,
-    outputs = TRANSITION_LABELS,
+    outputs = TRANSITION_LABELS + [labels.BUILD_PYTHON_ZIP],
 )
 
 _ATTRS = {
