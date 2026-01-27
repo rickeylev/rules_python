@@ -457,8 +457,9 @@ def _create_executable(
 
     app_runfiles = builders.RunfilesBuilder()
     app_runfiles.add(runfiles_details.app_runfiles)
-    app_runfiles.add(venv.files_without_interpreter)
-    app_runfiles.add(venv.lib_runfiles)
+    if venv:
+        app_runfiles.add(venv.files_without_interpreter)
+        app_runfiles.add(venv.lib_runfiles)
 
     # The interpreter is added this late in the process so that it isn't
     # added to the zipped files.
