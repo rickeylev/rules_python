@@ -207,7 +207,7 @@ def _transition_zipapp_impl(settings, attr):
 
     # Force this to false, otherwise the binary is already a zipapp
     settings[labels.BUILD_PYTHON_ZIP] = False
-    settings["//command_line_option:build_python_zip"] = "false"
+    maybe_builtin_build_python_zip("false", settings)
     return settings
 
 _zipapp_transition = transition(
@@ -215,8 +215,7 @@ _zipapp_transition = transition(
     inputs = TRANSITION_LABELS,
     outputs = TRANSITION_LABELS + [
         labels.BUILD_PYTHON_ZIP,
-        "//command_line_option:build_python_zip",
-    ],
+    ] + BUILTIN_BUILD_PYTHON_ZIP,
 )
 
 _ATTRS = {

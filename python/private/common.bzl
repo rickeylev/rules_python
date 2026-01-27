@@ -16,6 +16,7 @@
 load("@bazel_skylib//lib:paths.bzl", "paths")
 load("@rules_cc//cc/common:cc_common.bzl", "cc_common")
 load("@rules_cc//cc/common:cc_info.bzl", "CcInfo")
+load("@rules_python_internal//:rules_python_config.bzl", "config")
 load("//python/private:py_interpreter_program.bzl", "PyInterpreterProgramInfo")
 load("//python/private:toolchain_types.bzl", "EXEC_TOOLS_TOOLCHAIN_TYPE")
 load(":cc_helper.bzl", "cc_helper")
@@ -42,6 +43,17 @@ PYTHON_FILE_EXTENSIONS = [
     "pyi",
     "so",  # Python C modules, usually Linux
 ]
+
+BUILTIN_BUILD_PYTHON_ZIP = [] if config.bazel_10_or_later else [
+    "//command_line_option:build_python_zip",
+]
+
+def maybe_builtin_build_python_zip(value, settings = None):
+    settings = settings or {}
+    if not config.bazel_10_or_later:
+        settings["//command_line_option:build_python_zip"] = value
+
+    return settings
 
 def create_binary_semantics_struct(
         *,
