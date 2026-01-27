@@ -18,7 +18,12 @@ def _is_symlink(f):
 
 def _create_zipapp_main_py(ctx, py_runtime, py_executable, stage2_bootstrap):
     python_exe = py_executable.venv_python_exe
-    python_exe_path = runfiles_root_path(ctx, python_exe.short_path)
+    if python_exe:
+        python_exe_path = runfiles_root_path(ctx, python_exe.short_path)
+    elif py_runtime.interpreter:
+        python_exe_path = runfiles_root_path(ctx, py_runtime.interpreter.short_path)
+    else:
+        python_exe_path = py_runtime.interpreter_path
 
     if py_runtime.interpreter:
         python_binary_actual_path = runfiles_root_path(ctx, py_runtime.interpreter.short_path)
@@ -89,7 +94,8 @@ def _create_zip(ctx, py_runtime, py_executable, stage2_bootstrap):
     runfiles = builders.RunfilesBuilder()
 
     runfiles.add(py_runtime.files)
-    runfiles.add(py_executable.venv_python_exe)
+    if py_executable.venv_python_exe:
+        runfiles.add(py_executable.venv_python_exe)
     runfiles.add(py_executable.app_runfiles)
     runfiles.add(stage2_bootstrap)
 

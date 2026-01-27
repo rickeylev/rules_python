@@ -28,3 +28,28 @@ py_test(
         "TEST_ZIPAPP": "$(location :venv_zipapp)",
     },
 )
+
+py_binary(
+    name = "system_python_bin",
+    srcs = ["main.py"],
+    config_settings = {
+        "//python/config_settings:bootstrap_impl": "system_python",
+        "//python/config_settings:venvs_site_packages": "no",
+    },
+    main = "main.py",
+    deps = ["@dev_pip//absl_py"],
+)
+
+py_zipapp_binary(
+    name = "system_python_zipapp",
+    binary = ":system_python_bin",
+)
+
+py_test(
+    name = "system_python_zipapp_test",
+    srcs = ["system_python_zipapp_test.py"],
+    data = [":system_python_zipapp"],
+    env = {
+        "TEST_ZIPAPP": "$(location :system_python_zipapp)",
+    },
+)
