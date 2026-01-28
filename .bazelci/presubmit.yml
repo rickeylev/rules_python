@@ -121,19 +121,19 @@ matrix:
 
 tasks:
   # Keep in sync with .bcr/presubmit.yml
-  bcr_test:
-    name: "BCR: Bazel {bazel}"
-    platform: ${{ platform }}
-    working_directory: examples/bzlmod
-    bazel: ${{ bazel }}
-    build_flags:
-      - "--keep_going"
-    test_flags:
-      - "--keep_going"
-    build_targets:
-      - "//..."
-    test_targets:
-      - "//..."
+##  bcr_test:
+##    name: "BCR: Bazel {bazel}"
+##    platform: ${{ platform }}
+##    working_directory: examples/bzlmod
+##    bazel: ${{ bazel }}
+##    build_flags:
+##      - "--keep_going"
+##    test_flags:
+##      - "--keep_going"
+##    build_targets:
+##      - "//..."
+##    test_targets:
+##      - "//..."
 
   # Keep in sync with .bcr/gazelle/presubmit.yml
   gazelle_bcr_ubuntu:

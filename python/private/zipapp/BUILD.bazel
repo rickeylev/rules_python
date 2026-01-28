@@ -18,6 +18,7 @@ bzl_library(
         "//python/private:attributes_bzl",
         "//python/private:builders_bzl",
         "//python/private:common_bzl",
+        "//python/private:common_labels_bzl",
         "//python/private:py_executable_info_bzl",
         "//python/private:py_info_bzl",
         "//python/private:py_internal_bzl",
