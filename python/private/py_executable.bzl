@@ -889,7 +889,8 @@ def _create_zip_file(ctx, *, output, zip_main, runfiles):
     zip_cli_args.add(output)
 
     ctx.actions.run(
-        executable = ctx.executable._zipper,
+        ##executable = ctx.executable._zipper,
+        executable = "NONONO_ZIPPER",
         arguments = [zip_cli_args, manifest],
         inputs = depset(inputs, transitive = [runfiles.files]),
         outputs = [output],

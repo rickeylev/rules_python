@@ -257,6 +257,8 @@ tasks:
     platform: windows
     test_flags:
       - "--test_tag_filters=-integration-test,-fix-windows"
+    test_targets:
+      - "//tests/py_zipapp/..."
   rbe_min:
     <<: *minimum_supported_version
     <<: *reusable_config
