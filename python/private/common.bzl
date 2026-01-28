@@ -583,6 +583,7 @@ def actions_run(
     # Give precedence to caller's env.
     action_env.update(kwargs.pop("env", None) or {})
     action_arguments.extend(arguments)
+    print("actions_run: exe:", action_exe)
     ctx.actions.run(
         executable = action_exe,
         arguments = action_arguments,
