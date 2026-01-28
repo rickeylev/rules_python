@@ -557,6 +557,8 @@ def actions_run(
                 EXEC_TOOLS_TOOLCHAIN_TYPE,
                 toolchain,
             ))
+        tc = ctx.toolchains[EXEC_TOOLS_TOOLCHAIN_TYPE]
+        print("==== exec_tools tc:", tc)
         exec_tools = ctx.toolchains[EXEC_TOOLS_TOOLCHAIN_TYPE].exec_tools
         action_exe = exec_tools.exec_interpreter[DefaultInfo].files_to_run
 
@@ -583,7 +585,7 @@ def actions_run(
     # Give precedence to caller's env.
     action_env.update(kwargs.pop("env", None) or {})
     action_arguments.extend(arguments)
-    print("actions_run: exe:", action_exe)
+    print("==== actions_run: exe:", action_exe)
     ctx.actions.run(
         executable = action_exe,
         arguments = action_arguments,
