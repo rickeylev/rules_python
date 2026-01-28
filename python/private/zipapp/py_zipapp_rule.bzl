@@ -169,7 +169,7 @@ def _create_self_executable_zip(ctx, preamble, zip_file):
         ctx,
         executable = ctx.attr._exe_zip_maker,
         arguments = [args],
-        inputs = [preamble, zip_file],
+        inputs = depset([preamble, zip_file]),
         outputs = [pyz],
         mnemonic = "PyZipAppCreateExecutableZip",
         progress_message = "Reticulating zipapp executable: %{label} into %{output}",

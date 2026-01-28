@@ -547,6 +547,7 @@ def actions_run(
         "PYTHONSAFEPATH": "1",  # Helps avoid incorrect import issues
     }
     default_info = executable[DefaultInfo]
+    inputs = []
     if PyInterpreterProgramInfo in executable:
         if toolchain and toolchain != EXEC_TOOLS_TOOLCHAIN_TYPE:
             fail(("Action {}: tool {} provides PyInterpreterProgramInfo, which " +
@@ -560,7 +561,13 @@ def actions_run(
         tc = ctx.toolchains[EXEC_TOOLS_TOOLCHAIN_TYPE]
         print("==== exec_tools tc:", tc)
         exec_tools = ctx.toolchains[EXEC_TOOLS_TOOLCHAIN_TYPE].exec_tools
-        action_exe = exec_tools.exec_interpreter[DefaultInfo].files_to_run
+
+        ##action_exe = exec_tools.exec_interpreter[DefaultInfo].files_to_run
+        eitc = exec_tools.exec_interpreter[platform_common.ToolchainInfo]
+        print(dir(eitc.py3_runtime))
+        py3 = eitc.py3_runtime
+        action_exe = py3.interpreter
+        inputs.append(py3.files)
 
         program_info = executable[PyInterpreterProgramInfo]
 
@@ -570,6 +577,7 @@ def actions_run(
         action_arguments.append(interpreter_args)
 
         action_env.update(program_info.env)
+
         tools.append(default_info.files_to_run)
         toolchain = EXEC_TOOLS_TOOLCHAIN_TYPE
     else:
@@ -586,6 +594,10 @@ def actions_run(
     action_env.update(kwargs.pop("env", None) or {})
     action_arguments.extend(arguments)
     print("==== actions_run: exe:", action_exe)
+    kw_inputs = kwargs.pop("inputs")
+    print(type(kw_inputs))
+    inputs.append(kw_inputs)
+    action_inputs = depset(transitive = inputs)
     ctx.actions.run(
         executable = action_exe,
         arguments = action_arguments,
@@ -595,5 +607,6 @@ def actions_run(
         toolchain = toolchain,
         mnemonic = mnemonic,
         progress_message = progress_message,
+        inputs = action_inputs,
         **kwargs
     )
