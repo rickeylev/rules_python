@@ -3,7 +3,7 @@
 load("@bazel_skylib//lib:paths.bzl", "paths")
 load("//python/private:attributes.bzl", "apply_config_settings_attr")
 load("//python/private:builders.bzl", "builders")
-load("//python/private:common.bzl", "actions_run", "maybe_create_repo_mapping", "runfiles_root_path")
+load("//python/private:common.bzl", "BUILTIN_BUILD_PYTHON_ZIP", "actions_run", "maybe_builtin_build_python_zip", "maybe_create_repo_mapping", "runfiles_root_path")
 load("//python/private:common_labels.bzl", "labels")
 load("//python/private:py_executable_info.bzl", "PyExecutableInfo")
 load("//python/private:py_internal.bzl", "py_internal")
