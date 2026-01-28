@@ -103,8 +103,10 @@ def _current_interpreter_executable_impl(ctx):
     # because of things like pyenv: they use $0 to determine what to
     # re-exec. If it's not a recognized name, then they fail.
     if runtime.interpreter:
-        print("==== current interpreter exe: symlink()")
-        executable = ctx.actions.declare_file(runtime.interpreter.basename)
+        print("==== current interpreter exe: symlink() to ", runtime.interpreter)
+
+        ##executable = ctx.actions.declare_file(runtime.interpreter.basename)
+        executable = ctx.actions.declare_symlink(runtime.interpreter.basename)
         ctx.actions.symlink(output = executable, target_file = runtime.interpreter, is_executable = True)
     else:
         print("==== current interpreter exe: declare_symlink()")
