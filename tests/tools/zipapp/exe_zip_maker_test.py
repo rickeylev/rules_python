@@ -18,6 +18,10 @@ class ExeZipMakerTest(unittest.TestCase):
     def tearDown(self):
         shutil.rmtree(self.test_dir)
 
+    def assertStartsWith(self, actual, expected):
+        if not actual.startswith(expected):
+            self.fail(f"{actual!r} does not start with {expected!r}")
+
     def test_create_exe_zip(self):
         # Create dummy zip file
         zip_content = b"PK\x03\x04dummyzipcontent"
@@ -38,11 +42,17 @@ class ExeZipMakerTest(unittest.TestCase):
         )
 
         # Verify output exists
-        self.assertTrue(os.path.exists(self.output_path))
+        self.assertTrue(
+            os.path.exists(self.output_path),
+            msg=f"Output path '{self.output_path}' should exist",
+        )
 
         # Verify executable bit
         st = os.stat(self.output_path)
-        self.assertTrue(st.st_mode & stat.S_IEXEC)
+        self.assertTrue(
+            st.st_mode & stat.S_IEXEC,
+            msg=f"Output path '{self.output_path}' should be executable",
+        )
 
         # Verify content
         with open(self.output_path, "rb") as f:
@@ -54,8 +64,11 @@ class ExeZipMakerTest(unittest.TestCase):
             "utf-8"
         )
 
-        self.assertTrue(content.startswith(expected_preamble))
-        self.assertTrue(content.endswith(zip_content))
+        self.assertStartsWith(content, expected_preamble)
+        self.assertTrue(
+            content.endswith(zip_content),
+            msg="Output content should end with the zip content",
+        )
         self.assertEqual(len(content), len(expected_preamble) + len(zip_content))
 
 
