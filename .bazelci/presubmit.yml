@@ -258,10 +258,6 @@ tasks:
     platform: windows
     test_flags:
       - "--test_tag_filters=-integration-test,-fix-windows"
-    build_targets:
-      - "//tests/py_zipapp/..."
-    test_targets:
-      - "//tests/py_zipapp/..."
   rbe_min:
     <<: *minimum_supported_version
     <<: *reusable_config
@@ -288,16 +284,10 @@ tasks:
     # TODO @aignas 2024-12-11: get the RBE working in CI for bazel 8.0
     # See https://github.com/bazelbuild/rules_python/issues/2499
     bazel: 8.x
-    build_targets:
-      - "//tests/py_zipapp:system_python_zipapp_test"
-    build_flags:
-      - "--@rules_python//python/private:visible_for_testing=true"
     test_flags:
       - "--test_tag_filters=-integration-test,-acceptance-test"
       - "--extra_toolchains=@buildkite_config//config:cc-toolchain"
       - "--@rules_python//python/private:visible_for_testing=true"
-    test_targets:
-      - "//tests/py_zipapp:system_python_zipapp_test"
 
   integration_test_build_file_generation_ubuntu_minimum_supported_workspace:
     <<: *minimum_supported_version
