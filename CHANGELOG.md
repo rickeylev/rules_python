@@ -57,6 +57,9 @@ END_UNRELEASED_TEMPLATE
 ### Fixed
 * (runfiles) Fixed `CurrentRepository()` raising `ValueError` on Windows.
   ([#3579](https://github.com/bazel-contrib/rules_python/issues/3579))
+* (pypi) `pip_parse` no longer silently drops PEP 508 URL-based requirements
+  (`pkg @ https://...`) when `extract_url_srcs=False` (the default for
+  `pip_repository`).
 
 {#v1-8-4}
 ## [1.8.4] - 2026-02-10
