@@ -47,6 +47,17 @@ BEGIN_UNRELEASED_TEMPLATE
 END_UNRELEASED_TEMPLATE
 -->
 
+
+{#v1-8-5}
+## [1.8.5] - 2026-02-22
+
+[1.8.5]: https://github.com/bazel-contrib/rules_python/releases/tag/1.8.5
+
+{#v1-8-5-fixed}
+### Fixed
+* (runfiles) Fixed `CurrentRepository()` raising `ValueError` on Windows.
+  ([#3579](https://github.com/bazel-contrib/rules_python/issues/3579))
+
 {#v1-8-4}
 ## [1.8.4] - 2026-02-10
 
