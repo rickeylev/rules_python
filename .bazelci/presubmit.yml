@@ -43,6 +43,7 @@ buildifier:
 .common_workspace_flags_min_bazel: &common_workspace_flags_min_bazel
   build_flags:
     - "--noenable_bzlmod"
+    - "--enabled_workspace"
     - "--build_tag_filters=-integration-test"
   test_flags:
     - "--noenable_bzlmod"
