@@ -187,8 +187,9 @@ tasks:
     bazel: 7.x
   ubuntu:
     <<: *reusable_config
-    name: "Default: Ubuntu"
+    name: "Default: Ubuntu, Bazel {bazel}"
     platform: ubuntu2204
+    bazel: ${{ bazel }}
   ubuntu_upcoming:
     <<: *reusable_config
     name: "Default: Ubuntu, upcoming Bazel"
