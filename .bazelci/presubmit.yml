@@ -24,6 +24,8 @@ buildifier:
   # NOTE: Keep in sync with //:version.bzl
   bazel: 8.x
   skip_in_bazel_downstream_pipeline: "Bazel 8 required"
+.latest_supported_bazel: &latest_supported_bazel
+  baze: 9.x
 .reusable_config: &reusable_config
   build_targets:
     - "--"
@@ -191,11 +193,11 @@ tasks:
     <<: *reusable_config
     name: "Default: Ubuntu"
     platform: ubuntu2204
-  ubuntu_upcoming:
+  ubuntu_latest:
     <<: *reusable_config
-    name: "Default: Ubuntu, upcoming Bazel"
+    <<: *latest_supported_bazel
+    name: "Default: Ubuntu, latest Bazel"
     platform: ubuntu2204
-    bazel: last_rc
   # ubuntu_rolling:
   #   name: "Default: Ubuntu, rolling Bazel"
   #   platform: ubuntu2204
