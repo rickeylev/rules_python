@@ -253,12 +253,14 @@ tasks:
 
   debian:
     <<: *reusable_config
-    name: "Default: Debian"
+    name: "Default: Debian, Bazel {bazel}"
     platform: debian11
+    bazel: ${{ bazel }}
   macos_arm64:
     <<: *reusable_config
-    name: "Default: MacOS"
+    name: "Default: MacOS, Bazel {bazel}"
     platform: macos_arm64
+    bazel: ${{ bazel }}
   windows:
     <<: *reusable_config
     name: "Default: Windows"
