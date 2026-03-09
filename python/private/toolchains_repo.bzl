@@ -334,7 +334,7 @@ def _host_compatible_python_repo_impl(rctx):
     # we just symlink the interpreter itself. rctx.symlink does a copy in such cases
     # so we can just attempt to symlink all of the directories in the host interpreter
     # repo, which should be faster than re-downloading it.
-    for p in host_python_repo.dirname.readdir():
+    for p in host_python_repo.dirname.readdir(watch="no"):
         if p.basename in [
             # ignore special files created by the repo rule automatically
             "BUILD.bazel",

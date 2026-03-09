@@ -229,6 +229,7 @@ define_hermetic_runtime_toolchain_impl(
         return attrs
 
     reproducible = rctx.attr.sha256 != ""
+    reproducible = False
     return rctx.repo_metadata(
         reproducible = reproducible,
         attrs_for_reproducibility = {} if reproducible else attrs,
