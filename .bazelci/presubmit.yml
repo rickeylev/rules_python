@@ -198,6 +198,7 @@ tasks:
     platform: ubuntu2204
     bazel: last_rc
     # This is an advisory job; doesn't block merges
+    # RCs may have regressions, so don't fail our CI on them
     soft_fail:
       - exit_status: 1
       - exit_status: 3
