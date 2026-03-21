@@ -63,13 +63,17 @@ END_UNRELEASED_TEMPLATE
 * {obj}`--windows_enable_symlinks` is required. Add `startup
   --windows_enable_symlinks` to your `.bazelrc` to enable Bazel using full
   symlink support on Windows.
+* venv-based binaries are created by default ({obj}`--bootstrap_impl=system_python`)
+  on supported platforms (Linux/Mac with Bazel 8+).
 
 Other changes:
 * (pypi) Update dependencies used for `compile_pip_requirements`, building
   sdists in the `whl_library` rule and fetching wheels using `pip`.
-* (pypi) We will set `allow_fail` to `False` if the {attr}`experimental_index_url_overrides` is set
-  to a non-empty value. This means that failures will be no-longer cached in this particular case.
-  ([#3260](https://github.com/bazel-contrib/rules_python/issues/3260) and 
+* (pypi) We will set `allow_fail` to `False` if the
+  {attr}`experimental_index_url_overrides` is set
+  to a non-empty value. This means that failures will be no-longer cached in
+  this particular case.
+  ([#3260](https://github.com/bazel-contrib/rules_python/issues/3260) and
   [#2632](https://github.com/bazel-contrib/rules_python/issues/2632))
 
 {#v0-0-0-fixed}
