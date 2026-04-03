@@ -102,6 +102,9 @@ Other changes:
 * (bootstrap) Fixed incorrect runfiles path construction in bootstrap
   scripts when binary is defined in another bazel module
   ([#3563](https://github.com/bazel-contrib/rules_python/issues/3563)).
+* (bootstrap) Resolve `RUNFILES_DIR` inheritance issues, which lead to a child
+  Python binary incorrectly using it's parent's Python binary environment
+  ([#3518](https://github.com/bazel-contrib/rules_python/issues/3518)).
 * (uv) Downloads for versions `>=0.10` work again. In order to fix this we had
   drop support for `powerpc64` platform. People interested in the platform can
   bring it back via the `uv.default` API. Like:
