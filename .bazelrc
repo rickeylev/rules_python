@@ -42,6 +42,7 @@ common --enable_bzlmod
 # Local disk cache greatly speeds up builds if the regular cache is lost
 common --disk_cache=~/.cache/bazel/bazel-disk-cache
 
+
 # Additional config to use for readthedocs builds.
 # See .readthedocs.yml for additional flags that can only be determined from
 # the runtime environment.
@@ -54,3 +55,6 @@ common --incompatible_no_implicit_file_export
 
 build --lockfile_mode=update
 
+import %workspace%/specialized_configs.bazelrc
+
+try-import user.bazelrc

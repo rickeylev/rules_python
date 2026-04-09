@@ -1,5 +1,7 @@
 # Template for the __main__.py file inserted into zip files
 #
+# Generated file from @rules_python//python/private/zipapp:zip_main_template.py
+#
 # NOTE: This file is a "stage 1" bootstrap, so it's responsible for locating the
 # desired runtime and having it run the stage 2 bootstrap. This means it can't
 # assume much about the current runtime and environment. e.g., the current
@@ -27,7 +29,7 @@ import stat
 import subprocess
 import tempfile
 import zipfile
-from os.path import dirname, join, basename
+from os.path import basename, dirname, join
 
 # runfiles-root-relative path
 _STAGE2_BOOTSTRAP = "%stage2_bootstrap%"
@@ -45,29 +47,48 @@ EXTRACT_ROOT = os.environ.get("RULES_PYTHON_EXTRACT_ROOT")
 IS_WINDOWS = os.name == "nt"
 
 
-def print_verbose(*args, mapping=None, values=None):
-    if bool(os.environ.get("RULES_PYTHON_BOOTSTRAP_VERBOSE")):
-        if mapping is not None:
-            for key, value in sorted((mapping or {}).items()):
-                print(
-                    "bootstrap: stage 1:",
-                    *args,
-                    f"{key}={value!r}",
-                    file=sys.stderr,
-                    flush=True,
-                )
-        elif values is not None:
-            for i, v in enumerate(values):
-                print(
-                    "bootstrap: stage 1:",
-                    *args,
-                    f"[{i}] {v!r}",
-                    file=sys.stderr,
-                    flush=True,
-                )
-        else:
-            print("bootstrap: stage 1:", *args, file=sys.stderr, flush=True)
+EXTRACT_ROOT = os.environ.get("RULES_PYTHON_EXTRACT_ROOT")
 
+# Change the paths with Unix-style forward slashes to backslashes for Windows.
+# Windows usually transparently rewrites them, but e.g. `\\?\` paths require
+# backslashes to be properly understood by Windows APIs.
+if IS_WINDOWS:
+
+    def norm_slashes(s):
+        if not s:
+            return s
+        return s.replace("/", "\\")
+
+    _STAGE2_BOOTSTRAP = norm_slashes(_STAGE2_BOOTSTRAP)
+    _PYTHON_BINARY_VENV = norm_slashes(_PYTHON_BINARY_VENV)
+    _PYTHON_BINARY_ACTUAL = norm_slashes(_PYTHON_BINARY_ACTUAL)
+    EXTRACT_DIR = norm_slashes(EXTRACT_DIR)
+    EXTRACT_ROOT = norm_slashes(EXTRACT_ROOT)
+
+
+def print_verbose(*args, mapping=None, values=None):
+    if not bool(os.environ.get("RULES_PYTHON_BOOTSTRAP_VERBOSE")):
+        return
+    if mapping is not None:
+        for key, value in sorted((mapping or {}).items()):
+            print(
+                "bootstrap: stage 1:",
+                *args,
+                f"{key}={value!r}",
+                file=sys.stderr,
+                flush=True,
+            )
+    elif values is not None:
+        for i, v in enumerate(values):
+            print(
+                "bootstrap: stage 1:",
+                *args,
+                f"[{i}] {v!r}",
+                file=sys.stderr,
+                flush=True,
+            )
+    else:
+        print("bootstrap: stage 1:", *args, file=sys.stderr, flush=True)
 
 
 def get_windows_path_with_unc_prefix(path):
@@ -103,18 +124,6 @@ def get_windows_path_with_unc_prefix(path):
 
     # os.path.abspath returns a normalized absolute path
     return unicode_prefix + os.path.abspath(path)
-
-
-def has_windows_executable_extension(path):
-    return path.endswith(".exe") or path.endswith(".com") or path.endswith(".bat")
-
-
-if (
-    _PYTHON_BINARY_VENV
-    and IS_WINDOWS
-    and not has_windows_executable_extension(_PYTHON_BINARY_VENV)
-):
-    _PYTHON_BINARY_VENV = _PYTHON_BINARY_VENV + ".exe"
 
 
 def search_path(name):
@@ -254,6 +263,7 @@ def execute_file(
         print_verbose("subprocess cwd:", workspace)
         print_verbose("subprocess argv:", values=subprocess_argv)
         ret_code = subprocess.call(subprocess_argv, env=env, cwd=workspace)
+        print_verbose("subprocess exit code:", ret_code)
         sys.exit(ret_code)
     finally:
         if not EXTRACT_ROOT:
@@ -263,6 +273,43 @@ def execute_file(
             extract_root = dirname(runfiles_root)
             print_verbose("cleanup: rmtree: ", extract_root)
             shutil.rmtree(extract_root, True)
+
+
+def finish_venv_setup(runfiles_root):
+    python_program = os.path.join(runfiles_root, _PYTHON_BINARY_VENV)
+    # When a venv is used, the `bin/python3` symlink may need to be created.
+    # This case occurs when "create venv at runtime" or "resolve python at
+    # runtime" modes are enabled.
+    if not os.path.exists(python_program):
+        # The venv bin/python3 interpreter should always be under runfiles, but
+        # double check. We don't want to accidentally create symlinks elsewhere
+        if not python_program.startswith(runfiles_root):
+            raise AssertionError(
+                "Program's venv binary not under runfiles: {python_program}"
+            )
+        symlink_to = find_binary(runfiles_root, _PYTHON_BINARY_ACTUAL)
+        os.makedirs(dirname(python_program), exist_ok=True)
+        if os.path.lexists(python_program):
+            os.remove(python_program)
+        try:
+            os.symlink(symlink_to, python_program)
+        except OSError as e:
+            raise Exception(
+                f"Unable to create venv python interpreter symlink: {python_program} -> {symlink_to}"
+            ) from e
+    venv_root = dirname(dirname(python_program))
+    pyvenv_cfg = join(venv_root, "pyvenv.cfg")
+    if not os.path.exists(pyvenv_cfg):
+        print_verbose("finish_venv_setup: create pyvenv.cfg:", pyvenv_cfg)
+        python_home = join(runfiles_root, dirname(_PYTHON_BINARY_ACTUAL))
+        print_verbose("finish_venv_setup: pyvenv.cfg home:", python_home)
+        with open(pyvenv_cfg, "w") as fp:
+            # Until Windows supports a build-time generated venv using symlinks
+            # to directories, we have to write the full, absolute, path to PYTHONHOME
+            # so that support directories (e.g. DLLs, libs) can be found.
+            fp.write("home = {}\n".format(python_home))
+
+    return python_program
 
 
 def main():
@@ -304,26 +351,7 @@ def main():
     )
 
     if _PYTHON_BINARY_VENV:
-        python_program = join(runfiles_root, _PYTHON_BINARY_VENV)
-        # When a venv is used, the `bin/python3` symlink may need to be created.
-        # This case occurs when "create venv at runtime" or "resolve python at
-        # runtime" modes are enabled.
-        if not os.path.lexists(python_program):
-            # The venv bin/python3 interpreter should always be under runfiles, but
-            # double check. We don't want to accidentally create symlinks elsewhere
-            if not python_program.startswith(runfiles_root):
-                raise AssertionError(
-                    "Program's venv binary not under runfiles: {python_program}"
-                )
-            symlink_to = find_binary(runfiles_root, _PYTHON_BINARY_ACTUAL)
-            os.makedirs(dirname(python_program), exist_ok=True)
-            try:
-                os.symlink(symlink_to, python_program)
-            except OSError as e:
-                raise Exception(
-                    f"Unable to create venv python interpreter symlink: {python_program} -> {symlink_to}"
-                ) from e
-
+        python_program = finish_venv_setup(runfiles_root)
     else:
         python_program = find_binary(runfiles_root, _PYTHON_BINARY_ACTUAL)
         if python_program is None:

@@ -64,7 +64,9 @@ END_UNRELEASED_TEMPLATE
   --windows_enable_symlinks` to your `.bazelrc` to enable Bazel using full
   symlink support on Windows.
 * venv-based binaries are created by default ({obj}`--bootstrap_impl=system_python`)
-  on supported platforms (Linux/Mac with Bazel 8+).
+  on supported platforms (Linux/Mac with Bazel 8+, or Windows).
+* `--build_python_zip` on Windows is ignored. Use {obj}`py_zipapp_binary` to create
+  zips of Python programs.
 
 Other changes:
 * (pypi) Update dependencies used for `compile_pip_requirements`, building
@@ -73,19 +75,21 @@ Other changes:
   we will from now on fetch the lists of available packages on each index. The
   used package mappings will be written as facts to the `MODULE.bazel.lock` file
   on supported bazel versions and it should be done at most once. As a result,
-  per-package {obj}`experimental_index_url_overrides` is no longer needed if the index URLs are
-  passed to the `pip.parse` via `experimental_index_url` and `experimental_extra_index_urls`.
-  What is more, we start implementing the flags for `--index_url` and `--extra_index_urls` more in
-  line to how it is used in `uv` and `pip`, i.e. we default to `--index_url` if the package is not
-  found in `--extra_index_urls`.
-  Fixes
-  ([#3260](https://github.com/bazel-contrib/rules_python/issues/3260) and 
+  per-package {obj}`experimental_index_url_overrides` is no longer needed if the
+  index URLs are passed to the `pip.parse` via `experimental_index_url` and
+  `experimental_extra_index_urls`.  What is more, we start implementing the flags
+  for `--index_url` and `--extra_index_urls` more in line to how it is used in
+  `uv` and `pip`, i.e. we default to `--index_url` if the package is not found in
+  `--extra_index_urls`.  Fixes
+  ([#3260](https://github.com/bazel-contrib/rules_python/issues/3260) and
   [#2632](https://github.com/bazel-contrib/rules_python/issues/2632)).
-* (uv) We will now use the download URL specified in the `uv`'s `dist_manifest.json`
-  file. If you have redirects or blocking rules as part of your downloader setup,
-  you may need to adjust them. What is more, the default uv version has been bumped
-  `0.11.2`.
-* (runfiles): We are stopping the type annotation testing with `mypy` for Python 3.9.
+* (uv) We will now use the download URL specified in the `uv`'s
+ `dist_manifest.json` file. If you have redirects or blocking rules as part of
+  your downloader setup, you may need to adjust them. What is more, the default
+  uv version has been bumped `0.11.2`.
+* (runfiles): Type annotations are no longer tested for Python 3.9.
+* Windows no longer defaults to creating a zip file and extracting it; a
+  symlink-based runfiles tree is created, as on unix-like platforms.
 
 {#v0-0-0-fixed}
 ### Fixed
@@ -122,11 +126,18 @@ Other changes:
 {#v0-0-0-added}
 ### Added
 * (pypi) Write SimpleAPI contents to the `MODULE.bazel.lock` file if using
-  {obj}`experimental_index_url` which should speed up consecutive initializations and should no
-  longer require the network access if the cache is hydrated.
-  Implements [#2731](https://github.com/bazel-contrib/rules_python/issues/2731).
+  {obj}`experimental_index_url` which should speed up consecutive
+  initializations and should no longer require the network access if the cache is
+  hydrated.  Implements
+  [#2731](https://github.com/bazel-contrib/rules_python/issues/2731).
 * (wheel) Specifying a path ending in `/` as a destination in `data_files`
   will now install file(s) to a folder, preserving their basename.
+* Various attributes and fields added to support venvs on Windows:
+  * {obj}`py_runtime.venv_bin_files` and {obj}`PyRuntime.venv_binfiles`
+    field added to specify additional Python runtime files Windows needs for
+    venvs.
+  * {obj}`PyExecutableInfo.venv_interpreter_runfiles`, and
+    {obj}`PyExecutableInfo.venv_interpreter_symlinks` adde
 
 {#v1-9-0}
 ## [1.9.0] - 2026-02-21

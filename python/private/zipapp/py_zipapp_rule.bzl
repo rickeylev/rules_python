@@ -18,7 +18,7 @@ def _is_symlink(f):
     else:
         return "-1"
 
-def _create_zipapp_main_py(ctx, py_runtime, py_executable, stage2_bootstrap, runfiles):
+def _create_zipapp_main_py(ctx, py_runtime, py_executable, stage2_bootstrap, runfiles, explicit_symlinks):
     venv_python_exe = py_executable.venv_python_exe
     if venv_python_exe:
         venv_python_exe_path = runfiles_root_path(ctx, venv_python_exe.short_path)
@@ -55,7 +55,7 @@ def _create_zipapp_main_py(ctx, py_runtime, py_executable, stage2_bootstrap, run
 
     inputs = builders.DepsetBuilder()
     inputs.add(py_runtime.zip_main_template)
-    _build_manifest(ctx, hash_files_manifest, runfiles, inputs)
+    _build_manifest(ctx, hash_files_manifest, runfiles, explicit_symlinks, inputs)
 
     actions_run(
         ctx,
@@ -80,7 +80,10 @@ def _map_zip_symlinks(entry):
 def _map_zip_root_symlinks(entry):
     return "rf-root-symlink|" + _is_symlink(entry.target_file) + "|" + entry.path + "|" + entry.target_file.path
 
-def _build_manifest(ctx, manifest, runfiles, inputs):
+def _map_explicit_symlinks(entry):
+    return "symlink|" + entry.runfiles_path + "|" + entry.link_to_path
+
+def _build_manifest(ctx, manifest, runfiles, explicit_symlinks, inputs):
     manifest.add_all(
         # NOTE: Accessing runfiles.empty_filenames materializes them. A lambda
         # is used to defer that.
@@ -92,10 +95,13 @@ def _build_manifest(ctx, manifest, runfiles, inputs):
     manifest.add_all(runfiles.files, map_each = _map_zip_runfiles)
     manifest.add_all(runfiles.symlinks, map_each = _map_zip_symlinks)
     manifest.add_all(runfiles.root_symlinks, map_each = _map_zip_root_symlinks)
+    manifest.add_all(explicit_symlinks, map_each = _map_explicit_symlinks)
 
     inputs.add(runfiles.files)
     inputs.add([entry.target_file for entry in runfiles.symlinks.to_list()])
     inputs.add([entry.target_file for entry in runfiles.root_symlinks.to_list()])
+    for entry in explicit_symlinks.to_list():
+        inputs.add(entry.files)
 
     zip_repo_mapping_manifest = maybe_create_repo_mapping(
         ctx = ctx,
@@ -121,6 +127,9 @@ def _create_zip(ctx, py_runtime, py_executable, stage2_bootstrap):
     runfiles.add(py_runtime.files)
     if py_executable.venv_python_exe:
         runfiles.add(py_executable.venv_python_exe)
+
+    if py_executable.venv_interpreter_runfiles:
+        runfiles.add(py_executable.venv_interpreter_runfiles)
     runfiles.add(py_executable.app_runfiles)
     runfiles.add(stage2_bootstrap)
 
@@ -132,11 +141,12 @@ def _create_zip(ctx, py_runtime, py_executable, stage2_bootstrap):
         py_executable,
         stage2_bootstrap,
         runfiles,
+        py_executable.venv_interpreter_symlinks,
     )
     inputs = builders.DepsetBuilder()
     manifest.add("regular|0|__main__.py|{}".format(zip_main.path))
     inputs.add(zip_main)
-    _build_manifest(ctx, manifest, runfiles, inputs)
+    _build_manifest(ctx, manifest, runfiles, py_executable.venv_interpreter_symlinks, inputs)
 
     zipper_args = ctx.actions.args()
     zipper_args.add(output)
@@ -148,6 +158,9 @@ def _create_zip(ctx, py_runtime, py_executable, stage2_bootstrap):
     if ctx.attr.compression:
         zipper_args.add(ctx.attr.compression, format = "--compression=%s")
     zipper_args.add("--runfiles-dir=runfiles")
+
+    is_windows = target_platform_has_any_constraint(ctx, ctx.attr._windows_constraints)
+    zipper_args.add("\\" if is_windows else "/", format = "--target-platform-pathsep=%s")
 
     actions_run(
         ctx,
@@ -220,18 +233,23 @@ def _py_zipapp_executable_impl(ctx):
         if target_platform_has_any_constraint(ctx, ctx.attr._windows_constraints):
             executable = ctx.actions.declare_file(ctx.label.name + ".exe")
 
-            python_exe = py_executable.venv_python_exe
-            if python_exe:
-                python_exe_path = runfiles_root_path(ctx, python_exe.short_path)
-            elif py_runtime.interpreter:
-                python_exe_path = runfiles_root_path(ctx, py_runtime.interpreter.short_path)
+            # The zipapp is an opaque zip file, so the Bazel Python launcher doesn't
+            # know how to look inside it to find the Python interpreter. This means
+            # we can only use system paths or programs on PATH to bootstrap.
+            if py_runtime.interpreter_path:
+                bootstrap_python_path = py_runtime.interpreter_path
             else:
-                python_exe_path = py_runtime.interpreter_path
+                # A special value the Bazel Python launcher recognized to skip
+                # lookup in the runfiles and uses `python.exe` from PATH.
+                bootstrap_python_path = "python"
 
             create_windows_exe_launcher(
                 ctx,
                 output = executable,
-                python_binary_path = python_exe_path,
+                # The path to a python to use to invoke e.g. `python.exe foo.zip`
+                python_binary_path = bootstrap_python_path,
+                # Tell the launcher to invoke `python_binary_path` on itself
+                # after removing its file extension and appending `.zip`.
                 use_zip_file = True,
             )
             default_outputs = [executable, zip_file]
