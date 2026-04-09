@@ -23,7 +23,7 @@ _WELL_KNOWN_NAMESPACE_PACKAGES = [
     "nvidia",
 ]
 
-def create_venv_app_files(ctx, deps, venv_dir_map):
+def create_venv_app_files(ctx: ctx, deps: list[Target], venv_dir_map) -> struct:
     """Creates the tree of app-specific files for a venv for a binary.
 
     App specific files are the files that come from dependencies.
@@ -88,7 +88,7 @@ def create_venv_app_files(ctx, deps, venv_dir_map):
     )
 
 # Visible for testing
-def build_link_map(ctx, entries, return_conflicts = False):
+def build_link_map(ctx: ctx, entries: list[VenvSymlinkEntry], return_conflicts: bool = False) -> dict[str, dict[str, str | File]]:
     """Compute the mapping of venv paths to their backing objects.
 
     Args:
@@ -155,7 +155,7 @@ def build_link_map(ctx, entries, return_conflicts = False):
     else:
         return keep_link_map
 
-def _group_venv_path_entries(entries):
+def _group_venv_path_entries(entries) -> list[list[VenvSymlinkEntry]]:
     """Group entries by VenvSymlinkEntry.venv_path overlap.
 
     This does an initial grouping by the top-level venv path an entry wants.
@@ -190,7 +190,7 @@ def _group_venv_path_entries(entries):
 
     return groups
 
-def _merge_venv_path_group(ctx, group, keep_map):
+def _merge_venv_path_group(ctx: ctx, group: list[VenvSymlinkEntry], keep_map: dict[str, str | File]):
     """Merges a group of overlapping prefixes.
 
     Args:
@@ -267,12 +267,12 @@ def _get_file_venv_path(ctx, f, site_packages_root):
     return (venv_path, rf_root_path)
 
 def get_venv_symlinks(
-        ctx,
-        files,
-        package,
-        version_str,
-        site_packages_root,
-        namespace_package_files = []):
+        ctx: ctx,
+        files: list[File],
+        package: str,
+        version_str: str,
+        site_packages_root: str,
+        namespace_package_files: list[File] = []) -> list[VenvSymlinkEntry]:
     """Compute the VenvSymlinkEntry objects for a library.
 
     Args:
