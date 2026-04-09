@@ -1,0 +1,14 @@
+load(":defs.bzl", "rel_symlink")
+load("@rules_python//python:py_test.bzl", "py_test")
+
+rel_symlink(
+    name = "my_symlink",
+    target_path = "../subrepo/data.txt",
+)
+
+py_test(
+    name = "test",
+    srcs = ["test.py"],
+    data = [":my_symlink"],
+    deps = ["@rules_python//python/runfiles"],
+)
