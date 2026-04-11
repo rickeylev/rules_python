@@ -47,16 +47,16 @@ BEGIN_UNRELEASED_TEMPLATE
 END_UNRELEASED_TEMPLATE
 -->
 
-{#v0-0-0}
-## Unreleased
+{#v2-0-0}
+## [2.0.0] - 2026-04-09
 
-[0.0.0]: https://github.com/bazel-contrib/rules_python/releases/tag/0.0.0
+[2.0.0]: https://github.com/bazel-contrib/rules_python/releases/tag/2.0.0
 
-{#v0-0-0-removed}
+{#v2-0-0-removed}
 ### Removed
 * Nothing removed.
 
-{#v0-0-0-changed}
+{#v2-0-0-changed}
 ### Changed
 
 **Breaking**
@@ -67,6 +67,12 @@ END_UNRELEASED_TEMPLATE
   on supported platforms (Linux/Mac with Bazel 8+, or Windows).
 * `--build_python_zip` on Windows is ignored. Use {obj}`py_zipapp_binary` to create
   zips of Python programs.
+* (pypi) Previously `experimental_index_url` users would not need to specify
+  target platforms if cross-building is required. From now we will only pull
+  wheels for the host OS to better align with how the rules work with the legacy
+  `pip` implementation. Use {obj}`pip.parse.target_platforms` to customize the
+  behavior.
+  Related to [#260](https://github.com/bazel-contrib/rules_python/issues/260).
 
 Other changes:
 * (pypi) Update dependencies used for `compile_pip_requirements`, building
@@ -75,12 +81,10 @@ Other changes:
   we will from now on fetch the lists of available packages on each index. The
   used package mappings will be written as facts to the `MODULE.bazel.lock` file
   on supported bazel versions and it should be done at most once. As a result,
-  per-package {obj}`experimental_index_url_overrides` is no longer needed if the
-  index URLs are passed to the `pip.parse` via `experimental_index_url` and
-  `experimental_extra_index_urls`.  What is more, we start implementing the flags
-  for `--index_url` and `--extra_index_urls` more in line to how it is used in
-  `uv` and `pip`, i.e. we default to `--index_url` if the package is not found in
-  `--extra_index_urls`.  Fixes
+  per-package {obj}`experimental_index_url_overrides` is no longer needed . What
+  is more, the flags for `--index_url` and `--extra-index-url` now behave in the
+  same way as in `uv` or `pip`, i.e. we default to `--index-url` if the package
+  is not found in `--extra-index-url`.  Fixes
   ([#3260](https://github.com/bazel-contrib/rules_python/issues/3260) and
   [#2632](https://github.com/bazel-contrib/rules_python/issues/2632)).
 * (uv) We will now use the download URL specified in the `uv`'s
@@ -91,7 +95,7 @@ Other changes:
 * Windows no longer defaults to creating a zip file and extracting it; a
   symlink-based runfiles tree is created, as on unix-like platforms.
 
-{#v0-0-0-fixed}
+{#v2-0-0-fixed}
 ### Fixed
 * (toolchain) Also set Make variables for local toolchains.
 * (zipapp) Resolve issue passing through compression settings in
@@ -123,13 +127,24 @@ Other changes:
   ```
   Fixes [#3676](https://github.com/bazel-contrib/rules_python/issues/3676).
 
-{#v0-0-0-added}
+{#v2-0-0-added}
 ### Added
 * (pypi) Write SimpleAPI contents to the `MODULE.bazel.lock` file if using
   {obj}`experimental_index_url` which should speed up consecutive
   initializations and should no longer require the network access if the cache is
   hydrated.  Implements
   [#2731](https://github.com/bazel-contrib/rules_python/issues/2731).
+* (pypi) The `--index-url` and `--extra-index-url` is now parsed from the lock
+  file and the {obj}`pip.parse.experimental_index_url` and
+  {obj}`pip.parse.experimental_extra_index_urls` is
+  no longer mandatory to leverage the bazel downloader.
+  Implements
+  [#1357](https://github.com/bazel-contrib/rules_python/issues/1357),
+  [#2951](https://github.com/bazel-contrib/rules_python/issues/2951).
+* (pypi) If cross-compilation is needed, use the {obj}`pip.parse.target_platforms`
+  to specify exactly which platforms should be supported.
+  Implements
+  [#260](https://github.com/bazel-contrib/rules_python/issues/260).
 * (wheel) Specifying a path ending in `/` as a destination in `data_files`
   will now install file(s) to a folder, preserving their basename.
 * Various attributes and fields added to support venvs on Windows:
@@ -138,6 +153,8 @@ Other changes:
     venvs.
   * {obj}`PyExecutableInfo.venv_interpreter_runfiles`, and
     {obj}`PyExecutableInfo.venv_interpreter_symlinks` adde
+* (wheel) Add support for `add_path_prefix` argument in `py_wheel` which can be
+  used to prepend a prefix to the files in the wheel.
 
 {#v1-9-0}
 ## [1.9.0] - 2026-02-21
