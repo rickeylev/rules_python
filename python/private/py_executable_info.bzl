@@ -78,6 +78,9 @@ implementation isn't being used.
 :::{versionadded} 1.9.0
 :::
 """,
+        "venv_app_symlinks": """
+todo
+""",
         "venv_interpreter_runfiles": """
 :type: runfiles | None
 
