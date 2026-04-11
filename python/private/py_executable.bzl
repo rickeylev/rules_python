@@ -492,7 +492,7 @@ WARNING: Target: {}
         app_runfiles = app_runfiles.build(ctx),
         # depset[ExplicitSymlink]None; symlinks that should be created to
         # augment app_runfiles
-        app_symlinks = venv.lib_symlinks,
+        venv_app_symlinks = venv.lib_symlinks,
         # File|None; the venv `bin/python3` file, if any.
         venv_python_exe = venv.interpreter if venv else None,
         # runfiles|None; runfiles in the venv for the interpreter
@@ -1231,6 +1231,7 @@ def py_executable_base_impl(ctx, *, semantics, is_test, inherited_environment = 
         )
     ))
 
+    app_runfiles = exec_result.app_runfiles
     app_runfiles = exec_result.app_runfiles
 
     providers = []
