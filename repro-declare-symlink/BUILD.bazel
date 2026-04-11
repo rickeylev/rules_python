@@ -1,5 +1,6 @@
-load(":defs.bzl", "rel_symlink")
 load("@rules_python//python:py_test.bzl", "py_test")
+load("@rules_shell//shell:sh_test.bzl", "sh_test")
+load(":defs.bzl", "rel_symlink")
 
 rel_symlink(
     name = "my_symlink",
@@ -11,4 +12,16 @@ py_test(
     srcs = ["test.py"],
     data = [":my_symlink"],
     deps = ["@rules_python//python/runfiles"],
+)
+
+sh_test(
+    name = "windows_test",
+    srcs = [
+        "test.sh",
+    ],
+    data = [
+        "check_link.ps1",
+        ":my_symlink",
+    ],
+    deps = ["@bazel_tools//tools/bash/runfiles"],
 )
