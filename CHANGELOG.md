@@ -47,6 +47,14 @@ BEGIN_UNRELEASED_TEMPLATE
 END_UNRELEASED_TEMPLATE
 -->
 
+## Unreleased
+
+### Added
+* (runfiles) Added a {obj}`Path` class that implements the `pathlib.PurePath` API
+  for idiomatic path manipulation of runfiles. It is created by calling the
+  {obj}`Runfiles.root` instance method. The {obj}`Path` class also has a
+  {obj}`Path.runfiles_root` method to return the root of the runfiles tree.
+
 {#v2-0-0}
 ## [2.0.0] - 2026-04-09
 

@@ -14,6 +14,12 @@ py_test(
     deps = ["//python/runfiles"],
 )
 
+py_test(
+    name = "pathlib_test",
+    srcs = ["pathlib_test.py"],
+    deps = ["//python/runfiles"],
+)
+
 build_test(
     name = "publishing",
     targets = [

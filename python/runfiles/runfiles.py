@@ -25,10 +25,11 @@ dependency graphs under bzlmod.
 import collections.abc
 import inspect
 import os
+import pathlib
 import posixpath
 import sys
 from collections import defaultdict
-from typing import Dict, Optional, Tuple, Union
+from typing import Dict, List, Optional, Tuple, Union
 
 
 class _RepositoryMapping:
@@ -137,7 +138,127 @@ class _RepositoryMapping:
         Returns:
             True if there are no mappings, False otherwise
         """
-        return len(self._exact_mappings) == 0 and len(self._grouped_prefixed_mappings) == 0
+        return (
+            len(self._exact_mappings) == 0 and len(self._grouped_prefixed_mappings) == 0
+        )
+
+
+class Path(pathlib.PurePath):
+    """A pathlib-like path object for runfiles.
+
+    This class extends `pathlib.PurePath` and resolves paths
+    using the associated `Runfiles` instance when converted to a string.
+    """
+
+    # For Python < 3.12 compatibility when subclassing PurePath directly
+    _flavour = getattr(type(pathlib.PurePath()), "_flavour", None)
+
+    def __new__(
+        cls,
+        *args: Union[str, os.PathLike],
+        runfiles: Optional["Runfiles"] = None,
+        source_repo: Optional[str] = None,
+    ) -> "Path":
+        """Private constructor. Use Runfiles.root() to create instances."""
+        obj = super().__new__(cls, *args)
+        # Type checkers might complain about adding attributes to PurePath,
+        # but this is standard for pathlib subclasses.
+        obj._runfiles = runfiles  # type: ignore
+        obj._source_repo = source_repo  # type: ignore
+        return obj
+
+    def __init__(
+        self,
+        *args: Union[str, os.PathLike],
+        runfiles: Optional["Runfiles"] = None,
+        source_repo: Optional[str] = None,
+    ) -> None:
+        pass
+
+    def with_segments(self, *pathsegments: Union[str, os.PathLike]) -> "Path":
+        """Used by Python 3.12+ pathlib to create new path objects."""
+        return type(self)(
+            *pathsegments,
+            runfiles=self._runfiles,  # type: ignore
+            source_repo=self._source_repo,  # type: ignore
+        )
+
+    # For Python < 3.12
+    @classmethod
+    def _from_parts(cls, args: Tuple[str, ...]) -> "Path":
+        obj = super()._from_parts(args)  # type: ignore
+        # These will be set by the calling instance later, or we can't set them here
+        # properly without context. Usually pathlib calls this from an instance
+        # method like _make_child, which we also might need to override.
+        return obj
+
+    def _make_child(self, args: Tuple[str, ...]) -> "Path":
+        obj = super()._make_child(args)  # type: ignore
+        obj._runfiles = self._runfiles  # type: ignore
+        obj._source_repo = self._source_repo  # type: ignore
+        return obj
+
+    @classmethod
+    def _from_parsed_parts(cls, drv: str, root: str, parts: List[str]) -> "Path":
+        obj = super()._from_parsed_parts(drv, root, parts)  # type: ignore
+        return obj
+
+    def _make_child_relpath(self, part: str) -> "Path":
+        obj = super()._make_child_relpath(part)  # type: ignore
+        obj._runfiles = self._runfiles  # type: ignore
+        obj._source_repo = self._source_repo  # type: ignore
+        return obj
+
+    @property
+    def parents(self) -> Tuple["Path", ...]:
+        return tuple(
+            type(self)(
+                p,
+                runfiles=getattr(self, "_runfiles", None),
+                source_repo=getattr(self, "_source_repo", None),
+            )
+            for p in super().parents
+        )
+
+    @property
+    def parent(self) -> "Path":
+        return type(self)(
+            super().parent,
+            runfiles=getattr(self, "_runfiles", None),
+            source_repo=getattr(self, "_source_repo", None),
+        )
+
+    def with_name(self, name: str) -> "Path":
+        return type(self)(
+            super().with_name(name),
+            runfiles=getattr(self, "_runfiles", None),
+            source_repo=getattr(self, "_source_repo", None),
+        )
+
+    def with_suffix(self, suffix: str) -> "Path":
+        return type(self)(
+            super().with_suffix(suffix),
+            runfiles=getattr(self, "_runfiles", None),
+            source_repo=getattr(self, "_source_repo", None),
+        )
+
+    def __repr__(self) -> str:
+        return 'runfiles.Path("{}")'.format(super().__str__())
+
+    def __str__(self) -> str:
+        path_posix = super().__str__().replace("\\", "/")
+        if not path_posix or path_posix == ".":
+            # pylint: disable=protected-access
+            return self._runfiles._python_runfiles_root  # type: ignore
+        resolved = self._runfiles.Rlocation(path_posix, source_repo=self._source_repo)  # type: ignore
+        return resolved if resolved is not None else super().__str__()
+
+    def __fspath__(self) -> str:
+        return str(self)
+
+    def runfiles_root(self) -> "Path":
+        """Returns a Path object representing the runfiles root."""
+        return self._runfiles.root(source_repo=self._source_repo)  # type: ignore
 
 
 class _ManifestBased:
@@ -254,6 +375,16 @@ class Runfiles:
             strategy.RlocationChecked("_repo_mapping")
         )
 
+    def root(self, source_repo: Optional[str] = None) -> Path:
+        """Returns a Path object representing the runfiles root.
+
+        The repository mapping used by the returned Path object is that of the
+        caller of this method.
+        """
+        if source_repo is None and not self._repo_mapping.is_empty():
+            source_repo = self.CurrentRepository(frame=2)
+        return Path(runfiles=self, source_repo=source_repo)
+
     def Rlocation(self, path: str, source_repo: Optional[str] = None) -> Optional[str]:
         """Returns the runtime path of a runfile.
 
@@ -325,9 +456,7 @@ class Runfiles:
 
         # Look up the target repository using the repository mapping
         if target_canonical is not None:
-            return self._strategy.RlocationChecked(
-                target_canonical + "/" + remainder
-            )
+            return self._strategy.RlocationChecked(target_canonical + "/" + remainder)
 
         # No mapping found - assume target_repo is already canonical or
         # we're not using Bzlmod
@@ -396,10 +525,9 @@ class Runfiles:
             # TODO: This doesn't cover the case of a script being run from an
             #       external repository, which could be heuristically detected
             #       by parsing the script's path.
-            if (
-                (sys.version_info.minor <= 10 or sys.platform == "win32")
-                and sys.path[0] != self._python_runfiles_root
-            ):
+            if (sys.version_info.minor <= 10 or sys.platform == "win32") and sys.path[
+                0
+            ] != self._python_runfiles_root:
                 return ""
             raise ValueError(
                 "{} does not lie under the runfiles root {}".format(
