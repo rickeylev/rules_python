@@ -60,7 +60,7 @@ py_reconfig_test(
     srcs = ["shared_lib_loading_test.py"],
     bootstrap_impl = "script",
     main = "shared_lib_loading_test.py",
-    ##target_compatible_with = NOT_WINDOWS,
+    target_compatible_with = NOT_WINDOWS,
     venvs_site_packages = "yes",
     deps = [
         "//tests/venv_site_packages_libs/ext_with_libs",
