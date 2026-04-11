@@ -23,7 +23,7 @@ def _current_py_cc_libs_impl(ctx):
 current_py_cc_libs = rule(
     implementation = _current_py_cc_libs_impl,
     toolchains = ["//python/cc:toolchain_type"],
-    provides = [CcInfo],
+    provides = [CcInfo, DefaultInfo],
     doc = """\
 Provides the currently active Python toolchain's C libraries.
 
