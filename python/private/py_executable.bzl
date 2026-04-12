@@ -1292,7 +1292,6 @@ def py_executable_base_impl(ctx, *, semantics, is_test, inherited_environment = 
 
     return providers
 
-
 def _get_build_info(ctx, cc_toolchain):
     build_info_files = py_internal.cc_toolchain_build_info_files(cc_toolchain)
     if cc_helper.is_stamping_enabled(ctx):
@@ -1921,6 +1920,7 @@ def _add_provider_py_runtime_info(providers, runtime_details):
         providers: list of providers to append to.
         runtime_details: struct of runtime information; see _get_runtime_details()
     """
+
     # TODO - The effective runtime can be None for Windows + auto detecting toolchain.
     # This can be removed once that's fixed; see maybe_get_runtime_from_ctx().
     if runtime_details.effective_runtime:
@@ -1956,6 +1956,7 @@ def _add_provider_py_cc_link_params_info(providers, cc_info):
             PyCcLinkParamsInfo. Note that only the linking information
             is propagated, not the whole CcInfo.
     """
+
     # TODO(b/163083591): Remove the PyCcLinkParamsInfo once binaries-in-deps
     # are cleaned up.
     if cc_info:
@@ -2017,7 +2018,6 @@ def _add_provider_output_group_info(providers, py_info, output_groups):
         output_groups: dict[str, depset[File]]; used to create OutputGroupInfo
     """
     providers.append(create_output_group_info(py_info.transitive_sources, output_groups))
-
 
 def _add_config_setting_defaults(kwargs):
     config_settings = kwargs.get("config_settings", None)
