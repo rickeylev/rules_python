@@ -1252,6 +1252,17 @@ def py_executable_base_impl(ctx, *, semantics, is_test, inherited_environment = 
 
     app_runfiles = exec_result.app_runfiles
 
+    providers = []
+
+    _add_provider_default_info(providers, ...)
+    _add_provider_instrumented_files_info(providers, ctx)
+    _add_provider_run_environment_info(providers, ctx)
+    _add_provider_py_executable_info(providers, ...)
+    _add_provider_py_runtime_info(providers, ...)
+    _add_provider_py_cc_link_params_info(providers, ...)
+    _add_provider_py_info(providers, ...)
+    _add_provider_output_group_info(providers, ...)
+
     return _create_providers(
         ctx = ctx,
         executable = executable,
