@@ -18,7 +18,23 @@ load("@rules_cc//cc/common:cc_info.bzl", "CcInfo")
 
 def _current_py_cc_libs_impl(ctx):
     py_cc_toolchain = ctx.toolchains["//python/cc:toolchain_type"].py_cc_toolchain
-    return py_cc_toolchain.libs.providers_map.values()
+    cc_info = py_cc_toolchain.libs.providers_map["CcInfo"]
+    
+    # Extract the static library files from CcInfo
+    lib_files = []
+    for input in cc_info.linking_context.linker_inputs.to_list():
+        for lib in input.libraries:
+            if lib.static_library:
+                lib_files.append(lib.static_library)
+    
+    providers = []
+    for name, provider in py_cc_toolchain.libs.providers_map.items():
+        if name == "DefaultInfo":
+            providers.append(DefaultInfo(files = depset(lib_files)))
+        else:
+            providers.append(provider)
+    
+    return providers
 
 current_py_cc_libs = rule(
     implementation = _current_py_cc_libs_impl,

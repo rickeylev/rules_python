@@ -29,6 +29,7 @@ cc_shared_library(
         ],
         "//conditions:default": [],
     }),
+    features = ["windows_export_all_symbols"],
     deps = [":increment_impl"],
 )
 
@@ -45,28 +46,21 @@ cc_library(
     alwayslink = True,
 )
 
-# On Windows, cc_shared_library does not correctly link against the Python 
-# import library when it is provided via current_py_cc_libs.
-# Using cc_binary with linkshared = True works around this.
-# We also link increment_impl statically here to avoid cc_shared_library 
-# dependency issues in cc_binary.
-cc_binary(
-    name = "adder_windows",
-    deps = [
-        ":adder_impl",
-        ":increment_impl",
-        "@rules_python//python/cc:current_py_cc_libs",
-    ],
-    linkshared = True,
-    tags = ["manual"],
-)
-
 cc_shared_library(
-    name = "adder_unix",
+    name = "adder",
+    # Necessary for several reasons:
+    # 1. Ensures the output doesn't include increment itself (avoids ODRs)
+    # 2. Adds -lincrement (DT_NEEDED for libincrement.so)
+    # 3. Ensures libincrement.so is available at link time to satisfy (2)
     dynamic_deps = [":increment"],
-    shared_lib_name = "adder.so",
+    shared_lib_name = select({
+        "@platforms//os:windows": "adder.pyd",
+        "//conditions:default": "adder.so",
+    }),
     tags = ["manual"],
-    user_link_flags = select({
+    # NOTE: cc_shared_library adds Bazelized rpath entries, too.
+    user_link_flags = [
+    ] + select({
         "@platforms//os:osx": [
             "-Wl,-rpath,@loader_path/libs",
             "-undefined",
@@ -74,21 +68,19 @@ cc_shared_library(
             "-Wl,-exported_symbol",
             "-Wl,_PyInit_adder",
         ],
+        "@platforms//os:windows": ["$(locations @rules_python//python/cc:current_py_cc_libs)"],
         # Assume linux default
         "//conditions:default": [
             "-Wl,-rpath,$ORIGIN/libs",
         ],
     }),
-    deps = [":adder_impl"],
-)
-
-alias(
-    name = "adder",
-    actual = select({
-        "@platforms//os:windows": ":adder_windows",
-        "//conditions:default": ":adder_unix",
+    deps = [
+        ":adder_impl",
+    ],
+    additional_linker_inputs = select({
+        "@platforms//os:windows": ["@rules_python//python/cc:current_py_cc_libs"],
+        "//conditions:default": [],
     }),
-    tags = ["manual"],
 )
 
 copy_file_to_dir(
