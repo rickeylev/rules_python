@@ -18,66 +18,53 @@ load("@rules_testing//lib:test_suite.bzl", "test_suite")
 load("@rules_testing//lib:truth.bzl", "subjects")
 load("//python/private/pypi:extension.bzl", "build_config", "parse_modules")  # buildifier: disable=bzl-visibility
 load("//python/private/pypi:whl_config_setting.bzl", "whl_config_setting")  # buildifier: disable=bzl-visibility
+load("//tests/support/mocks:mocks.bzl", "mocks")
 load(":pip_parse.bzl", _parse = "pip_parse")
 
 _tests = []
 
-def _mock_mctx(*modules, os_name = "unittest", arch_name = "exotic", environ = {}, read = None):
-    return struct(
-        getenv = environ.get,
-        os = struct(
-            name = os_name,
-            arch = arch_name,
-        ),
-        read = read or (lambda _: """\
+def _pypi_mock_mctx(*modules, os_name = "unittest", arch_name = "exotic", environ = {}, read = None):
+    _ = read  # @unused
+    return mocks.mctx(
+        modules = list(modules),
+        os_name = os_name,
+        arch_name = arch_name,
+        environ = environ,
+        mock_files = {
+            "requirements.txt": """\
 simple==0.0.1 \
     --hash=sha256:deadbeef \
-    --hash=sha256:deadbaaf"""),
-        modules = [
-            struct(
-                name = modules[0].name,
-                tags = modules[0].tags,
-                is_root = modules[0].is_root,
-            ),
-        ] + [
-            struct(
-                name = mod.name,
-                tags = mod.tags,
-                is_root = False,
-            )
-            for mod in modules[1:]
-        ],
+    --hash=sha256:deadbaaf""",
+        },
     )
 
 def _mod(*, name, default = [], parse = [], override = [], whl_mods = [], is_root = True):
-    return struct(
-        name = name,
-        tags = struct(
-            parse = parse,
-            override = override,
-            whl_mods = whl_mods,
-            default = default or [
-                _default(
-                    platform = "{}_{}{}".format(os, cpu, freethreaded),
-                    os_name = os,
-                    arch_name = cpu,
-                    config_settings = [
-                        "@platforms//os:{}".format(os),
-                        "@platforms//cpu:{}".format(cpu),
-                    ],
-                    whl_abi_tags = ["cp{major}{minor}t"] if freethreaded else ["abi3", "cp{major}{minor}"],
-                    whl_platform_tags = whl_platform_tags,
-                )
-                for (os, cpu, freethreaded), whl_platform_tags in {
-                    ("linux", "x86_64", ""): ["linux_x86_64", "manylinux_*_x86_64"],
-                    ("linux", "x86_64", "_freethreaded"): ["linux_x86_64", "manylinux_*_x86_64"],
-                    ("linux", "aarch64", ""): ["linux_aarch64", "manylinux_*_aarch64"],
-                    ("osx", "aarch64", ""): ["macosx_*_arm64"],
-                    ("windows", "aarch64", ""): ["win_arm64"],
-                }.items()
-            ],
-        ),
+    return mocks.module(
+        name,
         is_root = is_root,
+        parse = parse,
+        override = override,
+        whl_mods = whl_mods,
+        default = default or [
+            _default(
+                platform = "{}_{}{}".format(os, cpu, freethreaded),
+                os_name = os,
+                arch_name = cpu,
+                config_settings = [
+                    "@platforms//os:{}".format(os),
+                    "@platforms//cpu:{}".format(cpu),
+                ],
+                whl_abi_tags = ["cp{major}{minor}t"] if freethreaded else ["abi3", "cp{major}{minor}"],
+                whl_platform_tags = whl_platform_tags,
+            )
+            for (os, cpu, freethreaded), whl_platform_tags in {
+                ("linux", "x86_64", ""): ["linux_x86_64", "manylinux_*_x86_64"],
+                ("linux", "x86_64", "_freethreaded"): ["linux_x86_64", "manylinux_*_x86_64"],
+                ("linux", "aarch64", ""): ["linux_aarch64", "manylinux_*_aarch64"],
+                ("osx", "aarch64", ""): ["macosx_*_arm64"],
+                ("windows", "aarch64", ""): ["win_arm64"],
+            }.items()
+        ],
     )
 
 def _parse_modules(env, enable_pipstar = 0, **kwargs):
@@ -140,7 +127,7 @@ def _default(
 def _test_simple(env):
     pypi = _parse_modules(
         env,
-        module_ctx = _mock_mctx(
+        module_ctx = _pypi_mock_mctx(
             _mod(
                 name = "rules_python",
                 parse = [
@@ -187,7 +174,7 @@ _tests.append(_test_simple)
 def _test_build_pipstar_platform(env):
     config = _build_config(
         env,
-        module_ctx = _mock_mctx(
+        module_ctx = _pypi_mock_mctx(
             _mod(
                 name = "rules_python",
                 default = [
