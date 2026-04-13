@@ -1252,29 +1252,45 @@ def py_executable_base_impl(ctx, *, semantics, is_test, inherited_environment = 
 
     app_runfiles = exec_result.app_runfiles
 
-    return _create_providers(
-        ctx = ctx,
+    providers = []
+
+    _add_provider_default_info(
+        providers,
+        ctx,
         executable = executable,
+        default_outputs = default_outputs.build(),
         runfiles_details = runfiles_details,
+    )
+    _add_provider_instrumented_files_info(providers, ctx)
+    _add_provider_run_environment_info(providers, ctx, inherited_environment)
+    _add_provider_py_executable_info(
+        providers,
+        app_runfiles = app_runfiles,
+        build_data_file = runfiles_details.build_data_file,
+        interpreter_args = ctx.attr.interpreter_args,
+        interpreter_path = runtime_details.executable_interpreter_path,
         main_py = main_py,
-        imports = imports,
+        runfiles_without_exe = runfiles_details.runfiles_without_exe,
+        stage2_bootstrap = exec_result.stage2_bootstrap,
+        venv_interpreter_runfiles = exec_result.venv_interpreter_runfiles,
+        venv_interpreter_symlinks = exec_result.venv_interpreter_symlinks,
+        venv_python_exe = exec_result.venv_python_exe,
+    )
+    _add_provider_py_runtime_info(providers, runtime_details)
+    _add_provider_py_cc_link_params_info(providers, cc_details.cc_info_for_propagating)
+    py_info = _add_provider_py_info(
+        providers,
+        ctx = ctx,
         original_sources = direct_sources,
         required_py_files = required_py_files,
         required_pyc_files = required_pyc_files,
         implicit_pyc_files = implicit_pyc_files,
         implicit_pyc_source_files = implicit_pyc_source_files,
-        default_outputs = default_outputs.build(),
-        runtime_details = runtime_details,
-        cc_info = cc_details.cc_info_for_propagating,
-        inherited_environment = inherited_environment,
-        output_groups = exec_result.output_groups,
-        stage2_bootstrap = exec_result.stage2_bootstrap,
-        app_runfiles = app_runfiles,
-        venv_python_exe = exec_result.venv_python_exe,
-        venv_interpreter_runfiles = exec_result.venv_interpreter_runfiles,
-        venv_interpreter_symlinks = exec_result.venv_interpreter_symlinks,
-        interpreter_args = ctx.attr.interpreter_args,
+        imports = imports,
     )
+    _add_provider_output_group_info(providers, py_info, exec_result.output_groups)
+
+    return providers
 
 def _get_build_info(ctx, cc_toolchain):
     build_info_files = py_internal.cc_toolchain_build_info_files(cc_toolchain)
@@ -1799,97 +1815,111 @@ def _is_tool_config(ctx):
     # a more public API. Until that's available, py_internal to the rescue.
     return py_internal.is_tool_configuration(ctx)
 
-def _create_providers(
-        *,
-        ctx,
-        executable,
-        main_py,
-        original_sources,
-        required_py_files,
-        required_pyc_files,
-        implicit_pyc_files,
-        implicit_pyc_source_files,
-        default_outputs,
-        runfiles_details,
-        imports,
-        cc_info,
-        inherited_environment,
-        runtime_details,
-        output_groups,
-        stage2_bootstrap,
-        app_runfiles,
-        venv_python_exe,
-        venv_interpreter_runfiles,
-        venv_interpreter_symlinks,
-        interpreter_args):
-    """Creates the providers an executable should return.
+def _add_provider_default_info(providers, ctx, *, executable, default_outputs, runfiles_details):
+    """Adds the DefaultInfo provider.
 
     Args:
+        providers: list of providers to append to.
         ctx: The rule ctx.
         executable: File; the target's executable file.
-        main_py: File; the main .py entry point.
-        original_sources: `depset[File]` the direct `.py` sources for the
-            target that were the original input sources.
-        required_py_files: `depset[File]` the direct, `.py` sources for the
-            target that **must** be included by downstream targets. This should
-            only be Python source files. It should not include pyc files.
-        required_pyc_files: `depset[File]` the direct `.pyc` files this target
-            produces.
-        implicit_pyc_files: `depset[File]` pyc files that are only used if pyc
-            collection is enabled.
-        implicit_pyc_source_files: `depset[File]` source files for implicit pyc
-            files that are used when the implicit pyc files are not.
         default_outputs: depset of Files; the files for DefaultInfo.files
-        runfiles_details: runfiles that will become the default  and data runfiles.
-        imports: depset of strings; the import paths to propagate
-        cc_info: optional CcInfo; Linking information to propagate as
-            PyCcLinkParamsInfo. Note that only the linking information
-            is propagated, not the whole CcInfo.
+        runfiles_details: runfiles that will become the default and data runfiles.
+    """
+    providers.append(DefaultInfo(
+        executable = executable,
+        files = default_outputs,
+        default_runfiles = _py_builtins.make_runfiles_respect_legacy_external_runfiles(
+            ctx,
+            runfiles_details.default_runfiles,
+        ),
+        data_runfiles = _py_builtins.make_runfiles_respect_legacy_external_runfiles(
+            ctx,
+            runfiles_details.data_runfiles,
+        ),
+    ))
+
+def _add_provider_instrumented_files_info(providers, ctx):
+    """Adds the InstrumentedFilesInfo provider.
+
+    Args:
+        providers: list of providers to append to.
+        ctx: The rule ctx.
+    """
+    providers.append(create_instrumented_files_info(ctx))
+
+def _add_provider_run_environment_info(providers, ctx, inherited_environment):
+    """Adds the RunEnvironmentInfo provider.
+
+    Args:
+        providers: list of providers to append to.
+        ctx: The rule ctx.
         inherited_environment: list of strings; Environment variable names
             that should be inherited from the environment the executuble
             is run within.
-        runtime_details: struct of runtime information; see _get_runtime_details()
-        output_groups: dict[str, depset[File]]; used to create OutputGroupInfo
-        stage2_bootstrap: File; the stage 2 bootstrap script.
-        app_runfiles: runfiles; the runfiles for the application (deps, etc).
-        venv_python_exe: File; the python executable in the venv.
-        venv_interpreter_runfiles: runfiles; runfiles specific to the interpreter
-            for the venv.
-        venv_interpreter_symlinks: depset[ExplicitSymlink]; interpreter-specific symlinks
-            to create for the venv.
-        interpreter_args: list of strings; arguments to pass to the interpreter.
-
-    Returns:
-        A list of modern providers.
     """
-    providers = [
-        DefaultInfo(
-            executable = executable,
-            files = default_outputs,
-            default_runfiles = _py_builtins.make_runfiles_respect_legacy_external_runfiles(
-                ctx,
-                runfiles_details.default_runfiles,
-            ),
-            data_runfiles = _py_builtins.make_runfiles_respect_legacy_external_runfiles(
-                ctx,
-                runfiles_details.data_runfiles,
-            ),
-        ),
-        create_instrumented_files_info(ctx),
-        _create_run_environment_info(ctx, inherited_environment),
-        PyExecutableInfo(
-            app_runfiles = app_runfiles,
-            build_data_file = runfiles_details.build_data_file,
-            interpreter_args = interpreter_args,
-            interpreter_path = runtime_details.executable_interpreter_path,
-            main = main_py,
-            runfiles_without_exe = runfiles_details.runfiles_without_exe,
-            stage2_bootstrap = stage2_bootstrap,
-            venv_interpreter_runfiles = venv_interpreter_runfiles,
-            venv_interpreter_symlinks = venv_interpreter_symlinks,
-            venv_python_exe = venv_python_exe,
-        ),
-    ]
+    expanded_env = {}
+    for key, value in ctx.attr.env.items():
+        expanded_env[key] = _py_builtins.expand_location_and_make_variables(
+            ctx = ctx,
+            attribute_name = "env[{}]".format(key),
+            expression = value,
+            targets = ctx.attr.data,
+        )
+    if "PYTHONBREAKPOINT" not in inherited_environment:
+        inherited_environment = inherited_environment + ["PYTHONBREAKPOINT"]
+    providers.append(RunEnvironmentInfo(
+        environment = expanded_env,
+        inherited_environment = inherited_environment,
+    ))
+
+def _add_provider_py_executable_info(
+        providers,
+        *,
+        app_runfiles,
+        build_data_file,
+        interpreter_args,
+        interpreter_path,
+        main_py,
+        runfiles_without_exe,
+        stage2_bootstrap,
+        venv_interpreter_runfiles,
+        venv_interpreter_symlinks,
+        venv_python_exe):
+    """Adds the PyExecutableInfo provider.
+
+    Args:
+        providers: list of providers to append to.
+        app_runfiles: runfiles; the runfiles for the application (deps, etc).
+        build_data_file: File; a file with build stamp information.
+        interpreter_args: list of strings; arguments to pass to the interpreter.
+        interpreter_path: str; path to the Python interpreter.
+        main_py: File; the main .py entry point.
+        runfiles_without_exe: runfiles; the default runfiles, but without the executable.
+        stage2_bootstrap: File; the stage 2 bootstrap script.
+        venv_interpreter_runfiles: runfiles; runfiles specific to the interpreter for the venv.
+        venv_interpreter_symlinks: depset[ExplicitSymlink]; interpreter-specific symlinks to create for the venv.
+        venv_python_exe: File; the python executable in the venv.
+    """
+    providers.append(PyExecutableInfo(
+        app_runfiles = app_runfiles,
+        build_data_file = build_data_file,
+        interpreter_args = interpreter_args,
+        interpreter_path = interpreter_path,
+        main = main_py,
+        runfiles_without_exe = runfiles_without_exe,
+        stage2_bootstrap = stage2_bootstrap,
+        venv_interpreter_runfiles = venv_interpreter_runfiles,
+        venv_interpreter_symlinks = venv_interpreter_symlinks,
+        venv_python_exe = venv_python_exe,
+    ))
+
+def _add_provider_py_runtime_info(providers, runtime_details):
+    """Adds the PyRuntimeInfo provider.
+
+    Args:
+        providers: list of providers to append to.
+        runtime_details: struct of runtime information; see _get_runtime_details()
+    """
 
     # TODO - The effective runtime can be None for Windows + auto detecting toolchain.
     # This can be removed once that's fixed; see maybe_get_runtime_from_ctx().
@@ -1917,6 +1947,16 @@ def _create_providers(
                 bootstrap_template = py_runtime_info.bootstrap_template,
             ))
 
+def _add_provider_py_cc_link_params_info(providers, cc_info):
+    """Adds the PyCcLinkParamsInfo provider.
+
+    Args:
+        providers: list of providers to append to.
+        cc_info: optional CcInfo; Linking information to propagate as
+            PyCcLinkParamsInfo. Note that only the linking information
+            is propagated, not the whole CcInfo.
+    """
+
     # TODO(b/163083591): Remove the PyCcLinkParamsInfo once binaries-in-deps
     # are cleaned up.
     if cc_info:
@@ -1924,6 +1964,37 @@ def _create_providers(
             PyCcLinkParamsInfo(cc_info = cc_info),
         )
 
+def _add_provider_py_info(
+        providers,
+        *,
+        ctx,
+        original_sources,
+        required_py_files,
+        required_pyc_files,
+        implicit_pyc_files,
+        implicit_pyc_source_files,
+        imports):
+    """Adds the PyInfo provider.
+
+    Args:
+        providers: list of providers to append to.
+        ctx: The rule ctx.
+        original_sources: `depset[File]` the direct `.py` sources for the
+            target that were the original input sources.
+        required_py_files: `depset[File]` the direct, `.py` sources for the
+            target that **must** be included by downstream targets. This should
+            only be Python source files. It should not include pyc files.
+        required_pyc_files: `depset[File]` the direct `.pyc` files this target
+            produces.
+        implicit_pyc_files: `depset[File]` pyc files that are only used if pyc
+            collection is enabled.
+        implicit_pyc_source_files: `depset[File]` source files for implicit pyc
+            files that are used when the implicit pyc files are not.
+        imports: depset of strings; the import paths to propagate
+
+    Returns:
+        PyInfo.
+    """
     py_info, builtin_py_info = create_py_info(
         ctx,
         original_sources = original_sources,
@@ -1933,28 +2004,20 @@ def _create_providers(
         implicit_pyc_source_files = implicit_pyc_source_files,
         imports = imports,
     )
-
     providers.append(py_info)
     if builtin_py_info:
         providers.append(builtin_py_info)
-    providers.append(create_output_group_info(py_info.transitive_sources, output_groups))
-    return providers
+    return py_info
 
-def _create_run_environment_info(ctx, inherited_environment):
-    expanded_env = {}
-    for key, value in ctx.attr.env.items():
-        expanded_env[key] = _py_builtins.expand_location_and_make_variables(
-            ctx = ctx,
-            attribute_name = "env[{}]".format(key),
-            expression = value,
-            targets = ctx.attr.data,
-        )
-    if "PYTHONBREAKPOINT" not in inherited_environment:
-        inherited_environment = inherited_environment + ["PYTHONBREAKPOINT"]
-    return RunEnvironmentInfo(
-        environment = expanded_env,
-        inherited_environment = inherited_environment,
-    )
+def _add_provider_output_group_info(providers, py_info, output_groups):
+    """Adds the OutputGroupInfo provider.
+
+    Args:
+        providers: list of providers to append to.
+        py_info: PyInfo; the PyInfo provider.
+        output_groups: dict[str, depset[File]]; used to create OutputGroupInfo
+    """
+    providers.append(create_output_group_info(py_info.transitive_sources, output_groups))
 
 def _add_config_setting_defaults(kwargs):
     config_settings = kwargs.get("config_settings", None)
