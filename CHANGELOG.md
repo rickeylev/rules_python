@@ -47,6 +47,28 @@ BEGIN_UNRELEASED_TEMPLATE
 END_UNRELEASED_TEMPLATE
 -->
 
+{#v0-0-0}
+## Unreleased
+
+[0.0.0]: https://github.com/bazel-contrib/rules_python/releases/tag/0.0.0
+
+{#v0-0-0-removed}
+### Removed
+* Nothing removed.
+
+{#v0-0-0-changed}
+### Changed
+* Nothing changed.
+
+{#v0-0-0-fixed}
+### Fixed
+* Nothing fixed.
+
+{#v0-0-0-added}
+### Added
+* (runfiles) Added a pathlib-compatible API: {obj}`Runfiles.root()`
+  Fixes [#3296](https://github.com/bazel-contrib/rules_python/issues/3296).
+
 {#v2-0-0}
 ## [2.0.0] - 2026-04-09
 
