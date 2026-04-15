@@ -16,4 +16,5 @@ dependencies = [
     "pefile",
     "pyelftools",
     "macholib",
+    "pywin32; platform_system == 'Windows'",
 ]
