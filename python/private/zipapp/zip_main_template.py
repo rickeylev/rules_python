@@ -29,7 +29,7 @@ import stat
 import subprocess
 import tempfile
 import zipfile
-from os.path import basename, dirname, join
+from os.path import basename, dirname, join, normpath
 
 # runfiles-root-relative path
 _STAGE2_BOOTSTRAP = "%stage2_bootstrap%"
@@ -152,7 +152,7 @@ def find_binary(runfiles_root, bin_name):
         # Case 2: Absolute path.
         return bin_name
     # Use normpath() to convert slashes to os.sep on Windows.
-    elif os.sep in os.path.normpath(bin_name):
+    elif os.sep in normpath(bin_name):
         # Case 3: Path is relative to the repo root.
         return join(runfiles_root, bin_name)
     else:
@@ -197,7 +197,20 @@ def extract_zip(zip_path, dest_dir):
                     target = f.read()
                 os.remove(file_path)
                 print_verbose("link", file_path, "to", target)
-                os.symlink(target, file_path)
+                if IS_WINDOWS:
+                    entry_path = normpath(join(dirname(info.filename), target))
+                    # Zip lookup uses forward slashes, target has backslashes.
+                    entry_path = entry_path.replace("\\", "/")
+                    try:
+                        target_is_directory = zf.getinfo(entry_path).is_dir()
+                    except KeyError:
+                        # Directories aren't stored in zips, so a missing
+                        # target means it points to a directory.
+                        target_is_directory = True
+                else:
+                    target_is_directory = False
+                os.symlink(target, file_path,
+                           target_is_directory=target_is_directory)
             # Of those, we set the lower 12 bits, which are the
             # file mode bits (since the file type bits can't be set by chmod anyway).
             elif attrs != 0:  # Rumor has it these can be 0 for zips created on Windows.

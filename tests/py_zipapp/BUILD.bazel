@@ -21,7 +21,10 @@ py_binary(
     }),
     main = "main.py",
     ##target_compatible_with = NOT_WINDOWS,
-    deps = [":some_dep"],
+    deps = [
+        "pkgdep",
+        ":some_dep",
+    ],
 )
 
 py_zipapp_binary(
@@ -106,4 +109,11 @@ py_library(
     srcs = ["some_dep.py"],
     experimental_venvs_site_packages = "//python/config_settings:venvs_site_packages",
     imports = ["."],
+)
+
+py_library(
+    name = "pkgdep",
+    srcs = glob(["site-packages/**"]),
+    experimental_venvs_site_packages = "//python/config_settings:venvs_site_packages",
+    imports = ["site-packages"],
 )
