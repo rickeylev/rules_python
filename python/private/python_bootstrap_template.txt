@@ -548,13 +548,17 @@ def _run_execv(python_program, argv, env):
 
 def _symlink_exist_ok(*, from_, to):
   try:
-    os.symlink(to, from_)
+    # On Windows, symlinks have to be told whether they're
+    # pointing to a file or directory. Python is supposed to auto-detect
+    # this, but in practice, this doesn't reliably happen.
+    os.symlink(to, from_, target_is_directory=os.path.isdir(to))
   except FileExistsError:
     pass
 
 
 def main():
   print_verbose("sys.version:", sys.version)
+  print_verbose("sys.executable:", sys.executable)
   print_verbose("initial argv:", values=sys.argv)
   print_verbose("initial cwd:", os.getcwd())
   print_verbose("initial environ:", mapping=os.environ)

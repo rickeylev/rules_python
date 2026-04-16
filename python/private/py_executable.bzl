@@ -490,9 +490,9 @@ WARNING: Target: {}
         # runfiles; runfiles for the app itself (e.g its deps, but no Python
         # runtime files)
         app_runfiles = app_runfiles.build(ctx),
-        # depset[ExplicitSymlink]None; symlinks that should be created to
-        # augment app_runfiles
-        venv_app_symlinks = venv.lib_symlinks,
+        # depset[ExplicitSymlink]None; symlinks that should be created in
+        # the venv to augment app_runfiles
+        venv_app_symlinks = venv.lib_symlinks if venv else None,
         # File|None; the venv `bin/python3` file, if any.
         venv_python_exe = venv.interpreter if venv else None,
         # runfiles|None; runfiles in the venv for the interpreter
