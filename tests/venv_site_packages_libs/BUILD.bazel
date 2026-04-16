@@ -69,8 +69,6 @@ py_reconfig_test(
     ],
 )
 
-# todo: building ext from scrath is tough.
-# instead, import win32.timer, which should be an easy test case
 py_reconfig_test(
     name = "shared_lib_loading_windows_test",
     srcs = ["shared_lib_loading_windows_test.py"],
@@ -78,6 +76,6 @@ py_reconfig_test(
     main = "shared_lib_loading_windows_test.py",
     venvs_site_packages = "yes",
     deps = [
-        "@dev_pip//pywin32",
+        "@dev_pip//markupsafe",
     ],
 )

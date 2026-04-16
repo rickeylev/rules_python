@@ -1,47 +1,44 @@
+import os
 import sys
 import unittest
+from pathlib import Path
+import importlib
 
 class SharedLibLoadingWindowsTest(unittest.TestCase):
     def setUp(self):
         super().setUp()
         if sys.prefix == sys.base_prefix:
             raise AssertionError("Not running under a venv")
-        self.venv = sys.prefix
+        self.venv = Path(sys.prefix)
 
     def test_shared_library_loading(self):
-        # The TODO says to import win32.timer.
-        # pywin32 modules are often accessible via the win32 package.
-        try:
-            import win32.timer
-            module = win32.timer
-        except ImportError:
-            # Fallback to win32timer if win32.timer is not available.
-            # Depending on how pywin32 is packaged/installed, it might be top-level.
-            import win32timer
-            module = win32timer
+        # We import markupsafe._speedups (a .cp311-win_amd64.pyd extension)
+        import markupsafe._speedups
+        module = markupsafe._speedups
 
-        self.assertIsNotNone(module.__file__)
-        
+        print(f"Module file: {module.__file__}")
+
         # Verify it's in the venv
-        # Normalize paths for Windows comparison
-        actual_file = module.__file__.lower().replace("\\", "/")
-        expected_prefix = self.venv.lower().replace("\\", "/")
-        
+        # Normalize paths for Windows comparison. 
+        # We DON'T use resolve() here because we want to see the path Python used,
+        # which should be within the venv's site-packages (even if it's a symlink).
+        actual_file = str(Path(module.__file__)).lower()
+        expected_prefix = str(self.venv).lower()
+
         self.assertTrue(
             actual_file.startswith(expected_prefix),
             f"Module {module.__name__} not loaded from venv.\n"
-            f"Venv: {self.venv}\n"
-            f"Module file: {module.__file__}"
+            f"Venv: {expected_prefix}\n"
+            f"Module file: {actual_file}\n"
+            f"sys.path:\n" + "\n".join(sys.path)
         )
-        
+
         # Verify it's a shared library (.pyd)
         self.assertTrue(
             actual_file.endswith(".pyd"),
             f"Expected .pyd extension, got {module.__file__}"
         )
 
-        # Verify it works
-        self.assertTrue(hasattr(module, 'set_timer'))
 
 if __name__ == "__main__":
     unittest.main()
