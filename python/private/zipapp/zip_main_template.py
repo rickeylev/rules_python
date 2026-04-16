@@ -41,13 +41,13 @@ _PYTHON_BINARY_ACTUAL = "%python_binary_actual%"
 _WORKSPACE_NAME = "%workspace_name%"
 # relative path under EXTRACT_ROOT to extract to.
 EXTRACT_DIR = "%EXTRACT_DIR%"
-APP_HASH = "%APP_HASH%"
+##APP_HASH = "%APP_HASH%"
+APP_HASH = "h"
 
-EXTRACT_ROOT = os.environ.get("RULES_PYTHON_EXTRACT_ROOT")
+##EXTRACT_ROOT = os.environ.get("RULES_PYTHON_EXTRACT_ROOT")
+EXTRACT_ROOT = r"C:\tempvenv\a"
 IS_WINDOWS = os.name == "nt"
 
-
-EXTRACT_ROOT = os.environ.get("RULES_PYTHON_EXTRACT_ROOT")
 
 # Change the paths with Unix-style forward slashes to backslashes for Windows.
 # Windows usually transparently rewrites them, but e.g. `\\?\` paths require
@@ -65,9 +65,11 @@ if IS_WINDOWS:
     EXTRACT_DIR = norm_slashes(EXTRACT_DIR)
     EXTRACT_ROOT = norm_slashes(EXTRACT_ROOT)
 
+IS_VERBOSE = bool(os.environ.get("RULES_PYTHON_BOOTSTRAP_VERBOSE"))
+IS_VERBOSE = True
 
 def print_verbose(*args, mapping=None, values=None):
-    if not bool(os.environ.get("RULES_PYTHON_BOOTSTRAP_VERBOSE")):
+    if not IS_VERBOSE:
         return
     if mapping is not None:
         for key, value in sorted((mapping or {}).items()):
@@ -194,6 +196,7 @@ def extract_zip(zip_path, dest_dir):
                 with open(file_path, "r") as f:
                     target = f.read()
                 os.remove(file_path)
+                print_verbose("link", file_path, "to", target)
                 os.symlink(target, file_path)
             # Of those, we set the lower 12 bits, which are the
             # file mode bits (since the file type bits can't be set by chmod anyway).
@@ -213,8 +216,11 @@ def create_runfiles_root():
             extract_root = join(EXTRACT_ROOT, EXTRACT_DIR, APP_HASH)
             extract_root = get_windows_path_with_unc_prefix(extract_root)
     else:
+        assert False
         extract_root = tempfile.mkdtemp("", "Bazel.runfiles_")
+    shutil.rmtree(extract_root, True)
     extract_zip(dirname(__file__), extract_root)
+    print_verbose('extracted to:', extract_root)
     # IMPORTANT: Later code does `rm -fr` on dirname(runfiles_root) -- it's
     # important that deletion code be in sync with this directory structure
     return join(extract_root, "runfiles")
@@ -314,10 +320,10 @@ def finish_venv_setup(runfiles_root):
 
 def main():
     print_verbose("running zip main bootstrap")
+    print_verbose("initial sys.version:", sys.version)
+    print_verbose("initial sys.executable:", sys.executable)
     print_verbose("initial argv:", values=sys.argv)
     print_verbose("initial environ:", mapping=os.environ)
-    print_verbose("initial sys.executable:", sys.executable)
-    print_verbose("initial sys.version:", sys.version)
     print_verbose("stage2_bootstrap:", _STAGE2_BOOTSTRAP)
     print_verbose("python_binary_venv:", _PYTHON_BINARY_VENV)
     print_verbose("python_binary_actual:", _PYTHON_BINARY_ACTUAL)
@@ -353,6 +359,7 @@ def main():
     if _PYTHON_BINARY_VENV:
         python_program = finish_venv_setup(runfiles_root)
     else:
+        assert False, "should be using venv"
         python_program = find_binary(runfiles_root, _PYTHON_BINARY_ACTUAL)
         if python_program is None:
             raise AssertionError(

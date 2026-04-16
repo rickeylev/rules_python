@@ -135,18 +135,22 @@ def _create_zip(ctx, py_runtime, py_executable, stage2_bootstrap):
 
     runfiles = runfiles.build(ctx)
 
+    explicit_symlinks = depset(transitive = [
+        py_executable.venv_interpreter_symlinks,
+        py_executable.venv_app_symlinks,
+    ])
     zip_main = _create_zipapp_main_py(
         ctx,
         py_runtime,
         py_executable,
         stage2_bootstrap,
         runfiles,
-        py_executable.venv_interpreter_symlinks,
+        explicit_symlinks,
     )
     inputs = builders.DepsetBuilder()
     manifest.add("regular|0|__main__.py|{}".format(zip_main.path))
     inputs.add(zip_main)
-    _build_manifest(ctx, manifest, runfiles, py_executable.venv_interpreter_symlinks, inputs)
+    _build_manifest(ctx, manifest, runfiles, explicit_symlinks, inputs)
 
     zipper_args = ctx.actions.args()
     zipper_args.add(output)
