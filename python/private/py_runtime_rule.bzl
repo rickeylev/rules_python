@@ -86,6 +86,15 @@ def _create_stdlib_zip(ctx, *, runfiles, stdlib_files, stdlib_root, interpreter_
     symlink_path = paths.dirname(stdlib_root) + "/" + zip_name
     runfiles.symlinks[symlink_path] = zip_file
     return zip_file
+def _should_zip_stdlib(ctx, hermetic, interpreter_version_info):
+    if not ZipStdlibFlag.is_enabled(ctx):
+        return False
+    if not hermetic:
+        return False
+    if not interpreter_version_info or "major" not in interpreter_version_info or "minor" not in interpreter_version_info:
+        return False
+    return True
+
 def _py_runtime_impl(ctx):
     interpreter_path = ctx.attr.interpreter_path or None  # Convert empty string to None
     interpreter = ctx.attr.interpreter
@@ -151,7 +160,7 @@ def _py_runtime_impl(ctx):
         fail("Using Python 2 is not supported and disabled; see " +
              "https://github.com/bazelbuild/bazel/issues/15684")
 
-    if ZipStdlibFlag.is_enabled(ctx) and hermetic and interpreter_version_info and "major" in interpreter_version_info and "minor" in interpreter_version_info:
+    if _should_zip_stdlib(ctx, hermetic, interpreter_version_info):
         stdlib_files, other_files, lib_dir = _partition_runtime_files(runtime_files)
         if stdlib_files:
             _create_stdlib_zip(
