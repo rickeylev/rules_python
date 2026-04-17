@@ -38,7 +38,7 @@ def _partition_runtime_files(runtime_files):
     lib_short_dir = None
     for f in files_list:
         if f.basename in ("os.py", "os.pyc"):
-            lib_short_dir = f.short_path[:-len(f.basename)-1]
+            lib_short_dir = f.short_path[:-len(f.basename) - 1]
             break
 
     if not lib_short_dir:
@@ -57,7 +57,10 @@ def _map_each_stdlib_manifest(f):
     return "{}|{}".format(f.short_path, f.path)
 
 def _create_stdlib_zip(ctx, *, runfiles, stdlib_files, stdlib_root, interpreter_version_info, interpreter_di):
-    zip_name = "python{}{}.zip".format(interpreter_version_info["major"], interpreter_version_info["minor"])
+    zip_name = "{}/python{major}{minor}.zip".format(
+        stdlib_root,
+        **interpreter_version_info
+    )
     zip_file = ctx.actions.declare_file(zip_name)
     manifest_file = ctx.actions.declare_file("_stdlib_zip_manifest.txt")
 
@@ -76,16 +79,18 @@ def _create_stdlib_zip(ctx, *, runfiles, stdlib_files, stdlib_root, interpreter_
         ctx,
         executable = ctx.attr.interpreter,
         arguments = [zipper_info.main.path, args],
-        inputs = depset(stdlib_files + [zipper_info.main, manifest_file], transitive = [interpreter_di.files, interpreter_di.default_runfiles.files]),
+        inputs = depset(
+            stdlib_files + [zipper_info.main, manifest_file],
+            transitive = [interpreter_di.files, interpreter_di.default_runfiles.files],
+        ),
         outputs = [zip_file],
         mnemonic = "PyZipStdlib",
         progress_message = "Reticulating %{label} stdlib into zip %{output}",
     )
 
     runfiles.add(zip_file)
-    symlink_path = paths.dirname(stdlib_root) + "/" + zip_name
-    runfiles.symlinks[symlink_path] = zip_file
     return zip_file
+
 def _should_zip_stdlib(ctx, hermetic, interpreter_version_info):
     if not ZipStdlibFlag.is_enabled(ctx):
         return False
