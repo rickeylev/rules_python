@@ -66,10 +66,10 @@ END_UNRELEASED_TEMPLATE
 
 {#v0-0-0-added}
 ### Added
-* (py_runtime) Added the ability to zip the Python standard library. This can
-  be enabled by setting the `//python/config_settings:zip_stdlib` flag to
-  `"yes"`. This will generate a `.zip` file of `.py` standard library files for
-  `py_runtime` rather than copying all individual files into the runfiles.
+* (py_runtime) Added the ability to zip the Python standard library. To
+  enable, set {obj}`--@rules_python//python/config_settings:zip_stdlib=yes`
+  This lowers the runfiles overhead by replacing the O(thousands) stdlib
+  `.py` files with a single zip file.
 * (runfiles) Added a pathlib-compatible API: {obj}`Runfiles.root()`
   Fixes [#3296](https://github.com/bazel-contrib/rules_python/issues/3296).
 * (toolchains) `3.13.12`, `3.14.3` Python toolchain from [20260325] release.
