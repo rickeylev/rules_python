@@ -8,6 +8,7 @@ load("@rules_python_internal//:extra_transition_settings.bzl", "EXTRA_TRANSITION
 load(":common_labels.bzl", "labels")
 
 _BASE_TRANSITION_LABELS = [
+    # keep-sorted
     labels.ADD_SRCS_TO_RUNFILES,
     labels.BOOTSTRAP_IMPL,
     labels.DEBUGGER,
