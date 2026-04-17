@@ -53,8 +53,8 @@ def _partition_runtime_files(runtime_files):
 
     return stdlib_files, other_files, lib_dir
 
-def _create_stdlib_zip(ctx, *, runfiles, stdlib_files, strip_prefix, interpreter_version_info, interpreter_di):
-    zip_file = ctx.actions.declare_file("lib/python{}{}.zip".format(interpreter_version_info["major"], interpreter_version_info["minor"]))
+def _create_stdlib_zip(ctx, *, runfiles, stdlib_files, stdlib_root, interpreter_version_info, interpreter_di):
+    zip_file = ctx.actions.declare_file(paths.basename(stdlib_root) + ".zip", sibling = stdlib_files[0])
     manifest_file = ctx.actions.declare_file("_stdlib_zip_manifest.txt")
 
     manifest_args = ctx.actions.args()
@@ -64,9 +64,8 @@ def _create_stdlib_zip(ctx, *, runfiles, stdlib_files, strip_prefix, interpreter
 
     args = ctx.actions.args()
     args.add("--out", zip_file)
-    args.add("--strip-prefix", strip_prefix)
+    args.add("--strip-prefix", stdlib_root)
     args.add("--manifest", manifest_file)
-
     zipper_info = ctx.attr._zip_stdlib[PyInterpreterProgramInfo]
 
     actions_run(
@@ -155,7 +154,7 @@ def _py_runtime_impl(ctx):
                 ctx = ctx,
                 runfiles = runfiles_builder,
                 stdlib_files = stdlib_files,
-                strip_prefix = lib_dir,
+                stdlib_root = lib_dir,
                 interpreter_version_info = interpreter_version_info,
                 interpreter_di = interpreter_di,
             )
