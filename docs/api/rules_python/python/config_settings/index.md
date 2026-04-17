@@ -419,10 +419,8 @@ is created.
 
 Determines if the Python standard library is zipped at build time.
 
-When enabled, the `.py` files within the `lib/pythonX.Y/` directory of a
-hermetic toolchain will be zipped into an `_stdlib_zip_manifest.txt`-based
-zip file (typically named `lib/pythonX.Y.zip`), and the original `.py` files
-will be omitted from the runfiles tree.
+When enabled, the `.py` files of the runtime's stdlib will put into
+a zip file. The zip file replaces the regular files in runfiles.
 
 Values:
 * `auto`: (default) Automatically decide based on the environment; currently
