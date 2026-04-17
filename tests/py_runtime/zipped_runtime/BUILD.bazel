@@ -1,0 +1,23 @@
+load("//python:py_runtime.bzl", "py_runtime")
+
+genrule(
+    name = "gen_other_py",
+    outs = ["lib/python3.9/other.py"],
+    cmd = "echo '# other.py' > $@",
+)
+
+py_runtime(
+    name = "runtime_for_zip_test",
+    interpreter = "bin/python3",
+    files = [
+        "lib/python3.9/os.py",
+        "lib/python3.9/regular.py",
+        ":gen_other_py",
+    ],
+    python_version = "PY3",
+    interpreter_version_info = {
+        "major": "3",
+        "minor": "9",
+    },
+    visibility = ["//tests/py_runtime:__pkg__"],
+)

@@ -16,7 +16,7 @@ def main():
             found_zip = True
             
         if "os.py" in files and "python3.9" in root:
-            if "tests/py_runtime/lib/python3.9" in root.replace(os.sep, "/"):
+            if "tests/py_runtime/zipped_runtime/lib/python3.9" in root.replace(os.sep, "/"):
                 found_os_py = True
 
     if not found_zip:
