@@ -21,10 +21,15 @@ class FileEntry:
 def main(argv=None):
     parser = argparse.ArgumentParser(description="Deterministic zip for stdlib")
     parser.add_argument("--out", required=True, help="Output zip file path")
+    parser.add_argument("--strip-prefix", required=True, help="Prefix to strip from paths")
     parser.add_argument("--manifest", required=True, help="Path to manifest file containing files to zip")
     
     args = parser.parse_args(argv)
     
+    prefix = args.strip_prefix
+    if not prefix.endswith("/"):
+        prefix += "/"
+        
     entries = []
     with open(args.manifest, 'r') as f:
         for line in f:
@@ -34,10 +39,11 @@ def main(argv=None):
             parts = line.split('|', 2)
             if len(parts) == 3:
                 entry_type, zip_path, content_path = parts
-                if entry_type == 'f':
+                if entry_type == 'f' or entry_type == 'file':
+                    if zip_path.startswith(prefix):
+                        zip_path = zip_path[len(prefix):]
                     entries.append(FileEntry(content_path, zip_path))
             else:
-                # If there's an old format being passed, we can gracefully ignore or crash.
                 print("Invalid manifest line: " + line)
                 sys.exit(1)
         

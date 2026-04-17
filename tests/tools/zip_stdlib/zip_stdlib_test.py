@@ -22,6 +22,7 @@ class TestStdlibZipper(unittest.TestCase):
             
             zip_stdlib.main([
                 "--out", str(zip_path),
+                "--strip-prefix", "my/prefix",
                 "--manifest", str(manifest_path)
             ])
             

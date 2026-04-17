@@ -54,18 +54,11 @@ def _partition_runtime_files(runtime_files):
     return stdlib_files, other_files, lib_short_dir
 
 def _map_each_stdlib_manifest(f):
-    idx = f.short_path.find("/lib/python")
-    if idx == -1 and f.short_path.startswith("lib/python"):
-        idx = 0
-    if idx != -1:
-        zip_path_start = f.short_path.find("/", idx + 12)
-        if zip_path_start != -1:
-            zip_path = f.short_path[zip_path_start + 1:]
-            return "f|{}|{}".format(zip_path, f.path)
-    return "f|{}|{}".format(f.short_path, f.path)
+    return "file|{}|{}".format(f.short_path, f.path)
 
 def _create_stdlib_zip(ctx, *, runfiles, stdlib_files, stdlib_root, interpreter_version_info, interpreter_di):
-    zip_file = ctx.actions.declare_file(paths.basename(stdlib_root) + ".zip", sibling = stdlib_files[0])
+    zip_name = "python{}{}.zip".format(interpreter_version_info["major"], interpreter_version_info["minor"])
+    zip_file = ctx.actions.declare_file(zip_name)
     manifest_file = ctx.actions.declare_file("_stdlib_zip_manifest.txt")
 
     manifest_args = ctx.actions.args()
@@ -75,6 +68,7 @@ def _create_stdlib_zip(ctx, *, runfiles, stdlib_files, stdlib_root, interpreter_
 
     args = ctx.actions.args()
     args.add("--out", zip_file)
+    args.add("--strip-prefix", stdlib_root)
     args.add("--manifest", manifest_file)
     zipper_info = ctx.attr._zip_stdlib[PyInterpreterProgramInfo]
 
@@ -89,6 +83,8 @@ def _create_stdlib_zip(ctx, *, runfiles, stdlib_files, stdlib_root, interpreter_
     )
 
     runfiles.add(zip_file)
+    symlink_path = paths.dirname(stdlib_root) + "/" + zip_name
+    runfiles.symlinks[symlink_path] = zip_file
     return zip_file
 def _py_runtime_impl(ctx):
     interpreter_path = ctx.attr.interpreter_path or None  # Convert empty string to None
