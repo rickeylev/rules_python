@@ -26,6 +26,7 @@ _BASE_TRANSITION_LABELS = [
     labels.PY_LINUX_LIBC,
     labels.VENVS_SITE_PACKAGES,
     labels.VENVS_USE_DECLARE_SYMLINK,
+    labels.ZIP_STDLIB,
 ]
 
 TRANSITION_LABELS = collections.uniq(

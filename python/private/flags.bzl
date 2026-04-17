@@ -236,3 +236,24 @@ LibcFlag = FlagEnum(
     # Prefer musl wheels (e.g. musllinux_2_17_x86_64)
     MUSL = "musl",
 )
+
+def _zip_stdlib_get_effective_value(ctx):
+    value = ctx.attr._zip_stdlib_flag[BuildSettingInfo].value
+    if value == ZipStdlibFlag.AUTO:
+        value = ZipStdlibFlag.NO
+    return value
+
+def _zip_stdlib_is_enabled(ctx):
+    return _zip_stdlib_get_effective_value(ctx) == ZipStdlibFlag.YES
+
+# buildifier: disable=name-conventions
+ZipStdlibFlag = FlagEnum(
+    # Automatically decide based on environment (defaults to NO).
+    AUTO = "auto",
+    # Enable zipping the stdlib
+    YES = "yes",
+    # Disable zipping the stdlib
+    NO = "no",
+    get_effective_value = _zip_stdlib_get_effective_value,
+    is_enabled = _zip_stdlib_is_enabled,
+)

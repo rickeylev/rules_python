@@ -16,14 +16,68 @@
 load("@bazel_skylib//lib:dicts.bzl", "dicts")
 load("@bazel_skylib//lib:paths.bzl", "paths")
 load("@bazel_skylib//rules:common_settings.bzl", "BuildSettingInfo")
+load(":builders.bzl", "builders")
+load(":common.bzl", "actions_run")
 load(":common_labels.bzl", "labels")
-load(":flags.bzl", "FreeThreadedFlag")
+load(":flags.bzl", "FreeThreadedFlag", "ZipStdlibFlag")
 load(":py_internal.bzl", "py_internal")
+load(":py_interpreter_program.bzl", "PyInterpreterProgramInfo")
 load(":py_runtime_info.bzl", "DEFAULT_STUB_SHEBANG", "PyRuntimeInfo")
 load(":reexports.bzl", "BuiltinPyRuntimeInfo")
 load(":version.bzl", "version")
 
 _py_builtins = py_internal
+
+def _partition_runtime_files(runtime_files, interpreter_version_info):
+    files_list = runtime_files.to_list()
+    stdlib_files = []
+    other_files = []
+    
+    lib_dir = "lib/python{}.{}".format(interpreter_version_info["major"], interpreter_version_info["minor"])
+    
+    for f in files_list:
+        if f.extension == "py" and lib_dir in f.path and "site-packages" not in f.path and "ensurepip" not in f.path:
+            stdlib_files.append(f)
+        else:
+            other_files.append(f)
+    return stdlib_files, other_files
+
+def _create_stdlib_zip(ctx, *, runfiles, stdlib_files, interpreter_version_info, interpreter_di):
+    lib_dir = "lib/python{}.{}".format(interpreter_version_info["major"], interpreter_version_info["minor"])
+    
+    # Find the strip_prefix using the first file
+    first_file = stdlib_files[0]
+    prefix_idx = first_file.path.find(lib_dir)
+    strip_prefix = first_file.path[:prefix_idx + len(lib_dir)]
+    
+    zip_file = ctx.actions.declare_file("lib/python{}{}.zip".format(interpreter_version_info["major"], interpreter_version_info["minor"]))
+    manifest_file = ctx.actions.declare_file("_stdlib_zip_manifest.txt")
+    
+    manifest_args = ctx.actions.args()
+    manifest_args.set_param_file_format("multiline")
+    manifest_args.add_all(stdlib_files)
+    ctx.actions.write(manifest_file, manifest_args)
+    
+    args = ctx.actions.args()
+    args.add("--out", zip_file)
+    args.add("--strip-prefix", strip_prefix)
+    args.add("--manifest", manifest_file)
+    
+    zipper_info = ctx.attr._zip_stdlib[PyInterpreterProgramInfo]
+    
+    actions_run(
+        ctx,
+        executable = ctx.attr.interpreter,
+        arguments = [zipper_info.main.path, args],
+        inputs = depset(stdlib_files + [zipper_info.main, manifest_file], transitive=[interpreter_di.files, interpreter_di.default_runfiles.files]),
+        outputs = [zip_file],
+        mnemonic = "PyZipStdlib",
+        progress_message = "Zipping Python standard library for %{label}",
+        env = {"PYTHONSAFEPATH": "1", "PYTHONHASHSEED": "0", "PYTHONNOUSERSITE": "1"},
+    )
+    
+    runfiles.add(zip_file)
+    return zip_file
 
 def _py_runtime_impl(ctx):
     interpreter_path = ctx.attr.interpreter_path or None  # Convert empty string to None
@@ -36,9 +90,9 @@ def _py_runtime_impl(ctx):
         for t in ctx.attr.files
     ])
 
-    runfiles = ctx.runfiles()
-
+    runfiles_builder = builders.RunfilesBuilder()
     hermetic = bool(interpreter)
+    interpreter_di = None
     if not hermetic:
         if runtime_files:
             fail("if 'interpreter_path' is given then 'files' must be empty")
@@ -49,7 +103,6 @@ def _py_runtime_impl(ctx):
 
         if interpreter_di.files_to_run and interpreter_di.files_to_run.executable:
             interpreter = interpreter_di.files_to_run.executable
-            runfiles = runfiles.merge(interpreter_di.default_runfiles)
 
             runtime_files = depset(transitive = [
                 interpreter_di.files,
@@ -90,6 +143,29 @@ def _py_runtime_impl(ctx):
     if python_version == "PY2":
         fail("Using Python 2 is not supported and disabled; see " +
              "https://github.com/bazelbuild/bazel/issues/15684")
+
+    if ZipStdlibFlag.is_enabled(ctx) and hermetic and interpreter_version_info and "major" in interpreter_version_info and "minor" in interpreter_version_info:
+        stdlib_files, other_files = _partition_runtime_files(runtime_files, interpreter_version_info)
+        if stdlib_files:
+            _create_stdlib_zip(
+                ctx = ctx,
+                runfiles = runfiles_builder,
+                stdlib_files = stdlib_files,
+                interpreter_version_info = interpreter_version_info,
+                interpreter_di = interpreter_di,
+            )
+            runfiles_builder.add(other_files)
+        else:
+            runfiles_builder.add(runtime_files)
+            if hermetic and interpreter_di and interpreter_di.files_to_run and interpreter_di.files_to_run.executable:
+                runfiles_builder.add(interpreter_di.default_runfiles)
+    else:
+        runfiles_builder.add(runtime_files)
+        if hermetic and interpreter_di and interpreter_di.files_to_run and interpreter_di.files_to_run.executable:
+            runfiles_builder.add(interpreter_di.default_runfiles)
+
+    runtime_files = runfiles_builder.files.build()
+    runfiles = runfiles_builder.build(ctx)
 
     pyc_tag = ctx.attr.pyc_tag
     if not pyc_tag and (ctx.attr.implementation_name and
@@ -380,6 +456,13 @@ The {obj}`PyRuntimeInfo.zip_main_template` field.
             ),
             "_python_version_flag": attr.label(
                 default = labels.PYTHON_VERSION,
+            ),
+            "_zip_stdlib_flag": attr.label(
+                default = labels.ZIP_STDLIB,
+            ),
+            "_zip_stdlib": attr.label(
+                default = "//tools/private/zip_stdlib",
+                cfg = "exec",
             ),
         },
     ),

@@ -1,0 +1,9 @@
+load("//python/private:py_interpreter_program.bzl", "py_interpreter_program")
+
+exports_files(["zip_stdlib.py"])
+
+py_interpreter_program(
+    name = "zip_stdlib",
+    main = "zip_stdlib.py",
+    visibility = ["//visibility:public"],
+)

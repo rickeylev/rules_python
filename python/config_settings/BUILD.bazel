@@ -1,4 +1,4 @@
-load("@bazel_skylib//rules:common_settings.bzl", "bool_flag", "string_flag")
+load("@bazel_skylib//rules:common_settings.bzl", "bool_flag", "string_flag", "string_list_flag")
 load("@pythons_hub//:versions.bzl", "DEFAULT_PYTHON_VERSION", "MINOR_MAPPING", "PYTHON_VERSIONS")
 load("@rules_python_internal//:rules_python_config.bzl", "config")
 load(
@@ -12,6 +12,7 @@ load(
     "PrecompileSourceRetentionFlag",
     "VenvsSitePackages",
     "VenvsUseDeclareSymlinkFlag",
+    "ZipStdlibFlag",
     rp_string_flag = "string_flag",
 )
 load(
@@ -274,5 +275,12 @@ string_flag(
     name = "python_path",
     build_setting_default = "python",
     scope = "universal",
+    visibility = ["//visibility:public"],
+)
+
+rp_string_flag(
+    name = "zip_stdlib",
+    build_setting_default = ZipStdlibFlag.AUTO,
+    values = sorted(ZipStdlibFlag.__members__.values()),
     visibility = ["//visibility:public"],
 )
