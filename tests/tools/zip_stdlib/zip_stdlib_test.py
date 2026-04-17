@@ -4,7 +4,7 @@ import tempfile
 import pathlib
 import os
 
-from tools.private.zip_stdlib import zip_stdlib
+from tools.private.stdlib_zipper import stdlib_zipper
 
 class TestStdlibZipper(unittest.TestCase):
     def test_create_zip(self):
@@ -20,7 +20,7 @@ class TestStdlibZipper(unittest.TestCase):
             
             zip_path = temp_path / "out.zip"
             
-            zip_stdlib.main([
+            stdlib_zipper.main([
                 "--out", str(zip_path),
                 "--strip-prefix", "my/prefix",
                 "--manifest", str(manifest_path)

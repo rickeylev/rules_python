@@ -474,7 +474,7 @@ The {obj}`PyRuntimeInfo.zip_main_template` field.
                 default = labels.ZIP_STDLIB,
             ),
             "_zip_stdlib": attr.label(
-                default = "//tools/private/zip_stdlib",
+                default = "//tools/private/stdlib_zipper",
                 cfg = "exec",
             ),
         },

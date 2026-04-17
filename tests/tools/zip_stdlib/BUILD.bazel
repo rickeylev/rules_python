@@ -2,7 +2,7 @@ load("//python:py_test.bzl", "py_test")
 
 py_test(
     name = "zip_stdlib_test",
-    srcs = ["zip_stdlib_test.py", "//tools/private/zip_stdlib:zip_stdlib.py"],
+    srcs = ["zip_stdlib_test.py", "//tools/private/stdlib_zipper:stdlib_zipper.py"],
     main = "zip_stdlib_test.py",
     visibility = ["//visibility:private"],
 )
