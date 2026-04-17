@@ -1,9 +1,9 @@
 load("//python:py_test.bzl", "py_test")
 
 py_test(
-    name = "basic_test",
-    srcs = ["basic_test.py"],
-    main = "basic_test.py",
+    name = "stdlib_imported_from_zip_test",
+    srcs = ["stdlib_imported_from_zip_test.py"],
+    main = "stdlib_imported_from_zip_test.py",
     config_settings = {
         "//python/config_settings:zip_stdlib": "yes",
     },
