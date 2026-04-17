@@ -28,28 +28,30 @@ load(":version.bzl", "version")
 
 _py_builtins = py_internal
 
-def _partition_runtime_files(runtime_files, interpreter_version_info):
+def _partition_runtime_files(runtime_files):
     files_list = runtime_files.to_list()
     stdlib_files = []
     other_files = []
     
-    lib_dir = "lib/python{}.{}".format(interpreter_version_info["major"], interpreter_version_info["minor"])
-    
+    lib_dir = None
     for f in files_list:
-        if f.extension == "py" and lib_dir in f.path and "site-packages" not in f.path and "ensurepip" not in f.path:
+        if f.basename in ("os.py", "os.pyc"):
+            lib_dir = f.dirname
+            break
+
+    if not lib_dir:
+        return [], files_list, None
+        
+    lib_dir_prefix = lib_dir + "/"
+    for f in files_list:
+        if f.path.startswith(lib_dir_prefix) and f.extension in ("py", "pyc"):
             stdlib_files.append(f)
         else:
             other_files.append(f)
-    return stdlib_files, other_files
+            
+    return stdlib_files, other_files, lib_dir
 
-def _create_stdlib_zip(ctx, *, runfiles, stdlib_files, interpreter_version_info, interpreter_di):
-    lib_dir = "lib/python{}.{}".format(interpreter_version_info["major"], interpreter_version_info["minor"])
-    
-    # Find the strip_prefix using the first file
-    first_file = stdlib_files[0]
-    prefix_idx = first_file.path.find(lib_dir)
-    strip_prefix = first_file.path[:prefix_idx + len(lib_dir)]
-    
+def _create_stdlib_zip(ctx, *, runfiles, stdlib_files, strip_prefix, interpreter_version_info, interpreter_di):
     zip_file = ctx.actions.declare_file("lib/python{}{}.zip".format(interpreter_version_info["major"], interpreter_version_info["minor"]))
     manifest_file = ctx.actions.declare_file("_stdlib_zip_manifest.txt")
     
@@ -145,12 +147,13 @@ def _py_runtime_impl(ctx):
              "https://github.com/bazelbuild/bazel/issues/15684")
 
     if ZipStdlibFlag.is_enabled(ctx) and hermetic and interpreter_version_info and "major" in interpreter_version_info and "minor" in interpreter_version_info:
-        stdlib_files, other_files = _partition_runtime_files(runtime_files, interpreter_version_info)
+        stdlib_files, other_files, lib_dir = _partition_runtime_files(runtime_files)
         if stdlib_files:
             _create_stdlib_zip(
                 ctx = ctx,
                 runfiles = runfiles_builder,
                 stdlib_files = stdlib_files,
+                strip_prefix = lib_dir,
                 interpreter_version_info = interpreter_version_info,
                 interpreter_di = interpreter_di,
             )
@@ -260,6 +263,11 @@ py_runtime(
     interpreter_path = "/opt/pyenv/versions/3.6.0/bin/python",
 )
 ```
+
+:::{versionchanged} VERSION_NEXT_FEATURE
+Added the ability to optionally zip the Python standard library using the
+`//python/config_settings:zip_stdlib` flag.
+:::
 """,
     fragments = ["py"],
     attrs = dicts.add(
