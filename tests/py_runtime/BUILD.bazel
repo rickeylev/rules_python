@@ -15,3 +15,63 @@
 load(":py_runtime_tests.bzl", "py_runtime_test_suite")
 
 py_runtime_test_suite(name = "py_runtime_tests")
+
+genrule(
+    name = "gen_os_py",
+    outs = ["lib/python3.9/os.py"],
+    cmd = "echo '# os.py' > $@",
+)
+
+genrule(
+    name = "gen_other_py",
+    outs = ["lib/python3.9/other.py"],
+    cmd = "echo '# other.py' > $@",
+)
+
+genrule(
+    name = "gen_bin",
+    outs = ["bin/python3"],
+    cmd = "echo '#!/bin/sh\nexec python3 \"$$@\"' > $@ && chmod +x $@",
+    executable = True,
+)
+
+genrule(
+    name = "gen_source",
+    outs = ["lib/python3.9/regular.py"],
+    cmd = "echo '# regular' > $@",
+)
+
+load("//python:py_runtime.bzl", "py_runtime")
+
+py_runtime(
+    name = "runtime_for_zip_test",
+    interpreter = ":gen_bin",
+    files = [
+        ":gen_os_py",
+        ":gen_other_py",
+        ":gen_source",
+    ],
+    python_version = "PY3",
+    interpreter_version_info = {
+        "major": "3",
+        "minor": "9",
+    }
+)
+
+load("//tests/support:py_transition.bzl", "py_transition")
+
+py_transition(
+    name = "runtime_zipped_stdlib",
+    targets = [":runtime_for_zip_test"],
+    config_settings = {
+        "//python/config_settings:zip_stdlib": "yes",
+    },
+)
+
+load("//python:py_test.bzl", "py_test")
+
+py_test(
+    name = "test_generated_zip_stdlib",
+    srcs = ["test_generated_zip_stdlib.py"],
+    data = [":runtime_zipped_stdlib"],
+)
