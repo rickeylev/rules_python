@@ -494,3 +494,75 @@ def py_runtime_test_suite(name):
         name = name,
         tests = _tests,
     )
+
+def _test_generated_zip_stdlib(name):
+    # Create generated files that will represent the stdlib
+    native.genrule(
+        name = name + "_gen_os_py",
+        outs = ["lib/python3.9/os.py"],
+        cmd = "echo '# os.py' > $@",
+    )
+    native.genrule(
+        name = name + "_gen_other_py",
+        outs = ["lib/python3.9/other.py"],
+        cmd = "echo '# other.py' > $@",
+    )
+    native.genrule(
+        name = name + "_gen_bin",
+        outs = ["bin/python3"],
+        cmd = "echo '#!/bin/sh' > $@ && chmod +x $@",
+        executable = True,
+    )
+    
+    # Also add a regular source file to the mix
+    native.genrule(
+        name = name + "_gen_source",
+        outs = ["lib/python3.9/regular.py"],
+        cmd = "echo '# regular' > $@",
+    )
+    
+    py_runtime(
+        name = name + "_subject",
+        interpreter = name + "_gen_bin",
+        files = [
+            name + "_gen_os_py",
+            name + "_gen_other_py",
+            name + "_gen_source",
+        ],
+        python_version = "PY3",
+        interpreter_version_info = {
+            "major": "3",
+            "minor": "9",
+        }
+    )
+    analysis_test(
+        name = name,
+        target = name + "_subject",
+        impl = _test_generated_zip_stdlib_impl,
+        config_settings = {
+            str(Label("//python/config_settings:zip_stdlib")): "yes",
+        },
+    )
+
+def _test_generated_zip_stdlib_impl(env, target):
+    # Verify that the generated zip file exists in the runfiles
+    files = target[DefaultInfo].files.to_list()
+    
+    # We should have the interpreter and the zip file in the output
+    zip_files = [f for f in files if f.basename == "python3.9.zip"]
+    env.expect.that_collection(zip_files).has_size(1)
+    
+    # The os.py file should have been removed from the runfiles
+    os_py_files = [f for f in files if f.basename == "os.py"]
+    env.expect.that_collection(os_py_files).has_size(0)
+    
+    # Since we can't inspect the zip itself easily in an analysis test without writing a custom
+    # action, we can check the arguments of the action that produced the zip file.
+    zip_file = zip_files[0]
+    action = env.expect.that_target(target).action_generating(zip_file.short_path)
+    
+    # Asserting the action exists
+    if action == None:
+        env.fail("Could not find action generating zip file")
+        
+_tests.append(_test_generated_zip_stdlib)

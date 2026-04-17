@@ -16,13 +16,12 @@ class TestStdlibZipper(unittest.TestCase):
             f2.write_text("print('a')")
             
             manifest_path = temp_path / "manifest.txt"
-            manifest_path.write_text(f"{f1}\n{f2}\n")
+            manifest_path.write_text(f"f|b.py|{f1}\nf|a.py|{f2}\n")
             
             zip_path = temp_path / "out.zip"
             
             zip_stdlib.main([
                 "--out", str(zip_path),
-                "--strip-prefix", str(temp_path),
                 "--manifest", str(manifest_path)
             ])
             
