@@ -7,7 +7,7 @@ import os
 from tools.private.zip_stdlib import zip_stdlib
 
 class TestStdlibZipper(unittest.TestCase):
-    def test_create_deterministic_zip(self):
+    def test_create_zip(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             temp_path = pathlib.Path(temp_dir)
             f1 = temp_path / "b.py"
@@ -16,7 +16,7 @@ class TestStdlibZipper(unittest.TestCase):
             f2.write_text("print('a')")
             
             manifest_path = temp_path / "manifest.txt"
-            manifest_path.write_text(f"f|b.py|{f1}\nf|a.py|{f2}\n")
+            manifest_path.write_text(f"b.py|{f1}\na.py|{f2}\n")
             
             zip_path = temp_path / "out.zip"
             

@@ -54,7 +54,7 @@ def _partition_runtime_files(runtime_files):
     return stdlib_files, other_files, lib_short_dir
 
 def _map_each_stdlib_manifest(f):
-    return "file|{}|{}".format(f.short_path, f.path)
+    return "{}|{}".format(f.short_path, f.path)
 
 def _create_stdlib_zip(ctx, *, runfiles, stdlib_files, stdlib_root, interpreter_version_info, interpreter_di):
     zip_name = "python{}{}.zip".format(interpreter_version_info["major"], interpreter_version_info["minor"])

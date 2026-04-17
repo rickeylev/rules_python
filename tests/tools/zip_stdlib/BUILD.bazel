@@ -4,7 +4,6 @@ py_test(
     name = "basic_test",
     srcs = ["basic_test.py"],
     main = "basic_test.py",
-    env = {"PYTHONPATH": ""},
     config_settings = {
         "//python/config_settings:zip_stdlib": "yes",
     },
