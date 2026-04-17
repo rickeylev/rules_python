@@ -1,33 +1,32 @@
+import unittest
 import os
-import sys
+from python.runfiles import runfiles
 
-def main():
-    runfiles_dir = os.environ.get("RUNFILES_DIR", ".")
-    found_zip = False
-    found_os_py = False
-
-    for root, dirs, files in os.walk(runfiles_dir):
-        for file in files:
-            print("RUNFILE:", os.path.join(root, file))
-            if file.endswith(".zip"):
-                print("FOUND ZIP:", root, file)
-                
-        if "python3.9.zip" in files:
-            found_zip = True
-            
-        if "os.py" in files and "python3.9" in root:
-            if "tests/py_runtime/zipped_runtime/lib/python3.9" in root.replace(os.sep, "/"):
-                found_os_py = True
-
-    if not found_zip:
-        print("FAIL: python3.9.zip not found")
-        sys.exit(1)
+class ZippedStdlibTest(unittest.TestCase):
+    def test_zip_file_exists(self):
+        r = runfiles.Create()
+        repo = r.CurrentRepository() or "_main"
         
-    if found_os_py:
-        print("FAIL: os.py should not be present in runfiles")
-        sys.exit(1)
-    
-    print("PASS: zip file found and original files omitted from runfiles.")
+        # Determine the full correct runfiles structure.
+        # Runfiles api returns absolute paths.
+        zip_path = r.Rlocation(f"{repo}/tests/py_runtime/zipped_runtime/lib/python3.9/python3.9.zip")
+        self.assertIsNotNone(zip_path)
+        
+        # Verify it actually exists
+        self.assertTrue(os.path.exists(zip_path))
+        with open(zip_path, "rb") as f:
+            self.assertTrue(f.read(4).startswith(b"PK\x03\x04")) # ZIP magic bytes
+
+    def test_original_files_omitted(self):
+        r = runfiles.Create()
+        repo = r.CurrentRepository() or "_main"
+        
+        os_py_path = r.Rlocation(f"{repo}/tests/py_runtime/zipped_runtime/lib/python3.9/os.py")
+        
+        # Wait, if `declare_file` is used, the generated file sits in bazel-out,
+        # but in `runfiles` it might just not exist.
+        if os_py_path is not None:
+            self.assertFalse(os.path.exists(os_py_path))
 
 if __name__ == "__main__":
-    main()
+    unittest.main()

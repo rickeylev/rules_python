@@ -30,7 +30,8 @@ py_transition(
 load("//python:py_test.bzl", "py_test")
 
 py_test(
-    name = "test_generated_zip_stdlib",
-    srcs = ["test_generated_zip_stdlib.py"],
+    name = "zipped_stdlib_test",
+    srcs = ["zipped_stdlib_test.py"],
     data = [":runtime_zipped_stdlib"],
+    deps = ["//python/runfiles"],
 )

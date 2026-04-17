@@ -1,5 +1,6 @@
 load("//python/private:attributes.bzl", "CONFIG_SETTINGS_ATTR", "apply_config_settings_attr")
-load("//python/private:attr_builders.bzl", "attrb")
+load("//python/private:rule_builders.bzl", "ruleb")
+load("//python/private:builders.bzl", "builders")
 load("//python/private:transition_labels.bzl", "TRANSITION_LABELS")
 load("//python:py_runtime_info.bzl", "PyRuntimeInfo")
 
@@ -13,39 +14,42 @@ _py_transition_transition = transition(
     outputs = TRANSITION_LABELS,
 )
 
+def _maybe_add_provider(providers, seen_providers, target, provider_type):
+    if provider_type in target:
+        if provider_type in seen_providers:
+            fail("Provider {} provided by both {} and {}".format(
+                provider_type, seen_providers[provider_type], target.label))
+        seen_providers[provider_type] = target.label
+        providers.append(target[provider_type])
+
 def _py_transition_impl(ctx):
-    all_files = []
-    all_runfiles = []
+    files = builders.DepsetBuilder()
+    runfiles = builders.RunfilesBuilder()
     providers = []
     
+    seen_providers = {}
+    
     for target in ctx.attr.targets:
-        all_files.append(target[DefaultInfo].files)
-        all_runfiles.append(target[DefaultInfo].default_runfiles)
-        all_runfiles.append(target[DefaultInfo].data_runfiles)
-        all_runfiles.append(ctx.runfiles(transitive_files = target[DefaultInfo].files))
+        files.add(target[DefaultInfo].files)
+        runfiles.add(target[DefaultInfo].default_runfiles)
+        runfiles.add(target[DefaultInfo].data_runfiles)
+        runfiles.add(ctx.runfiles(transitive_files = target[DefaultInfo].files))
         
+        _maybe_add_provider(providers, seen_providers, target, PyRuntimeInfo)
+            
     default_info = DefaultInfo(
-        files = depset(transitive = all_files),
-        runfiles = ctx.runfiles().merge_all(all_runfiles)
+        files = files.build(),
+        runfiles = runfiles.build(ctx)
     )
     providers.append(default_info)
-    
-    if len(ctx.attr.targets) == 1:
-        target = ctx.attr.targets[0]
-        if PyRuntimeInfo in target:
-            providers.append(target[PyRuntimeInfo])
-            
     return providers
 
-attrs = {
-    "targets": attr.label_list(cfg = _py_transition_transition),
-    "_allowlist_function_transition": attr.label(
-        default = "@bazel_tools//tools/allowlists/function_transition_allowlist",
-    ),
-    "config_settings": CONFIG_SETTINGS_ATTR["config_settings"]().build(),
-}
-
-py_transition = rule(
+py_transition = ruleb.Rule(
     implementation = _py_transition_impl,
-    attrs = attrs,
-)
+    attrs = {
+        "targets": attr.label_list(cfg = _py_transition_transition),
+        "_allowlist_function_transition": attr.label(
+            default = "@bazel_tools//tools/allowlists/function_transition_allowlist",
+        ),
+    } | CONFIG_SETTINGS_ATTR,
+).build()
