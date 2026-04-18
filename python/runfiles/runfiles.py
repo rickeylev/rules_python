@@ -354,7 +354,7 @@ class Path(pathlib.Path):
             yield self / p.relative_to(resolved)
 
     def __repr__(self) -> str:
-        return 'runfiles.Path({!r})'.format(self.runfile_path)
+        return "runfiles.Path({!r})".format(self.runfile_path)
 
     def __str__(self) -> str:
         path_posix = super().__str__().replace("\\", "/")

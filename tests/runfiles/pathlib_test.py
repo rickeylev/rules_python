@@ -8,9 +8,7 @@ from python.runfiles import runfiles
 
 class PathlibTest(unittest.TestCase):
     def setUp(self) -> None:
-        self.tmpdir = tempfile.TemporaryDirectory(
-            dir=os.environ.get("TEST_TMPDIR")
-        )
+        self.tmpdir = tempfile.TemporaryDirectory(dir=os.environ.get("TEST_TMPDIR"))
         # Runfiles paths are expected to be posix paths internally when we
         # construct the strings for assertions
         self.root_path = pathlib.Path(self.tmpdir.name).resolve()
@@ -23,9 +21,7 @@ class PathlibTest(unittest.TestCase):
         self.test_file.write_text("hello runfiles", encoding="utf-8")
         self.sub_dir = self.repo_dir / "subdir"
         self.sub_dir.mkdir()
-        (self.sub_dir / "other.txt").write_text(
-            "other content", encoding="utf-8"
-        )
+        (self.sub_dir / "other.txt").write_text("other content", encoding="utf-8")
 
     def _create_runfiles(self) -> runfiles.Runfiles:
         r = runfiles.Create({"RUNFILES_DIR": self.root_dir})
@@ -101,12 +97,8 @@ class PathlibTest(unittest.TestCase):
     def test_with_methods(self) -> None:
         r = self._create_runfiles()
         p = r.root() / "foo/bar.txt"
-        self.assertEqual(
-            str(p.with_name("baz.py")), f"{self.root_dir}/foo/baz.py"
-        )
-        self.assertEqual(
-            str(p.with_suffix(".dat")), f"{self.root_dir}/foo/bar.dat"
-        )
+        self.assertEqual(str(p.with_name("baz.py")), f"{self.root_dir}/foo/baz.py")
+        self.assertEqual(str(p.with_suffix(".dat")), f"{self.root_dir}/foo/bar.dat")
 
     def test_match(self) -> None:
         r = self._create_runfiles()
