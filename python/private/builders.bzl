@@ -32,10 +32,19 @@ def _DepsetBuilder(order = None):
         build = lambda *a, **k: _DepsetBuilder_build(self, *a, **k),
         direct = [],
         get_order = lambda *a, **k: _DepsetBuilder_get_order(self, *a, **k),
+        is_empty = lambda *a, **k: _DepsetBuilder_is_empty(self, *a, **k),
         set_order = lambda *a, **k: _DepsetBuilder_set_order(self, *a, **k),
         transitive = [],
     )
     return self
+
+def _DepsetBuilder_is_empty(self):
+    if self.direct:
+        return True
+    for v in self.transitive:
+        if v:
+            return True
+    return False
 
 def _DepsetBuilder_add(self, *values):
     """Add value to the depset.

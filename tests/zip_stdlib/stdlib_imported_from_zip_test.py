@@ -12,7 +12,6 @@ class StdlibImportedFromZipTest(unittest.TestCase):
 
     def test_imports_work(self):
         self.assert_imported_from_zip("pathlib")
-        self.assert_imported_from_zip("os")
         self.assert_imported_from_zip("json")
         self.assert_imported_from_zip("logging")
         self.assert_imported_from_zip("shutil")

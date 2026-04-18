@@ -63,9 +63,9 @@ def _partition_runtime_files(runtime_files):
 def _map_each_stdlib_manifest(f):
     return "{}|{}".format(f.short_path, f.path)
 
-def _create_stdlib_zip(ctx, *, runfiles, stdlib_files, stdlib_root, interpreter_version_info, interpreter_di):
-    zip_name = "{}/python{major}{minor}.zip".format(
-        stdlib_root,
+def _create_stdlib_zip(ctx, *, stdlib_files, stdlib_root, interpreter_version_info):
+    # todo: is lib/ correct for windows?
+    zip_name = "lib/python{major}{minor}.zip".format(
         **interpreter_version_info
     )
     zip_file = ctx.actions.declare_file(zip_name)
@@ -80,22 +80,22 @@ def _create_stdlib_zip(ctx, *, runfiles, stdlib_files, stdlib_root, interpreter_
     args.add("--out", zip_file)
     args.add("--strip-prefix", stdlib_root)
     args.add("--manifest", manifest_file)
-    zipper_info = ctx.attr._zip_stdlib[PyInterpreterProgramInfo]
 
+    # todo: chicken-and-egg problem: we're defining the runtime, but are
+    # running a python script, which requires the runtime be defined.
+    # To make this work, we need a way to refer to a runtime
+    # without this stdlib logic applied.
     actions_run(
         ctx,
-        executable = ctx.attr.interpreter,
-        arguments = [zipper_info.main.path, args],
+        executable = ctx.attr._stdlib_zipper,
+        arguments = [args],
         inputs = depset(
-            stdlib_files + [zipper_info.main, manifest_file],
-            transitive = [interpreter_di.files, interpreter_di.default_runfiles.files],
+            stdlib_files + [manifest_file],
         ),
         outputs = [zip_file],
         mnemonic = "PyZipStdlib",
         progress_message = "Reticulating %{label} stdlib into zip %{output}",
     )
-
-    runfiles.add(zip_file)
     return zip_file
 
 def _should_zip_stdlib(ctx, hermetic, interpreter_version_info):
@@ -113,16 +113,14 @@ def _py_runtime_impl(ctx):
     if (interpreter_path and interpreter) or (not interpreter_path and not interpreter):
         fail("exactly one of the 'interpreter' or 'interpreter_path' attributes must be specified")
 
-    runtime_files = depset(transitive = [
-        t[DefaultInfo].files
-        for t in ctx.attr.files
-    ])
+    runtime_files = builders.DepsetBuilder()
+    runtime_files.add([t[DefaultInfo].files for t in ctx.attr.files])
 
-    runfiles_builder = builders.RunfilesBuilder()
+    runfiles = builders.RunfilesBuilder()
     hermetic = bool(interpreter)
     interpreter_di = None
     if not hermetic:
-        if runtime_files:
+        if not runtime_files.is_empty():
             fail("if 'interpreter_path' is given then 'files' must be empty")
         if not paths.is_absolute(interpreter_path):
             fail("interpreter_path must be an absolute path")
@@ -131,12 +129,8 @@ def _py_runtime_impl(ctx):
 
         if interpreter_di.files_to_run and interpreter_di.files_to_run.executable:
             interpreter = interpreter_di.files_to_run.executable
-
-            runtime_files = depset(transitive = [
-                interpreter_di.files,
-                interpreter_di.default_runfiles.files,
-                runtime_files,
-            ])
+            runtime_files.add(interpreter_di.files)
+            runtime_files.add(interpreter_di.default_runfiles.files)
         elif _is_singleton_depset(interpreter_di.files):
             interpreter = interpreter_di.files.to_list()[0]
         else:
@@ -173,28 +167,49 @@ def _py_runtime_impl(ctx):
              "https://github.com/bazelbuild/bazel/issues/15684")
 
     if _should_zip_stdlib(ctx, hermetic, interpreter_version_info):
-        stdlib_files, other_files, lib_dir = _partition_runtime_files(runtime_files)
-        if stdlib_files:
-            _create_stdlib_zip(
-                ctx = ctx,
-                runfiles = runfiles_builder,
-                stdlib_files = stdlib_files,
-                stdlib_root = lib_dir,
-                interpreter_version_info = interpreter_version_info,
-                interpreter_di = interpreter_di,
-            )
-            runfiles_builder.add(other_files)
-        else:
-            runfiles_builder.add(runtime_files)
-            if hermetic and interpreter_di and interpreter_di.files_to_run and interpreter_di.files_to_run.executable:
-                runfiles_builder.add(interpreter_di.default_runfiles)
-    else:
-        runfiles_builder.add(runtime_files)
-        if hermetic and interpreter_di and interpreter_di.files_to_run and interpreter_di.files_to_run.executable:
-            runfiles_builder.add(interpreter_di.default_runfiles)
+        # Because the venv doesn't specify home, Python uses
+        # `realpath(python_exe)` as the PYTHONHOME value, which adds
+        # `{home}/pythonXY.zip` to sys.path. Because runfiles files can be
+        # symlinks to a backing file, this means the backing directory, instead
+        # of runfiles directory, is added to sys.path. This is problematic
+        # because generated files and source files live in different underlying
+        # locations (the exec root and their source location, respectively). To
+        # work around this, we symlink all the files, causing them all to show
+        # up in the exec root. Lastly, we copy the interpreter so that Python's
+        # realpath() call points to the exec root directory.
 
-    runtime_files = runfiles_builder.files.build()
-    runfiles = runfiles_builder.build(ctx)
+        stdlib_files, other_files, lib_dir = _partition_runtime_files(runtime_files.build())
+        runtime_files = builders.DepsetBuilder()
+        for f in other_files:
+            if f == interpreter:
+                # Skip the interpreter to avoid action conflict
+                continue
+            f_gen = ctx.actions.declare_file(f.short_path)
+            ctx.actions.symlink(output = f_gen, target_file = f)
+            runtime_files.add(f_gen)
+
+        icopy = ctx.actions.declare_file(interpreter.short_path)
+        ctx.actions.run_shell(
+            inputs = [interpreter],
+            outputs = [icopy],
+            command = "cp {} {}".format(interpreter.path, icopy.path),
+        )
+        interpreter = icopy
+
+        stdlib_zip = _create_stdlib_zip(
+            ctx = ctx,
+            stdlib_files = stdlib_files,
+            stdlib_root = lib_dir,
+            interpreter_version_info = interpreter_version_info,
+        )
+        runtime_files.add(stdlib_zip)
+
+    elif hermetic and interpreter_di and interpreter_di.files_to_run and interpreter_di.files_to_run.executable:
+        runfiles.add(interpreter_di.default_runfiles)
+
+    runtime_files = runtime_files.build()
+    runfiles.add(runtime_files)
+    runfiles = runfiles.build(ctx)
 
     pyc_tag = ctx.attr.pyc_tag
     if not pyc_tag and (ctx.attr.implementation_name and
@@ -494,7 +509,7 @@ The {obj}`PyRuntimeInfo.zip_main_template` field.
             "_zip_stdlib_flag": attr.label(
                 default = labels.ZIP_STDLIB,
             ),
-            "_zip_stdlib": attr.label(
+            "_stdlib_zipper": attr.label(
                 default = "//tools/private/stdlib_zipper",
                 cfg = "exec",
             ),

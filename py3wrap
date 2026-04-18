@@ -1,0 +1,86 @@
+#!/bin/sh
+
+self_dir=$(dirname "$0")
+to_py="$PWD/$self_dir/../../../../../+python+python_3_11_14_x86_64-unknown-linux-gnu/bin/python3"
+
+normalize_path() {
+  _p="$1"
+  case "$_p" in
+    /*) _is_abs=1 ;;
+    *) _is_abs=0 ;;
+  esac
+
+  # Split path into segments using IFS and positional parameters
+  _oifs="$IFS"; IFS="/"; _oflags="$-"
+  set -f
+  set -- -- $_p
+  shift
+  IFS="$_oifs"
+  case "$_oflags" in *f*) ;; *) set +f ;; esac
+
+  _stack=""
+  for _seg; do
+    case "$_seg" in
+      ""|".") continue ;;
+      "..")
+        if [ -z "$_stack" ]; then
+          # If relative, we keep the ..
+          # If absolute, we can't go above root
+          [ "$_is_abs" = 0 ] && _stack="/.."
+        else
+          _last="${_stack##*/}"
+          if [ "$_last" = ".." ]; then
+            _stack="$_stack/.."
+          else
+            # Pop the last segment
+            _stack="${_stack%/*}"
+          fi
+        fi
+        ;;
+      *)
+        _stack="$_stack/$_seg"
+        ;;
+    esac
+  done
+
+  # Reconstruct the path
+  _res="${_stack#/}"
+  if [ "$_is_abs" = 1 ]; then
+    echo "/$_res"
+  elif [ -z "$_res" ]; then
+    echo "."
+  else
+    echo "$_res"
+  fi
+}
+
+##normalize_path "$to_py"
+
+PYTHON_BIN=$(normalize_path "$to_py")
+export PYTHONHOME=$(dirname $(dirname $PYTHON_BIN))
+
+if [ -e "$self_dir/pyvenv.cfg" ] || [ -e "$self_dir/../pyvenv.cfg" ]; then
+  case "$0" in
+    /*)
+      venv_bin="$0"
+      ;;
+    *)
+      venv_bin="$PWD/$0"
+      ;;
+  esac
+
+  if [ ! -e "$PYTHON_BIN" ]; then
+    die "ERROR: Python interpreter does not exist: $PYTHON_BIN"
+  fi
+  # PYTHONEXECUTABLE is also used because switching argv0 doesn't fully trick
+  # the pyenv wrappers.
+  # NOTE: The PYTHONEXECUTABLE envvar only works for non-Mac starting in Python 3.11
+  export PYTHONEXECUTABLE="$venv_bin"
+  # Python looks at argv[0] to determine sys.executable, so set that to the venv
+  # binary, not the actual one invoked.
+  # NOTE: exec -a would be simpler, but isn't posix-compatible, and dash shell
+  # (Ubuntu/debian default) doesn't support it; see #3009.
+  exec sh -c "$PYTHON_BIN \$@" "$venv_bin" "$@"
+else
+  exec "$PYTHON_BIN" "$@"
+fi
