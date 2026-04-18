@@ -46,7 +46,14 @@ def _partition_runtime_files(runtime_files):
 
     lib_short_dir_prefix = lib_short_dir + "/"
     for f in files_list:
-        if f.short_path.startswith(lib_short_dir_prefix) and f.extension in ("py", "pyc"):
+        if (
+            # Only pure-python files can be loaded from the zip
+            f.extension in ("py", "pyc") and
+            # Only files under the stdlib directory should be in the zip
+            f.short_path.startswith(lib_short_dir_prefix) and
+            # Vendored dependencies aren't put into the zip
+            "/site-packages/" not in f.short_path
+        ):
             stdlib_files.append(f)
         else:
             other_files.append(f)
