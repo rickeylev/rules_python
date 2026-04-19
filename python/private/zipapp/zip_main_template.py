@@ -41,11 +41,9 @@ _PYTHON_BINARY_ACTUAL = "%python_binary_actual%"
 _WORKSPACE_NAME = "%workspace_name%"
 # relative path under EXTRACT_ROOT to extract to.
 EXTRACT_DIR = "%EXTRACT_DIR%"
-##APP_HASH = "%APP_HASH%"
-APP_HASH = "h"
+APP_HASH = "%APP_HASH%"
 
-##EXTRACT_ROOT = os.environ.get("RULES_PYTHON_EXTRACT_ROOT")
-EXTRACT_ROOT = r"C:\tempvenv\a"
+EXTRACT_ROOT = os.environ.get("RULES_PYTHON_EXTRACT_ROOT")
 IS_WINDOWS = os.name == "nt"
 
 
@@ -229,7 +227,6 @@ def create_runfiles_root():
             extract_root = join(EXTRACT_ROOT, EXTRACT_DIR, APP_HASH)
             extract_root = get_windows_path_with_unc_prefix(extract_root)
     else:
-        assert False
         extract_root = tempfile.mkdtemp("", "Bazel.runfiles_")
     shutil.rmtree(extract_root, True)
     extract_zip(dirname(__file__), extract_root)
