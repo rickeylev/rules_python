@@ -25,43 +25,44 @@ page for information on our development workflow.
 
 ## Design
 
-* Supported OSes - as per our supported platform policy, we strive for support
-  on all of the platforms that we have CI for. Some platforms do not have the
-  same backwards compatibility guarantees, but we hope the community can step in
-  where needed to make the support more robust.
-* `requirements.txt` is how users have been defining dependencies for a long
-  time. We support this to support legacy usecases or package managers that we
-  don't support directly. Any additional information that we need will be
-  retrieved from the SimpleAPI during the `bzlmod` extension evaluation phase.
-  Then it will be written to the `MODULE.bazel.lock` file for future reuse. We
-  have plans to support `uv.lock` file directly. `uv` is recommended for
-  generating a fully locked `requirements.txt` file and we do provide a rule for
-  it.
-* The `py_binary`, `py_test` rules should scale to large monorepos and we work
-  hard to minimize the work done during analysis and build phase. What is more,
-  the space requirements for should be minimal, so we strive to use symlinks
-  rather than extracting wheels at build time. This means that for different
-  configurations of the same build, we are not extracting the wheel multiple
-  times thus scaling better over the time. From `2.0` onwards we are creating a
-  virtual env for each target by creating an actual minimal virtual environment
-  using symlinks. We plan on creating the traditional `site-packages` layout in
-  the future by default.
+* Supported platforms: we strive to support platforms we have CI for, but
+  platforms without an interested maintainer receive less backward
+  compatibility guarantees and require the community to contribute features and
+  fixes. See
+  [support policy](https://rules-python.readthedocs.io/en/latest/support.html)
+  for more information.
+* External dependency management is currently based on locked `requirements.txt`
+  files. Resolution of packages to URLs is handled by Starlark during the Bzlmod
+  phase, respecting custom PyPI index settings, and cached in
+  `MODULE.bazel.lock`. Thus, requirements files are as cross-platform compatible
+  as their environment marker lines and Bazel configuration allows. Using `uv`
+  is recommended for generating fully locked `requirements.txt` files that are
+  as cross-platform as the uv configuration allows. The
+  [uv `lock()` rule](https://rules-python.readthedocs.io/en/latest/api/rules_python/python/uv/lock.html)
+  is provided for using `uv` to create hermeticly built lock files.
+* The `py_binary` and `py_test` rules are designed to scale to large programs
+  in large, complex, monorepos with multiple independently developed
+  sub-projects within it. This means they try to minimize network and file
+  operations so that large programs can scale performantly. Notably,
+  dependencies are installed once and symlinks used to minimize venv creation
+  cost instead of each target copying the full venv.
+* As of 2.0, minimal virtual environments are created for each binary/test by
+  default. Full venv creation is enabled by setting
+  [`--venv_site_packages=yes`](https://rules-python.readthedocs.io/en/latest/api/rules_python/python/config_settings/#venvs_site_packages),
+  which will become the default in a future release.
 * Support for standards - we strive to first implement any standards needed
   within `rules_python` and this has resulted in a few PEPs supported within
   pure starlark - PEP440, PEP509.
 
 Common misconceptions:
-* `rules_python` has to keep backwards compatibility with `google3`. Whilst this
-  might have been true in the past, `rules_python` is an open source project and
-  any compatibility needs should come from the community - we have no
-  requirement to keep this compatibility and are allowed to make our decisions.
-  However, we do want to keep backwards compatibility as long as possible to not
-  upset users with never ending migrations.
-* `rules_python` is not caching pip downloads. With 2.0, we use Bazel's
-  downloader by default and rely on bazel to provide the repository caching
-  mechanisms. This means that for simpler setups this should result in
-  transparent and scalable caching with the most recent bazel versions unless
-  there are issues in the bazel itself.
+* "`rules_python` has to keep backwards compatibility with Google's internal
+  `google3` codebase." While the project originated from Google, it is now a
+  separate project run as part of the Bazel Contrib branch of the Linux
+  Foundation. It has no requirement to maintain compatibility with Google's
+  internal codebase.
+* "`rules_python` is not caching pip downloads." As of 2.0, Bazel's
+  downloader, not pip, is used by default. This provides Bazel's usual
+  repository caching mechanisms, which are transparent and scalable.
 
 ## Documentation
 
