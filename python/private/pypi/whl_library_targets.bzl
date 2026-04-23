@@ -360,7 +360,7 @@ def whl_library_targets(
             if item not in _data_exclude:
                 _data_exclude.append(item)
 
-        data = data + [":" + DATA_LABEL] + native.glob(
+        data = data + native.glob(
             ["site-packages/**/*"],
             exclude = _data_exclude,
             allow_empty = True,
