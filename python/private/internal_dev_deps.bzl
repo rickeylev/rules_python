@@ -91,6 +91,17 @@ def _internal_dev_deps_impl(mctx):
         enable_implicit_namespace_pkgs = False,
     )
 
+    whl_from_dir_repo(
+        name = "whl_with_data_whl",
+        root = "//tests/repos/whl_with_data:BUILD.bazel",
+        output = "whl_with_data-1.0-any-none-any.whl",
+    )
+    whl_library(
+        name = "whl_with_data",
+        whl_file = "@whl_with_data_whl//:whl_with_data-1.0-any-none-any.whl",
+        requirement = "whl-with-data",
+    )
+
     _whl_library_from_dir(
         name = "whl_library_extras_direct_dep",
         root = "//tests/pypi/whl_library/testdata/pkg:BUILD.bazel",

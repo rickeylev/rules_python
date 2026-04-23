@@ -43,6 +43,8 @@ _BAZEL_REPO_FILE_GLOBS = [
     "WORKSPACE.bazel",
 ]
 
+_IS_VENV_SITE_PACKAGES_YES = Label("//python/config_settings:_is_venvs_site_packages_yes")
+
 def whl_library_targets_from_requires(
         *,
         name,
@@ -194,8 +196,10 @@ def whl_library_targets(
             DIST_INFO_LABEL: dict(
                 include = ["site-packages/*.dist-info/**"],
             ),
+
+            ## TO CHECK: should bin/ and include/ be part of the data target?
             DATA_LABEL: dict(
-                include = ["data/**"],
+                include = ["data/**", "bin/**", "include/**"],
             ),
         }
 
@@ -356,11 +360,15 @@ def whl_library_targets(
             if item not in _data_exclude:
                 _data_exclude.append(item)
 
-        data = data + native.glob(
+        data = data + [":" + DATA_LABEL] + native.glob(
             ["site-packages/**/*"],
             exclude = _data_exclude,
             allow_empty = True,
         )
+        data = data + select({
+            _IS_VENV_SITE_PACKAGES_YES: [DATA_LABEL],
+            "//conditions:default": [],
+        })
 
         pyi_srcs = native.glob(
             ["site-packages/**/*.pyi"],
@@ -369,7 +377,7 @@ def whl_library_targets(
 
         if not enable_implicit_namespace_pkgs:
             generated_namespace_package_files = select({
-                Label("//python/config_settings:is_venvs_site_packages"): [],
+                _IS_VENV_SITE_PACKAGES_YES: [],
                 "//conditions:default": rules.create_inits(
                     srcs = srcs + data + pyi_srcs,
                     ignored_dirnames = [],  # If you need to ignore certain folders, you can patch rules_python here to do so.

@@ -275,10 +275,16 @@ def _get_file_venv_path(ctx, f, site_packages_root):
 
     Returns:
         A tuple `(venv_path, rf_root_path)` if the file is under
-        `site_packages_root`, otherwise `(None, None)`.
+        `site_packages_root` or data/, bin/, include/ otherwise `(None, None)`.
     """
     rf_root_path = runfiles_root_path(ctx, f.short_path)
     _, _, repo_rel_path = rf_root_path.partition("/")
+
+    # Check for wheel data/bin/include folders first
+    for prefix in ["data/", "bin/", "include/"]:
+        if repo_rel_path.startswith(prefix):
+            return (repo_rel_path, rf_root_path)
+
     head, found_sp_root, venv_path = repo_rel_path.partition(site_packages_root)
     if head or not found_sp_root:
         # If head is set, then the path didn't start with site_packages_root
@@ -452,19 +458,36 @@ def get_venv_symlinks(
 
     # Finally, for each group, we create the VenvSymlinkEntry objects
     for venv_path, files in optimized_groups.items():
+        if venv_path.startswith("data/"):
+            out_venv_path = venv_path[len("data/"):]
+            kind = VenvSymlinkKind.DATA
+            prefix = ""
+        elif venv_path.startswith("include/"):
+            out_venv_path = venv_path[len("include/"):]
+            kind = VenvSymlinkKind.INCLUDE
+            prefix = ""
+        elif venv_path.startswith("bin/"):
+            out_venv_path = venv_path[len("bin/"):]
+            kind = VenvSymlinkKind.BIN
+            prefix = ""
+        else:
+            out_venv_path = venv_path
+            kind = VenvSymlinkKind.LIB
+            prefix = site_packages_root
+
         link_to_path = (
             _get_label_runfiles_repo(ctx, files[0].owner) +
             "/" +
-            site_packages_root +
+            prefix +
             venv_path
         )
         venv_symlinks[venv_path] = VenvSymlinkEntry(
-            kind = VenvSymlinkKind.LIB,
+            kind = kind,
             link_to_path = link_to_path,
             link_to_file = None,
             package = package,
             version = version_str,
-            venv_path = venv_path,
+            venv_path = out_venv_path,
             files = depset(files),
         )
 

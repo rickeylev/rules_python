@@ -70,7 +70,7 @@ class VenvSitePackagesLibraryTest(unittest.TestCase):
         module_path = Path(module.__file__)
 
         site_packages = module_path.parent.parent
-        dist_info_dirs = [p.name for p in site_packages.glob("*.dist-info")]
+        dist_info_dirs = [p.name for p in site_packages.glob("simple*.dist-info")]
         self.assertEqual(
             ["simple-1.0.0.dist-info"],
             dist_info_dirs,
@@ -90,6 +90,33 @@ class VenvSitePackagesLibraryTest(unittest.TestCase):
         d = site_packages / "external_data"
         files = [p.name for p in d.glob("*")]
         self.assertIn("another_module_data.txt", files)
+
+    def test_whl_with_data_included(self):
+        module = self.assert_imported_from_venv("whl_with_data")
+        module_path = Path(module.__file__)
+        site_packages = module_path.parent.parent
+
+        # purelib
+        data_file = site_packages / "whl_with_data" / "data_file.txt"
+        self.assertTrue(data_file.exists(), f"Expected {data_file} to exist")
+
+        # platlib
+        platlib_file = site_packages / "whl_with_data" / "platlib_file.txt"
+        self.assertTrue(platlib_file.exists(), f"Expected {platlib_file} to exist")
+
+        venv_root = Path(self.venv)
+
+        # data
+        data_data_file = venv_root / "data" / "whl_with_data" / "data_data_file.txt"
+        self.assertTrue(data_data_file.exists(), f"Expected {data_data_file} to exist")
+
+        # scripts
+        script_file = venv_root / "bin" / "whl_script.sh"
+        self.assertTrue(script_file.exists(), f"Expected {script_file} to exist")
+
+        # headers
+        header_file = venv_root / "include" / "whl_with_data" / "header_file.h"
+        self.assertTrue(header_file.exists(), f"Expected {header_file} to exist")
 
 
 if __name__ == "__main__":

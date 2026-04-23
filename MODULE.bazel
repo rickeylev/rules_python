@@ -246,6 +246,7 @@ use_repo(
     "somepkg_with_build_files",
     "whl_library_extras_direct_dep",
     "whl_with_build_files",
+    "whl_with_data",
 )
 
 dev_rules_python_config = use_extension(

@@ -45,6 +45,7 @@ VenvSymlinkKind = struct(
     BIN = "BIN",
     LIB = "LIB",
     INCLUDE = "INCLUDE",
+    DATA = "DATA",
 )
 
 def _VenvSymlinkEntry_init(**kwargs):
