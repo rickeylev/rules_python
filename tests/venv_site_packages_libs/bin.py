@@ -1,4 +1,5 @@
 import importlib
+import os
 import sys
 import unittest
 from pathlib import Path
@@ -91,6 +92,10 @@ class VenvSitePackagesLibraryTest(unittest.TestCase):
         files = [p.name for p in d.glob("*")]
         self.assertIn("another_module_data.txt", files)
 
+    @unittest.skipIf(
+        os.environ.get("BZLMOD_ENABLED") == "0",
+        "whl_with_data is only available with bzlmod",
+    )
     def test_whl_with_data_included(self):
         module = self.assert_imported_from_venv("whl_with_data")
         module_path = Path(module.__file__)
