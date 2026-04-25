@@ -112,14 +112,21 @@ class VenvSitePackagesLibraryTest(unittest.TestCase):
         venv_root = Path(self.venv)
 
         is_windows = sys.platform == "win32"
-        bin_dir_name = "Scripts" if is_windows else "bin"
-        include_dir_name = "Include" if is_windows else "include"
+        
+        # On Windows, rules_python usually uses Scripts, but some environments or 
+        # configurations might use bin.
+        if is_windows:
+            bin_dir_name = "Scripts" if (venv_root / "Scripts").exists() else "bin"
+            include_dir_name = "Include" if (venv_root / "Include").exists() else "include"
+        else:
+            bin_dir_name = "bin"
+            include_dir_name = "include"
 
         # data
         data_data_file = venv_root / "data" / "whl_with_data" / "data_data_file.txt"
         self.assertTrue(
             data_data_file.exists(),
-            f"Expected {data_data_file} to exist. venv_root contents: {list(venv_root.iterdir())}. os.name={os.name}, sys.platform={sys.platform}",
+            f"Expected {data_data_file} to exist. venv_root contents: {list(venv_root.iterdir()) if venv_root.exists() else 'N/A'}. os.name={os.name}, sys.platform={sys.platform}",
         )
 
         # scripts
