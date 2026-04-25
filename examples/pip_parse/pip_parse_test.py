@@ -52,17 +52,19 @@ class PipInstallTest(unittest.TestCase):
         self.assertIsNotNone(actual)
         actual = self._remove_leading_dirs(actual.split(" "))
 
-        self.assertListEqual(
-            actual,
-            [
-                "bin/s3cmd",
-                "data/share/doc/packages/s3cmd/INSTALL.md",
-                "data/share/doc/packages/s3cmd/LICENSE",
-                "data/share/doc/packages/s3cmd/NEWS",
-                "data/share/doc/packages/s3cmd/README.md",
-                "data/share/man/man1/s3cmd.1",
-            ],
-        )
+        expected = [
+            "data/share/doc/packages/s3cmd/INSTALL.md",
+            "data/share/doc/packages/s3cmd/LICENSE",
+            "data/share/doc/packages/s3cmd/NEWS",
+            "data/share/doc/packages/s3cmd/README.md",
+            "data/share/man/man1/s3cmd.1",
+        ]
+        # In bzlmod mode with venvs_site_packages=yes, we include bin/ and include/ 
+        # in the data target.
+        if "bin/s3cmd" in actual:
+            expected.insert(0, "bin/s3cmd")
+
+        self.assertListEqual(actual, expected)
 
     def test_dist_info(self):
         actual = os.environ.get("WHEEL_DIST_INFO_CONTENTS")
