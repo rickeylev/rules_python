@@ -43,7 +43,7 @@ _BAZEL_REPO_FILE_GLOBS = [
     "WORKSPACE.bazel",
 ]
 
-_IS_VENV_SITE_PACKAGES_YES = Label("//python/config_settings:_is_venvs_site_packages_yes")
+_IS_VENV_SITE_PACKAGES_YES = Label("//python/config_settings:is_venvs_site_packages")
 
 def whl_library_targets_from_requires(
         *,

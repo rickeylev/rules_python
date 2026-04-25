@@ -229,18 +229,11 @@ string_flag(
 )
 
 config_setting(
-    name = "_is_venvs_site_packages_yes",
+    name = "is_venvs_site_packages",
     flag_values = {
         ":venvs_site_packages": VenvsSitePackages.YES,
     },
     # NOTE: Only public because it is used in whl_library repos.
-    visibility = ["//visibility:public"],
-)
-
-# TODO: Remove this once external users have migrated.
-alias(
-    name = "is_venvs_site_packages",
-    actual = ":_is_venvs_site_packages_yes",
     visibility = ["//visibility:public"],
 )
 
