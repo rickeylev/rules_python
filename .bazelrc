@@ -25,7 +25,7 @@ common --incompatible_disallow_struct_provider_syntax
 # Makes Bazel 7 act more like Bazel 8
 common --incompatible_use_plus_in_repo_names
 
-# Enable platform-specific configurations
+# Implicitly adds --config=linux|macos|windows, depending on the host platform
 common --enable_platform_specific_config
 
 # Needed to make Windows with a py_binary in data deps work. The Bazel launcher
