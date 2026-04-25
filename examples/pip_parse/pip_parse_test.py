@@ -70,7 +70,7 @@ class PipInstallTest(unittest.TestCase):
         ]
         # In bzlmod mode with venvs_site_packages=yes, we include bin/ and include/
         # in the data target.
-        if (is_bzlmod and is_venvs_site_packages):
+        if is_bzlmod and is_venvs_site_packages:
             expected.insert(0, "bin/s3cmd")
 
         self.assertListEqual(actual, expected)

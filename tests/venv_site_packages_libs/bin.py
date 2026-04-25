@@ -178,8 +178,12 @@ if __name__ == "__main__":
         # platform.
         if sys.version_info >= (3, 10):
             # Include dir is `include/pythonX.Y`.
-            include_dir_name = f"include/python{sys.version_info.major}.{sys.version_info.minor}"
-            header_file = venv_root / include_dir_name / "whl_with_data2" / "header_file.h"
+            include_dir_name = (
+                f"include/python{sys.version_info.major}.{sys.version_info.minor}"
+            )
+            header_file = (
+                venv_root / include_dir_name / "whl_with_data2" / "header_file.h"
+            )
             self.assertTrue(header_file.exists(), header_file)
             self.assertTrue(header_file.is_file(), header_file)
             self.assertTrue(header_file.read_text() == "123\n")
