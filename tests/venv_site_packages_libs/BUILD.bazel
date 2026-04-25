@@ -1,4 +1,4 @@
-load("@rules_python//python/private:bzlmod_enabled.bzl", "BZLMOD_ENABLED")
+load("@rules_python//python/private:bzlmod_enabled.bzl", "BZLMOD_ENABLED")  # buildifier: disable=bzl-visibility
 
 load("@rules_shell//shell:sh_test.bzl", "sh_test")
 load("//python:py_library.bzl", "py_library")
@@ -34,10 +34,10 @@ py_reconfig_test(
     name = "venvs_site_packages_libs_test",
     srcs = ["bin.py"],
     bootstrap_impl = "script",
-    main = "bin.py",
     env = {
         "BZLMOD_ENABLED": "1" if BZLMOD_ENABLED else "0",
     },
+    main = "bin.py",
     venvs_site_packages = "yes",
     deps = [
         ":closer_lib",
