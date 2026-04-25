@@ -111,16 +111,20 @@ class VenvSitePackagesLibraryTest(unittest.TestCase):
 
         venv_root = Path(self.venv)
 
+        is_windows = os.name == "nt"
+        bin_dir_name = "Scripts" if is_windows else "bin"
+        include_dir_name = "Include" if is_windows else "include"
+
         # data
         data_data_file = venv_root / "data" / "whl_with_data" / "data_data_file.txt"
         self.assertTrue(data_data_file.exists(), f"Expected {data_data_file} to exist")
 
         # scripts
-        script_file = venv_root / "bin" / "whl_script.sh"
+        script_file = venv_root / bin_dir_name / "whl_script.sh"
         self.assertTrue(script_file.exists(), f"Expected {script_file} to exist")
 
         # headers
-        header_file = venv_root / "include" / "whl_with_data" / "header_file.h"
+        header_file = venv_root / include_dir_name / "whl_with_data" / "header_file.h"
         self.assertTrue(header_file.exists(), f"Expected {header_file} to exist")
 
 
