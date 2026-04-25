@@ -112,12 +112,9 @@ class VenvSitePackagesLibraryTest(unittest.TestCase):
         venv_root = Path(self.venv)
 
         is_windows = sys.platform == "win32"
-        
-        # On Windows, rules_python usually uses Scripts, but some environments or 
-        # configurations might use bin.
         if is_windows:
-            bin_dir_name = "Scripts" if (venv_root / "Scripts").exists() else "bin"
-            include_dir_name = "Include" if (venv_root / "Include").exists() else "include"
+            bin_dir_name = "Scripts"
+            include_dir_name = "Include"
         else:
             bin_dir_name = "bin"
             include_dir_name = "include"
