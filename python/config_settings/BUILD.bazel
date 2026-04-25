@@ -237,6 +237,13 @@ config_setting(
     visibility = ["//visibility:public"],
 )
 
+# TODO: Remove this once external users have migrated.
+alias(
+    name = "is_venvs_site_packages",
+    actual = ":_is_venvs_site_packages_yes",
+    visibility = ["//visibility:public"],
+)
+
 define_pypi_internal_flags(
     name = "define_pypi_internal_flags",
 )

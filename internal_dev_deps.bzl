@@ -65,6 +65,11 @@ def rules_python_internal_deps():
         path = "tests/modules/another_module",
     )
 
+    local_repository(
+        name = "whl_with_data",
+        path = "tests/repos/whl_with_data",
+    )
+
     http_archive(
         name = "bazel_skylib",
         sha256 = "6e78f0e57de26801f6f564fa7c4a48dc8b36873e416257a92bbb0937eeac8446",
