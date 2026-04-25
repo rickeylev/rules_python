@@ -37,6 +37,12 @@ def _VenvSymlinkKind_typedef():
 
     Indicates to create paths under the venv's include directory.
     :::
+
+    :::{field} DATA
+    :type: object
+
+    Indicates to create paths under the venv's data directory.
+    :::
     """
 
 # buildifier: disable=name-conventions
