@@ -92,14 +92,25 @@ def _internal_dev_deps_impl(mctx):
     )
 
     whl_from_dir_repo(
-        name = "whl_with_data_whl",
-        root = "//tests/repos/whl_with_data:BUILD.bazel",
-        output = "whl_with_data-1.0-any-none-any.whl",
+        name = "whl_with_data1_whl",
+        root = "//tests/repos/whl_with_data1:BUILD.bazel",
+        output = "whl_with_data1-1.0-any-none-any.whl",
     )
     whl_library(
-        name = "whl_with_data",
-        whl_file = "@whl_with_data_whl//:whl_with_data-1.0-any-none-any.whl",
-        requirement = "whl-with-data",
+        name = "whl_with_data1",
+        whl_file = "@whl_with_data1_whl//:whl_with_data1-1.0-any-none-any.whl",
+        requirement = "whl-with-data1",
+    )
+
+    whl_from_dir_repo(
+        name = "whl_with_data2_whl",
+        root = "//tests/repos/whl_with_data2:BUILD.bazel",
+        output = "whl_with_data2-1.0-any-none-any.whl",
+    )
+    whl_library(
+        name = "whl_with_data2",
+        whl_file = "@whl_with_data2_whl//:whl_with_data2-1.0-any-none-any.whl",
+        requirement = "whl-with-data2",
     )
 
     _whl_library_from_dir(
