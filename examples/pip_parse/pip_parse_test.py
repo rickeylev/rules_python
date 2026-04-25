@@ -30,6 +30,10 @@ class PipInstallTest(unittest.TestCase):
         # to normalize what workspace and bzlmod produce.
         return ["/".join(v.split("/")[2:]) for v in paths]
 
+    def test_environment_variables(self):
+        self.assertIn("BZLMOD_ENABLED", os.environ)
+        self.assertIn("VENVS_SITE_PACKAGES", os.environ)
+
     def test_entry_point(self):
         entry_point_path = os.environ.get("YAMLLINT_ENTRY_POINT")
         self.assertIsNotNone(entry_point_path)
@@ -48,6 +52,11 @@ class PipInstallTest(unittest.TestCase):
         self.assertEqual(proc.stdout.decode("utf-8").strip(), "yamllint 1.28.0")
 
     def test_data(self):
+        is_bzlmod = os.environ.get("BZLMOD_ENABLED") == "1"
+        # The env var name in the BUILD file is VENVS_SITE_PACKAGES (plural)
+        # to match the flag name.
+        is_venvs_site_packages = os.environ.get("VENVS_SITE_PACKAGES") == "1"
+
         actual = os.environ.get("WHEEL_DATA_CONTENTS")
         self.assertIsNotNone(actual)
         actual = self._remove_leading_dirs(actual.split(" "))
@@ -59,9 +68,9 @@ class PipInstallTest(unittest.TestCase):
             "data/share/doc/packages/s3cmd/README.md",
             "data/share/man/man1/s3cmd.1",
         ]
-        # In bzlmod mode with venvs_site_packages=yes, we include bin/ and include/ 
+        # In bzlmod mode with venvs_site_packages=yes, we include bin/ and include/
         # in the data target.
-        if "bin/s3cmd" in actual:
+        if (is_bzlmod and is_venvs_site_packages):
             expected.insert(0, "bin/s3cmd")
 
         self.assertListEqual(actual, expected)

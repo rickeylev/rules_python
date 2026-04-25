@@ -2,6 +2,7 @@ load("@rules_python//python:pip.bzl", "compile_pip_requirements")
 load("@rules_python//python:py_binary.bzl", "py_binary")
 load("@rules_python//python:py_test.bzl", "py_test")
 load("@rules_python//python/entry_points:py_console_script_binary.bzl", "py_console_script_binary")
+load("@rules_python//python/private:bzlmod_enabled.bzl", "BZLMOD_ENABLED")  # buildifier: disable=bzl-visibility
 
 # Toolchain setup, this is optional.
 # Demonstrate that we can use the same python interpreter for the toolchain and executing pip in pip install (see WORKSPACE).
@@ -75,10 +76,14 @@ py_test(
         "@pypi//s3cmd:data",
     ],
     env = {
+        "BZLMOD_ENABLED": "1" if BZLMOD_ENABLED else "0",
         "WHEEL_DATA_CONTENTS": "$(rootpaths @pypi//s3cmd:data)",
         "WHEEL_DIST_INFO_CONTENTS": "$(rootpaths @pypi//requests:dist_info)",
         "YAMLLINT_ENTRY_POINT": "$(rlocationpath :yamllint)",
-    },
+    } | select({
+        "@rules_python//python/config_settings:_is_venvs_site_packages": {"VENVS_SITE_PACKAGES": "1"},
+        "//conditions:default": {"VENVS_SITE_PACKAGES": "0"},
+    }),
     deps = [
         "@pypi//libclang",
         "@rules_python//python/runfiles",
