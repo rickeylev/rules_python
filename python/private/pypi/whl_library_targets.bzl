@@ -360,17 +360,11 @@ def whl_library_targets(
             if item not in _data_exclude:
                 _data_exclude.append(item)
 
-        site_packages_data = native.glob(
+        data = data + native.glob(
             ["site-packages/**/*"],
             exclude = _data_exclude,
             allow_empty = True,
         )
-
-        data_param = data
-        data = data + site_packages_data + select({
-            _IS_VENV_SITE_PACKAGES_YES: [DATA_LABEL],
-            "//conditions:default": [],
-        })
 
         pyi_srcs = native.glob(
             ["site-packages/**/*.pyi"],
@@ -381,13 +375,20 @@ def whl_library_targets(
             generated_namespace_package_files = select({
                 _IS_VENV_SITE_PACKAGES_YES: [],
                 "//conditions:default": rules.create_inits(
-                    srcs = srcs + data_param + site_packages_data + pyi_srcs,
+                    srcs = srcs + data + pyi_srcs,
                     ignored_dirnames = [],  # If you need to ignore certain folders, you can patch rules_python here to do so.
                     root = "site-packages",
                 ),
             })
             namespace_package_files += generated_namespace_package_files
             srcs = srcs + generated_namespace_package_files
+
+        # This must be doe after the above because create_inits() is macro-phase,
+        # so can't handle select() values.
+        data = data + select({
+            _IS_VENV_SITE_PACKAGES_YES: [DATA_LABEL],
+            "//conditions:default": [],
+        })
 
         rules.py_library(
             name = py_library_label,
