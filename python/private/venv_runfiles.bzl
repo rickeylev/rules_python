@@ -418,6 +418,11 @@ def get_venv_symlinks(
             if not cannot_be_linked_directly.get(dirname, False):
                 cannot_be_linked_directly[dirname] = True
 
+    # bin, include, and data are also shared across wheels, so we cannot link
+    # them directly if they are at the top level.
+    for dirname in ["bin", "include", "data"]:
+        cannot_be_linked_directly[dirname] = True
+
     # At this point, venv_symlinks has entries for the shared libraries
     # and cannot_be_linked_directly has the directories that cannot be
     # directly linked. Next, we loop over the remaining files and group
