@@ -365,6 +365,8 @@ def whl_library_targets(
             exclude = _data_exclude,
             allow_empty = True,
         )
+
+        data_param = data
         data = data + site_packages_data + select({
             _IS_VENV_SITE_PACKAGES_YES: [DATA_LABEL],
             "//conditions:default": [],
@@ -379,7 +381,7 @@ def whl_library_targets(
             generated_namespace_package_files = select({
                 _IS_VENV_SITE_PACKAGES_YES: [],
                 "//conditions:default": rules.create_inits(
-                    srcs = srcs + site_packages_data + pyi_srcs,
+                    srcs = srcs + data_param + site_packages_data + pyi_srcs,
                     ignored_dirnames = [],  # If you need to ignore certain folders, you can patch rules_python here to do so.
                     root = "site-packages",
                 ),
