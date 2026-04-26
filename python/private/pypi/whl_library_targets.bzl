@@ -196,8 +196,6 @@ def whl_library_targets(
             DIST_INFO_LABEL: dict(
                 include = ["site-packages/*.dist-info/**"],
             ),
-
-            ## TO CHECK: should bin/ and include/ be part of the data target?
             DATA_LABEL: dict(
                 include = ["data/**", "bin/**", "include/**"],
             ),
