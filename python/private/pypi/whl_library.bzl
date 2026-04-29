@@ -18,6 +18,7 @@ load("@rules_python_internal//:rules_python_config.bzl", rp_config = "config")
 load("//python/private:auth.bzl", "AUTH_ATTRS", "get_auth")
 load("//python/private:envsubst.bzl", "envsubst")
 load("//python/private:is_standalone_interpreter.bzl", "is_standalone_interpreter")
+load("//python/private:normalize_name.bzl", "normalize_name")
 load("//python/private:repo_utils.bzl", "REPO_DEBUG_ENV_VAR", "repo_utils")
 load(":attrs.bzl", "ATTRS", "use_isolated")
 load(":deps.bzl", "all_repo_names", "record_files")
@@ -276,6 +277,24 @@ def _extract_whl_py(rctx, *, python_interpreter, args, whl_path, environment, lo
         logger = logger,
     )
 
+def _to_purl(*, index, metadata, filename):
+    """
+    Produce a PyPI PURL from the metadata.
+
+    https://github.com/package-url/purl-spec/blob/main/types-doc/pypi-definition.md
+    """
+
+    # https://github.com/package-url/purl-spec/blob/main/types-doc/pypi-definition.md#name-definition
+    name = normalize_name(metadata.name).replace("_", "-")
+
+    qualifiers = {}
+    if index:
+        qualifiers["repository_url"] = index
+    if filename:
+        qualifiers["file_name"] = filename
+
+    return "pkg:pypi/{}@{}?{}".format(name, metadata.version, "&".join(["{}={}".format(key, val) for key, val in qualifiers.items()]))
+
 def _whl_library_impl(rctx):
     logger = repo_utils.logger(rctx)
 
@@ -436,6 +455,11 @@ def _whl_library_impl(rctx):
         group_name = rctx.attr.group_name,
         namespace_package_files = namespace_package_files,
         extras = requirement(rctx.attr.requirement).extras,
+        purl = _to_purl(
+            index = rctx.attr.index_url,
+            metadata = metadata,
+            filename = sdist_filename or whl_path.basename,
+        ),
     )
 
     # Delete these in case the wheel had them. They generally don't cause
@@ -443,7 +467,13 @@ def _whl_library_impl(rctx):
     rctx.file("WORKSPACE")
     rctx.file("WORKSPACE.bazel")
     rctx.file("MODULE.bazel")
-    rctx.file("REPO.bazel")
+    rctx.file("REPO.bazel", """\
+repo(
+    default_package_metadata = [
+        "//:package_metadata",
+    ],
+)
+""")
 
     # BUILD files interfere with globbing and Bazel package boundaries.
     _remove_files(rctx, "BUILD", "BUILD.bazel")
