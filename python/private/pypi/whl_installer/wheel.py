@@ -20,6 +20,41 @@ from pathlib import Path
 import installer
 
 
+class DoNothingCm:
+    """A context manager that does nothing when written to."""
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *args):
+        pass
+
+    def write(self, data):
+        pass
+
+
+class NoEntryPointsSchemeDictionaryDestination(
+    installer.destinations.SchemeDictionaryDestination
+):
+    """
+    A custom destination that prevents the `installer` package from automatically
+    generating scripts for `console_scripts` entry points.
+
+    rules_python handles entry points via its own `venv_entry_point` targets.
+    If `installer` also generates these scripts in the `bin/` directory, it
+    causes a target naming collision because `whl_library_targets.bzl` will
+    try to create a `venv_rewrite_shebang` target with the same name.
+
+    By overriding `for_script` to return a no-op dummy writer, we silently
+    discard the generated entry point scripts while still allowing `installer`
+    to process the rest of the wheel normally (including `.data/scripts` which
+    we do want to keep).
+    """
+
+    def for_script(self, name, module, attribute):
+        return DoNothingCm()
+
+
 class Wheel:
     """Representation of the compressed .whl file"""
 
@@ -50,10 +85,11 @@ class Wheel:
             "scripts": "/bin",
             "data": "/data",
         }
-        destination = installer.destinations.SchemeDictionaryDestination(
+
+        destination = NoEntryPointsSchemeDictionaryDestination(
             installation_schemes,
             # TODO Should entry_point scripts also be handled by installer rather than custom code?
-            interpreter="/dev/null",
+            interpreter="python",
             script_kind="posix",
             destdir=directory,
             bytecode_optimization_levels=[],

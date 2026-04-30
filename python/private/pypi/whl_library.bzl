@@ -28,7 +28,7 @@ load(":pep508_requirement.bzl", "requirement")
 load(":pypi_repo_utils.bzl", "pypi_repo_utils")
 load(":urllib.bzl", "urllib")
 load(":whl_extract.bzl", "whl_extract")
-load(":whl_metadata.bzl", "whl_metadata")
+load(":whl_metadata.bzl", "parse_entry_points", "whl_metadata")
 
 _CPPFLAGS = "CPPFLAGS"
 _COMMAND_LINE_TOOLS_PATH_SLUG = "commandlinetools"
@@ -277,6 +277,36 @@ def _extract_whl_py(rctx, *, python_interpreter, args, whl_path, environment, lo
         logger = logger,
     )
 
+def _get_entry_points(rctx, install_dir_path, metadata):
+    dist_info_dir = "{}-{}.dist-info".format(
+        metadata.name.replace("-", "_"),
+        metadata.version.replace("-", "_"),
+    )
+    entry_points_txt = install_dir_path.get_child(dist_info_dir).get_child("entry_points.txt")
+    if entry_points_txt.exists:
+        return parse_entry_points(rctx.read(entry_points_txt))
+    return {}
+
+def _move_scripts_needing_shebang_rewrite(rctx, entry_points):
+    bin_dir = rctx.path("bin")
+    if not bin_dir.exists:
+        return
+
+    ep_names = {name.lower(): True for name in entry_points}
+    for script in bin_dir.readdir():
+        if script.is_dir:
+            continue
+        if script.basename.lower() in ep_names:
+            rctx.delete(script)
+            continue
+        if script.basename.endswith(".exe") or script.basename.endswith(".dll"):
+            continue
+        content = rctx.read(script)
+        if content.startswith("#!python"):
+            rewrite_bin_dir = rctx.path("rewrite-bin")
+            repo_utils.mkdir(rctx, rewrite_bin_dir)
+            repo_utils.rename(rctx, script, rctx.path("rewrite-bin/" + script.basename))
+
 def _to_purl(*, index, metadata, filename):
     """
     Produce a PyPI PURL from the metadata.
@@ -436,6 +466,9 @@ def _whl_library_impl(rctx):
     )
     namespace_package_files = pypi_repo_utils.find_namespace_package_files(rctx, install_dir_path)
 
+    entry_points = _get_entry_points(rctx, install_dir_path, metadata)
+    _move_scripts_needing_shebang_rewrite(rctx, entry_points)
+
     build_file_contents = generate_whl_library_build_bazel(
         name = whl_path.basename,
         sdist_filename = sdist_filename,
@@ -455,6 +488,7 @@ def _whl_library_impl(rctx):
         group_name = rctx.attr.group_name,
         namespace_package_files = namespace_package_files,
         extras = requirement(rctx.attr.requirement).extras,
+        entry_points = entry_points,
         purl = _to_purl(
             index = rctx.attr.index_url,
             metadata = metadata,
