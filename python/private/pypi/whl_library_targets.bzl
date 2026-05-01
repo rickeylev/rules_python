@@ -26,12 +26,13 @@ load(
     "EXTRACTED_WHEEL_FILES",
     "PY_LIBRARY_IMPL_LABEL",
     "PY_LIBRARY_PUBLIC_LABEL",
-    "WHEEL_ENTRY_POINT_PREFIX",
     "WHEEL_FILE_IMPL_LABEL",
     "WHEEL_FILE_PUBLIC_LABEL",
 )
 load(":namespace_pkgs.bzl", _create_inits = "create_inits")
 load(":pep508_deps.bzl", "deps")
+load(":venv_entry_point.bzl", "venv_entry_point")
+load(":venv_rewrite_shebang.bzl", "venv_rewrite_shebang")
 
 # Files that are special to the Bazel processing of things.
 _BAZEL_REPO_FILE_GLOBS = [
@@ -43,6 +44,9 @@ _BAZEL_REPO_FILE_GLOBS = [
     "WORKSPACE.bazel",
 ]
 
+_IS_VENV_SITE_PACKAGES_YES = Label("//python/config_settings:_is_venvs_site_packages_yes")
+_VENV_SITE_PACKAGES_FLAG = Label("//python/config_settings:venvs_site_packages")
+
 def whl_library_targets_from_requires(
         *,
         name,
@@ -50,6 +54,7 @@ def whl_library_targets_from_requires(
         metadata_version = "",
         requires_dist = [],
         extras = [],
+        entry_points = {},
         include = [],
         group_deps = [],
         **kwargs):
@@ -66,6 +71,7 @@ def whl_library_targets_from_requires(
         requires_dist: {type}`list[str]` The list of `Requires-Dist` values from
             the whl `METADATA`.
         extras: {type}`list[str]` The list of requested extras. This essentially includes extra transitive dependencies in the final targets depending on the wheel `METADATA`.
+        entry_points: {type}`list[dict]` A list of parsed entry point definitions.
         include: {type}`list[str]` The list of packages to include.
         **kwargs: Extra args passed to the {obj}`whl_library_targets`
     """
@@ -81,6 +87,7 @@ def whl_library_targets_from_requires(
         name = name,
         dependencies = package_deps.deps,
         dependencies_with_markers = package_deps.deps_select,
+        entry_points = entry_points,
         tags = [
             "pypi_name={}".format(metadata_name),
             "pypi_version={}".format(metadata_version),
@@ -115,12 +122,12 @@ def whl_library_targets(
         filegroups = None,
         dependencies_by_platform = {},
         dependencies_with_markers = {},
+        entry_points = {},
         group_deps = [],
         group_name = "",
         data = [],
         copy_files = {},
         copy_executables = {},
-        entry_points = {},
         native = native,
         enable_implicit_namespace_pkgs = False,
         namespace_package_files = [],
@@ -128,6 +135,8 @@ def whl_library_targets(
             copy_file = copy_file,
             py_binary = py_binary,
             py_library = py_library,
+            venv_entry_point = venv_entry_point,
+            venv_rewrite_shebang = venv_rewrite_shebang,
             env_marker_setting = env_marker_setting,
             create_inits = _create_inits,
         )):
@@ -146,6 +155,7 @@ def whl_library_targets(
             dependencies by platform key.
         dependencies_with_markers: {type}`dict[str, str]` A marker to evaluate
             in order for the dep to be included.
+        entry_points: {type}`list[dict]` A list of parsed entry point definitions.
         filegroups: {type}`dict[str, list[str]] | None` A dictionary of the target
             names and the glob matches. If `None`, defaults will be used.
         group_name: {type}`str` name of the dependency group (if any) which
@@ -165,8 +175,6 @@ def whl_library_targets(
         srcs_exclude: {type}`list[str]` The globs for srcs attribute exclusion
             in `py_library`.
         data: {type}`list[str]` A list of labels to include as part of the `data` attribute in `py_library`.
-        entry_points: {type}`dict[str, str]` The mapping between the script
-            name and the python file to use. DEPRECATED.
         enable_implicit_namespace_pkgs: {type}`boolean` generate __init__.py
             files for namespace pkgs.
         native: {type}`native` The native struct for overriding in tests.
@@ -182,6 +190,36 @@ def whl_library_targets(
     tags = sorted(tags)
     data = [] + data
 
+    bins_for_data_label = []
+
+    for ep_dict in entry_points.values():
+        kwargs = dict(ep_dict)
+        ep_name = kwargs.pop("name")
+        ep_target_name = "bin/{}".format(ep_name)
+        rules.venv_entry_point(
+            name = ep_target_name,
+            **kwargs
+        )
+        bins_for_data_label.append(ep_target_name)
+        data.append(ep_target_name)
+
+    existing_bin_names = {ep["name"].lower(): None for ep in entry_points.values()}
+    for p in native.glob(["bin/*"], allow_empty = True):
+        existing_bin_names[p[len("bin/"):].lower()] = None
+
+    for src_path in native.glob(["rewrite-bin/*"], allow_empty = True):
+        script_name = src_path[len("rewrite-bin/"):]
+        if script_name.lower() in existing_bin_names:
+            continue
+        rewrite_target_name = "bin/{}".format(script_name)
+        rules.venv_rewrite_shebang(
+            name = rewrite_target_name,
+            src = src_path,
+            package = name,
+        )
+        bins_for_data_label.append(rewrite_target_name)
+        data.append(rewrite_target_name)
+
     if filegroups == None:
         filegroups = {
             EXTRACTED_WHEEL_FILES: dict(
@@ -195,15 +233,18 @@ def whl_library_targets(
                 include = ["site-packages/*.dist-info/**"],
             ),
             DATA_LABEL: dict(
-                include = ["data/**"],
+                include = ["data/**", "bin/**", "include/**"],
             ),
         }
 
     for filegroup_name, glob_kwargs in filegroups.items():
         glob_kwargs = {"allow_empty": True} | glob_kwargs
+        srcs = native.glob(**glob_kwargs)
+        if filegroup_name == DATA_LABEL:
+            srcs = srcs + bins_for_data_label
         native.filegroup(
             name = filegroup_name,
-            srcs = native.glob(**glob_kwargs),
+            srcs = srcs,
             visibility = ["//visibility:public"],
         )
 
@@ -236,20 +277,6 @@ def whl_library_targets(
         d: "is_include_{}_true".format(d)
         for d in dependencies_with_markers
     }
-
-    # TODO @aignas 2024-10-25: remove the entry_point generation once
-    # `py_console_script_binary` is the only way to use entry points.
-    for entry_point, entry_point_script_name in entry_points.items():
-        rules.py_binary(
-            name = "{}_{}".format(WHEEL_ENTRY_POINT_PREFIX, entry_point),
-            # Ensure that this works on Windows as well - script may have Windows path separators.
-            srcs = [entry_point_script_name.replace("\\", "/")],
-            # This makes this directory a top-level in the python import
-            # search path for anything that depends on this.
-            imports = ["."],
-            deps = [":" + PY_LIBRARY_PUBLIC_LABEL],
-            visibility = ["//visibility:public"],
-        )
 
     # Ensure this list is normalized
     # Note: mapping used as set
@@ -369,7 +396,7 @@ def whl_library_targets(
 
         if not enable_implicit_namespace_pkgs:
             generated_namespace_package_files = select({
-                Label("//python/config_settings:is_venvs_site_packages"): [],
+                _IS_VENV_SITE_PACKAGES_YES: [],
                 "//conditions:default": rules.create_inits(
                     srcs = srcs + data + pyi_srcs,
                     ignored_dirnames = [],  # If you need to ignore certain folders, you can patch rules_python here to do so.
@@ -378,6 +405,10 @@ def whl_library_targets(
             })
             namespace_package_files += generated_namespace_package_files
             srcs = srcs + generated_namespace_package_files
+
+        # This is done after create_inits() is called so that the data scheme
+        # files don't have such files created in their directories.
+        data = data + [DATA_LABEL]
 
         rules.py_library(
             name = py_library_label,
@@ -395,7 +426,7 @@ def whl_library_targets(
             ),
             tags = tags,
             visibility = impl_vis,
-            experimental_venvs_site_packages = Label("@rules_python//python/config_settings:venvs_site_packages"),
+            experimental_venvs_site_packages = _VENV_SITE_PACKAGES_FLAG,
             namespace_package_files = namespace_package_files,
         )
 

@@ -68,6 +68,10 @@ rules_python_integration_test(
 )
 
 rules_python_integration_test(
+    name = "pip_parse_isolated_test",
+)
+
+rules_python_integration_test(
     name = "pip_parse_workspace_test",
     bzlmod = False,
     workspace_path = "pip_parse",
@@ -86,6 +90,11 @@ rules_python_integration_test(
 rules_python_integration_test(
     name = "custom_commands_test",
     py_main = "custom_commands_test.py",
+)
+
+rules_python_integration_test(
+    name = "toolchain_target_settings_test",
+    py_main = "toolchain_target_settings_test.py",
 )
 
 py_library(

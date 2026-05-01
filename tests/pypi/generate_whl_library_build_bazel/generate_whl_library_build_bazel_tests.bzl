@@ -21,9 +21,16 @@ _tests = []
 
 def _test_all_legacy(env):
     want = """\
+load("@package_metadata//rules:package_metadata.bzl", "package_metadata")
 load("@rules_python//python/private/pypi:whl_library_targets.bzl", "whl_library_targets")
 
 package(default_visibility = ["//visibility:public"])
+
+package_metadata(
+    name = "package_metadata",
+    purl = None,
+    visibility = ["//:__subpackages__"],
+)
 
 whl_library_targets(
     copy_executables = {
@@ -42,9 +49,6 @@ whl_library_targets(
     dependencies_by_platform = {
         "baz": ["bar"],
     },
-    entry_points = {
-        "foo": "bar.py",
-    },
     group_deps = [
         "foo",
         "fox",
@@ -56,11 +60,6 @@ whl_library_targets(
     tags = ["tag1"],
 )
 
-exports_files(
-    srcs = ["bar.py"],
-    visibility = ["//visibility:public"],
-)
-
 # SOMETHING SPECIAL AT THE END
 """
     actual = generate_whl_library_build_bazel(
@@ -68,9 +67,6 @@ exports_files(
         name = "foo.whl",
         dependencies = ["foo"],
         dependencies_by_platform = {"baz": ["bar"]},
-        entry_points = {
-            "foo": "bar.py",
-        },
         data_exclude = ["exclude_via_attr"],
         annotation = struct(
             copy_files = {"file_src": "file_dest"},
@@ -90,10 +86,17 @@ _tests.append(_test_all_legacy)
 
 def _test_all_workspace(env):
     want = """\
+load("@package_metadata//rules:package_metadata.bzl", "package_metadata")
 load("@pypi//:config.bzl", "packages")
 load("@rules_python//python/private/pypi:whl_library_targets.bzl", "whl_library_targets_from_requires")
 
 package(default_visibility = ["//visibility:public"])
+
+package_metadata(
+    name = "package_metadata",
+    purl = None,
+    visibility = ["//:__subpackages__"],
+)
 
 whl_library_targets_from_requires(
     copy_executables = {
@@ -108,9 +111,6 @@ whl_library_targets_from_requires(
         "data_exclude_all",
     ],
     dep_template = "@pypi//{name}:{target}",
-    entry_points = {
-        "foo": "bar.py",
-    },
     group_deps = [
         "foo",
         "fox",
@@ -127,20 +127,12 @@ whl_library_targets_from_requires(
     srcs_exclude = ["srcs_exclude_all"],
 )
 
-exports_files(
-    srcs = ["bar.py"],
-    visibility = ["//visibility:public"],
-)
-
 # SOMETHING SPECIAL AT THE END
 """
     actual = generate_whl_library_build_bazel(
         dep_template = "@pypi//{name}:{target}",
         name = "foo.whl",
         requires_dist = ["foo", "bar-baz", "qux"],
-        entry_points = {
-            "foo": "bar.py",
-        },
         data_exclude = ["exclude_via_attr"],
         annotation = struct(
             copy_files = {"file_src": "file_dest"},
@@ -160,10 +152,17 @@ _tests.append(_test_all_workspace)
 
 def _test_all(env):
     want = """\
+load("@package_metadata//rules:package_metadata.bzl", "package_metadata")
 load("@pypi//:config.bzl", "packages")
 load("@rules_python//python/private/pypi:whl_library_targets.bzl", "whl_library_targets_from_requires")
 
 package(default_visibility = ["//visibility:public"])
+
+package_metadata(
+    name = "package_metadata",
+    purl = None,
+    visibility = ["//:__subpackages__"],
+)
 
 whl_library_targets_from_requires(
     copy_executables = {
@@ -178,9 +177,6 @@ whl_library_targets_from_requires(
         "data_exclude_all",
     ],
     dep_template = "@pypi//{name}:{target}",
-    entry_points = {
-        "foo": "bar.py",
-    },
     group_deps = [
         "foo",
         "fox",
@@ -197,20 +193,12 @@ whl_library_targets_from_requires(
     srcs_exclude = ["srcs_exclude_all"],
 )
 
-exports_files(
-    srcs = ["bar.py"],
-    visibility = ["//visibility:public"],
-)
-
 # SOMETHING SPECIAL AT THE END
 """
     actual = generate_whl_library_build_bazel(
         dep_template = "@pypi//{name}:{target}",
         name = "foo.whl",
         requires_dist = ["foo", "bar-baz", "qux"],
-        entry_points = {
-            "foo": "bar.py",
-        },
         data_exclude = ["exclude_via_attr"],
         annotation = struct(
             copy_files = {"file_src": "file_dest"},
@@ -230,10 +218,17 @@ _tests.append(_test_all)
 
 def _test_all_with_loads(env):
     want = """\
+load("@package_metadata//rules:package_metadata.bzl", "package_metadata")
 load("@pypi//:config.bzl", "packages")
 load("@rules_python//python/private/pypi:whl_library_targets.bzl", "whl_library_targets_from_requires")
 
 package(default_visibility = ["//visibility:public"])
+
+package_metadata(
+    name = "package_metadata",
+    purl = None,
+    visibility = ["//:__subpackages__"],
+)
 
 whl_library_targets_from_requires(
     copy_executables = {
@@ -248,9 +243,6 @@ whl_library_targets_from_requires(
         "data_exclude_all",
     ],
     dep_template = "@pypi//{name}:{target}",
-    entry_points = {
-        "foo": "bar.py",
-    },
     group_deps = [
         "foo",
         "fox",
@@ -267,20 +259,12 @@ whl_library_targets_from_requires(
     srcs_exclude = ["srcs_exclude_all"],
 )
 
-exports_files(
-    srcs = ["bar.py"],
-    visibility = ["//visibility:public"],
-)
-
 # SOMETHING SPECIAL AT THE END
 """
     actual = generate_whl_library_build_bazel(
         dep_template = "@pypi//{name}:{target}",
         name = "foo.whl",
         requires_dist = ["foo", "bar-baz", "qux"],
-        entry_points = {
-            "foo": "bar.py",
-        },
         data_exclude = ["exclude_via_attr"],
         annotation = struct(
             copy_files = {"file_src": "file_dest"},

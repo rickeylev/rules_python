@@ -30,6 +30,8 @@ def _test_filegroups(env):
     def glob(include, *, exclude = [], allow_empty):
         _ = exclude  # @unused
         env.expect.that_bool(allow_empty).equals(True)
+        if include == ["rewrite-bin/*"] or include == ["bin/*"]:
+            return []
         return include
 
     whl_library_targets(
@@ -39,7 +41,9 @@ def _test_filegroups(env):
             filegroup = lambda **kwargs: calls.append(kwargs),
             glob = glob,
         ),
-        rules = struct(),
+        rules = struct(
+            venv_rewrite_shebang = lambda **kwargs: None,
+        ),
     )
 
     env.expect.that_collection(calls, expr = "filegroup calls").contains_exactly([
@@ -50,7 +54,7 @@ def _test_filegroups(env):
         },
         {
             "name": "data",
-            "srcs": ["data/**"],
+            "srcs": ["data/**", "bin/**", "include/**"],
             "visibility": ["//visibility:public"],
         },
         {
@@ -85,8 +89,11 @@ def _test_platforms(env):
         filegroups = {},
         native = struct(
             config_setting = lambda **kwargs: calls.append(kwargs),
+            glob = lambda *args, **kwargs: [],
         ),
-        rules = struct(),
+        rules = struct(
+            venv_rewrite_shebang = lambda **kwargs: None,
+        ),
     )
 
     env.expect.that_collection(calls).contains_exactly([
@@ -134,9 +141,12 @@ def _test_copy(env):
         filegroups = {},
         copy_files = {"file_src": "file_dest"},
         copy_executables = {"exec_src": "exec_dest"},
-        native = struct(),
+        native = struct(
+            glob = lambda *args, **kwargs: [],
+        ),
         rules = struct(
             copy_file = lambda **kwargs: calls.append(kwargs),
+            venv_rewrite_shebang = lambda **kwargs: None,
         ),
     )
 
@@ -158,35 +168,6 @@ def _test_copy(env):
 
 _tests.append(_test_copy)
 
-def _test_entrypoints(env):
-    calls = []
-
-    whl_library_targets(
-        name = "",
-        dep_template = None,
-        dependencies_by_platform = {},
-        filegroups = {},
-        entry_points = {
-            "fizz": "buzz.py",
-        },
-        native = struct(),
-        rules = struct(
-            py_binary = lambda **kwargs: calls.append(kwargs),
-        ),
-    )
-
-    env.expect.that_collection(calls).contains_exactly([
-        {
-            "name": "rules_python_wheel_entry_point_fizz",
-            "srcs": ["buzz.py"],
-            "deps": [":pkg"],
-            "imports": ["."],
-            "visibility": ["//visibility:public"],
-        },
-    ])  # buildifier: @unsorted-dict-items
-
-_tests.append(_test_entrypoints)
-
 def _test_whl_and_library_deps_from_requires(env):
     filegroup_calls = []
     py_library_calls = []
@@ -194,9 +175,11 @@ def _test_whl_and_library_deps_from_requires(env):
 
     m_glob = mocks.glob()
 
-    m_glob.results.append(["site-packages/foo/SRCS.py"])
-    m_glob.results.append(["site-packages/foo/DATA.txt"])
-    m_glob.results.append(["site-packages/foo/PYI.pyi"])
+    m_glob.results.append([])  # bin
+    m_glob.results.append([])  # rewrite-bin
+    m_glob.results.append(["site-packages/foo/SRCS.py"])  # srcs
+    m_glob.results.append(["site-packages/foo/DATA.txt"])  # data
+    m_glob.results.append(["site-packages/foo/PYI.pyi"])  # pyi
 
     whl_library_targets_from_requires(
         name = "foo-0-py3-none-any.whl",
@@ -222,6 +205,7 @@ def _test_whl_and_library_deps_from_requires(env):
             py_library = lambda **kwargs: py_library_calls.append(kwargs),
             env_marker_setting = lambda **kwargs: env_marker_setting_calls.append(kwargs),
             create_inits = lambda *args, **kwargs: ["_create_inits_target"],
+            venv_rewrite_shebang = lambda **kwargs: None,
         ),
     )
 
@@ -245,11 +229,11 @@ def _test_whl_and_library_deps_from_requires(env):
     env.expect.that_dict(py_library_call).contains_exactly({
         "name": "pkg",
         "srcs": ["site-packages/foo/SRCS.py"] + select({
-            Label("//python/config_settings:is_venvs_site_packages"): [],
+            Label("//python/config_settings:_is_venvs_site_packages_yes"): [],
             "//conditions:default": ["_create_inits_target"],
         }),
         "pyi_srcs": ["site-packages/foo/PYI.pyi"],
-        "data": ["site-packages/foo/DATA.txt"],
+        "data": ["site-packages/foo/DATA.txt", "data"],
         "imports": ["site-packages"],
         "deps": ["@pypi//bar:pkg"] + select({
             ":is_include_bar_baz_true": ["@pypi//bar_baz:pkg"],
@@ -259,12 +243,22 @@ def _test_whl_and_library_deps_from_requires(env):
         "visibility": ["//visibility:public"],
         "experimental_venvs_site_packages": Label("//python/config_settings:venvs_site_packages"),
         "namespace_package_files": [] + select({
-            Label("//python/config_settings:is_venvs_site_packages"): [],
+            Label("//python/config_settings:_is_venvs_site_packages_yes"): [],
             "//conditions:default": ["_create_inits_target"],
         }),
     })  # buildifier: @unsorted-dict-items
 
     env.expect.that_collection(m_glob.calls).contains_exactly([
+        # bin call
+        mocks.glob_call(
+            ["bin/*"],
+            allow_empty = True,
+        ),
+        # rewrite-bin call
+        mocks.glob_call(
+            ["rewrite-bin/*"],
+            allow_empty = True,
+        ),
         # srcs call
         mocks.glob_call(
             ["site-packages/**/*.py"],
@@ -300,6 +294,8 @@ def _test_whl_and_library_deps(env):
     filegroup_calls = []
     py_library_calls = []
     m_glob = mocks.glob()
+    m_glob.results.append([])  # bin
+    m_glob.results.append([])  # rewrite-bin
     m_glob.results.append(["site-packages/foo/SRCS.py"])
     m_glob.results.append(["site-packages/foo/DATA.txt"])
     m_glob.results.append(["site-packages/foo/PYI.pyi"])
@@ -329,6 +325,7 @@ def _test_whl_and_library_deps(env):
         rules = struct(
             py_library = lambda **kwargs: py_library_calls.append(kwargs),
             create_inits = lambda **kwargs: ["_create_inits_target"],
+            venv_rewrite_shebang = lambda **kwargs: None,
         ),
     )
 
@@ -361,11 +358,11 @@ def _test_whl_and_library_deps(env):
     env.expect.that_dict(py_library_calls[0]).contains_exactly({
         "name": "pkg",
         "srcs": ["site-packages/foo/SRCS.py"] + select({
-            Label("//python/config_settings:is_venvs_site_packages"): [],
+            Label("//python/config_settings:_is_venvs_site_packages_yes"): [],
             "//conditions:default": ["_create_inits_target"],
         }),
         "pyi_srcs": ["site-packages/foo/PYI.pyi"],
-        "data": ["site-packages/foo/DATA.txt"],
+        "data": ["site-packages/foo/DATA.txt", "data"],
         "imports": ["site-packages"],
         "deps": [
             "@pypi_bar_baz//:pkg",
@@ -386,7 +383,7 @@ def _test_whl_and_library_deps(env):
         "visibility": ["//visibility:public"],
         "experimental_venvs_site_packages": Label("//python/config_settings:venvs_site_packages"),
         "namespace_package_files": [] + select({
-            Label("//python/config_settings:is_venvs_site_packages"): [],
+            Label("//python/config_settings:_is_venvs_site_packages_yes"): [],
             "//conditions:default": ["_create_inits_target"],
         }),
     })  # buildifier: @unsorted-dict-items
@@ -398,6 +395,8 @@ def _test_group(env):
     py_library_calls = []
 
     m_glob = mocks.glob()
+    m_glob.results.append([])  # bin
+    m_glob.results.append([])  # rewrite-bin
     m_glob.results.append(["site-packages/foo/srcs.py"])
     m_glob.results.append(["site-packages/foo/data.txt"])
     m_glob.results.append(["site-packages/foo/pyi.pyi"])
@@ -412,7 +411,6 @@ def _test_group(env):
             "@platforms//os:linux": ["box"],  # buildifier: disable=unsorted-dict-items to check that we sort inside the test
         },
         tags = [],
-        entry_points = {},
         data_exclude = [],
         group_name = "qux",
         group_deps = ["foo", "fox", "qux"],
@@ -426,6 +424,7 @@ def _test_group(env):
         rules = struct(
             py_library = lambda **kwargs: py_library_calls.append(kwargs),
             create_inits = lambda **kwargs: ["_create_inits_target"],
+            venv_rewrite_shebang = lambda **kwargs: None,
         ),
     )
 
@@ -444,11 +443,11 @@ def _test_group(env):
     ).contains_exactly({
         "name": "_pkg",
         "srcs": ["site-packages/foo/srcs.py"] + select({
-            Label("//python/config_settings:is_venvs_site_packages"): [],
+            Label("//python/config_settings:_is_venvs_site_packages_yes"): [],
             "//conditions:default": ["_create_inits_target"],
         }),
         "pyi_srcs": ["site-packages/foo/pyi.pyi"],
-        "data": ["site-packages/foo/data.txt"],
+        "data": ["site-packages/foo/data.txt", "data"],
         "imports": ["site-packages"],
         "deps": ["@pypi_bar_baz//:pkg"] + select({
             "@platforms//os:linux": ["@pypi_box//:pkg"],
@@ -459,12 +458,14 @@ def _test_group(env):
         "visibility": ["@pypi__config//_groups:__pkg__"],
         "experimental_venvs_site_packages": Label("//python/config_settings:venvs_site_packages"),
         "namespace_package_files": [] + select({
-            Label("//python/config_settings:is_venvs_site_packages"): [],
+            Label("//python/config_settings:_is_venvs_site_packages_yes"): [],
             "//conditions:default": ["_create_inits_target"],
         }),
     })  # buildifier: @unsorted-dict-items
 
     env.expect.that_collection(m_glob.calls, expr = "glob calls").contains_exactly([
+        mocks.glob_call(["bin/*"], allow_empty = True),
+        mocks.glob_call(["rewrite-bin/*"], allow_empty = True),
         mocks.glob_call(["site-packages/**/*.py"], exclude = [], allow_empty = True),
         mocks.glob_call(["site-packages/**/*"], exclude = [
             "**/*.py",

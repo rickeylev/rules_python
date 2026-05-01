@@ -60,21 +60,38 @@ END_UNRELEASED_TEMPLATE
 ### Changed
 * (gazelle) WORKSPACE's bazel-gazelle dependency bumped from 0.36.0 to 0.47.0.
   The go version was also bumped from 1.21.13 to 1.22.9.
+* (pypi) The data files of a wheel (bin, includes, etc) are now always included
+  as a library's data dependencies.
 
 {#v0-0-0-fixed}
 ### Fixed
 * (gazelle) Fixed handling of auto-included `__init__.py` files when generating `py_binary`
   targets ([#3729](https://github.com/bazel-contrib/rules_python/issues/3729)).
+* (entry_point) From now on `mypy` type checking will be skipped on the generated
+  files ([#3126](https://github.com/bazel-contrib/rules_python/issues/3126)).
+* (pypi) Support `--experimental_isolated_extension_usages`
+  ([#3668](https://github.com/bazel-contrib/rules_python/issues/3668)).
+* (uv) use the astral.sh mirror as the preferred url for binary downloads,
+  with github.com as a fallback; for uv >= 0.11.0, read the checksums directly
+  from the dist-manifest contents.
 
 {#v0-0-0-added}
 ### Added
+* (toolchain) Added {obj}`python.override.toolchain_target_settings` to allow
+  adding `config_setting` labels to all registered toolchains.
 * (windows) Full venv support for Windows is available. Set
   {obj}`--venvs_site_packages=yes` to enable.
+* (test/binaries) When {obj}`--venv_site_packages=yes` is enabled,
+  wheel `data`, `bin`, and `include` files are populated into the venv.
 * (runfiles) Added a pathlib-compatible API: {obj}`Runfiles.root()`
   Fixes [#3296](https://github.com/bazel-contrib/rules_python/issues/3296).
+* (gazelle) Support alias_kind directive.
+  Fixes [#3183](https://github.com/bazel-contrib/rules_python/issues/3183).
 * (toolchains) `3.13.12`, `3.14.3` Python toolchain from [20260325] release.
 * (toolchains) `3.10.20`, `3.11.15`, `3.12.13`, `3.13.13` `3.14.4`, `3.15.0a8`
 * Python toolchain from [20260414] release.
+* (pypi) `package_metadata` support, fixes 
+  [#2054](https://github.com/bazel-contrib/rules_python/issues/2054).
 
 [20260325]: https://github.com/astral-sh/python-build-standalone/releases/tag/20260325
 [20260414]: https://github.com/astral-sh/python-build-standalone/releases/tag/20260414
