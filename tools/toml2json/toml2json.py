@@ -1,11 +1,7 @@
 import datetime
 import json
 import sys
-
-try:
-    import tomllib
-except ImportError:
-    import tomli as tomllib
+import tomllib
 
 
 def json_serializer(obj):
