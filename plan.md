@@ -66,17 +66,15 @@ When addressing PR review comments:
 6. Check Buildkite CI results (except RBE failures); fix any failures
 7. Cycle until all green
 
-Specific fixes applied:
-- tomllib: try/except fallback to tomli for Python <3.11
-- json_serializer: add datetime.date and datetime.time support
-- all_platforms: use sorted(platforms.keys()) fallback
-- $PWD/ path: check if python_path is absolute
-- provides-extras: comment explaining inclusion rationale
-- extra_pip_args: pass through to _parse_uv_lock_json
-- Added uv_lock test coverage: multiple packages, extra_pip_args, multi-os
-
-Next stages after review:
-1. Change MODULE.bazel and uv.lock reading code to use Python 3.14 via MODULE.bazel
-2. Add bazel-in-bazel integration test under tests/integration for uv.lock
-3. Simplify/remove dead code
-4. Push between each stage
+## Done
+1. First review cycle:
+   - tomllib: try/except fallback to tomli for Python <3.11
+   - json_serializer: add datetime.date and datetime.time support
+   - all_platforms: use sorted(platforms.keys()) fallback
+   - $PWD/ path: check if python_path is absolute
+   - provides-extras: comment explaining inclusion rationale
+   - extra_pip_args: pass through to _parse_uv_lock_json
+   - Added uv_lock test coverage: multiple packages, extra_pip_args, multi-os
+2. Python 3.14 toolchain in MODULE.bazel + uv_lock.bzl uses it
+3. Integration test in tests/integration/uv_lock/
+4. Dead code removed (uv_pypi test data), tomli fallback restored
