@@ -23,6 +23,9 @@ exports_files(
     visibility = ["//visibility:public"],
 )
 
+# Used as a label reference from lock.bzl
+exports_files(["lock_uv_lock.sh"])
+
 filegroup(
     name = "distribution",
     srcs = glob(["**"]),
