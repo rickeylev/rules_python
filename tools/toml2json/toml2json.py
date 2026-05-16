@@ -1,11 +1,15 @@
 import datetime
 import json
 import sys
-import tomllib
+
+try:
+    import tomllib
+except ImportError:
+    import tomli as tomllib
 
 
 def json_serializer(obj):
-    if isinstance(obj, datetime.datetime):
+    if isinstance(obj, (datetime.datetime, datetime.date, datetime.time)):
         return obj.isoformat()
     raise TypeError(f"Object of type {type(obj).__name__} is not JSON serializable")
 

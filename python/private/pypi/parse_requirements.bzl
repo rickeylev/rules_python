@@ -136,7 +136,8 @@ def _parse_requirements_with_uv_lock(
     """Parse requirements using uv.lock as the primary source."""
     ret = _parse_uv_lock_json(
         uv_lock_json = uv_lock_json,
-        all_platforms = _get_all_platforms(requirements_by_platform) if requirements_by_platform else [],
+        all_platforms = _get_all_platforms(requirements_by_platform) if requirements_by_platform else sorted(platforms.keys()),
+        extra_pip_args = extra_pip_args,
         logger = logger,
         is_rules_python_root = is_rules_python_root,
     )
@@ -157,7 +158,7 @@ def _parse_requirements_with_uv_lock(
 
     return ret
 
-def _parse_uv_lock_json(uv_lock_json, all_platforms, logger, is_rules_python_root = False):
+def _parse_uv_lock_json(uv_lock_json, all_platforms, logger, is_rules_python_root = False, extra_pip_args = None):
     """Parse uv.lock JSON and build the same return structs as parse_requirements.
 
     Args:
@@ -167,6 +168,7 @@ def _parse_uv_lock_json(uv_lock_json, all_platforms, logger, is_rules_python_roo
         is_rules_python_root: {type}`bool` When True, skip the "rules_python"
             package entry (used when running inside the rules_python repository
             itself). Defaults to False.
+        extra_pip_args: {type}`list[str] | None` Extra pip arguments to pass through.
 
     Returns:
         {type}`list[struct]` The same format as {func}`parse_requirements`.
@@ -189,6 +191,9 @@ def _parse_uv_lock_json(uv_lock_json, all_platforms, logger, is_rules_python_roo
         version = pkg["version"]
         entry["versions"][version] = None
 
+        # NOTE: includes all provides-extras in requirement_line. In pip context
+        # this would install all optional deps, but in rules_python the
+        # requirement_line is just metadata; deps are already resolved in uv.lock.
         for extra in pkg.get("provides-extras", pkg.get("extras", [])):
             if extra not in entry["extras"]:
                 entry["extras"][extra] = None
@@ -241,7 +246,7 @@ def _parse_uv_lock_json(uv_lock_json, all_platforms, logger, is_rules_python_roo
             )
             pkg_srcs.append(struct(
                 distribution = info["distribution"],
-                extra_pip_args = [],
+                extra_pip_args = extra_pip_args or [],
                 requirement_line = requirement_line,
                 target_platforms = list(all_platforms),
                 filename = src_entry.filename,

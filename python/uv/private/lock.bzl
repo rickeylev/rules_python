@@ -100,7 +100,7 @@ def _lock_impl(ctx):
         python_run = getattr(python, "short_path", python)
 
         # Make python path absolute since uv changes directory via --directory
-        python_abs = "$PWD/" + python_path
+        python_abs = python_path if python_path.startswith("/") else "$PWD/" + python_path
 
         # uv lock doesn't support --output-file, it writes uv.lock
         # in the project directory. We use --directory to point it at
