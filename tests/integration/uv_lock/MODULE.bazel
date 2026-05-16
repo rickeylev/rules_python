@@ -1,0 +1,14 @@
+module(name = "uv_lock")
+
+bazel_dep(name = "rules_python", version = "0.0.0")
+local_path_override(
+    module_name = "rules_python",
+    path = "../../..",
+)
+
+python = use_extension("@rules_python//python/extensions:python.bzl", "python")
+python.toolchain(
+    python_version = "3.9",
+)
+
+register_toolchains("@python_3_9//:all")
