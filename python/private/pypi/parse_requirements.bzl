@@ -44,7 +44,7 @@ def parse_requirements(
         evaluate_markers = None,
         extract_url_srcs = True,
         uv_lock = None,
-        is_rules_python_root = False,
+        toml_decode = None,
         logger):
     """Get the requirements with platforms that the requirements apply to.
 
@@ -71,9 +71,7 @@ def parse_requirements(
             If provided, the function will use the uv.lock file as the primary
             source for package metadata and perform a consistency check against
             requirements files if both are provided.
-        is_rules_python_root: {type}`bool` When True, the consistency check
-            between requirements and uv.lock is performed, and the "rules_python"
-            entry is skipped. Defaults to False.
+        toml_decode: TODO
         logger: repo_utils.logger, a simple struct to log diagnostic messages.
 
     Returns:
@@ -88,8 +86,8 @@ def parse_requirements(
            containing: `distribution`, `extra_pip_args`, `requirement_line`,
            `target_platforms`, `filename`, `sha256`, `url`, `yanked`.
     """
-    if uv_lock:
-        uv_lock_json = ctx.read(uv_lock)
+    if uv_lock and toml_decode:
+        uv_lock = toml_decode(ctx.read(uv_lock))
         return _parse_requirements_with_uv_lock(
             ctx = ctx,
             requirements_by_platform = requirements_by_platform,
@@ -98,10 +96,10 @@ def parse_requirements(
             get_index_urls = get_index_urls,
             evaluate_markers = evaluate_markers,
             extract_url_srcs = extract_url_srcs,
-            uv_lock_json = uv_lock_json,
+            uv_lock = uv_lock,
             logger = logger,
-            is_rules_python_root = is_rules_python_root,
         )
+
     return _parse_requirements_from_req_files(
         ctx = ctx,
         requirements_by_platform = requirements_by_platform,
@@ -130,57 +128,44 @@ def _parse_requirements_with_uv_lock(
         get_index_urls,
         evaluate_markers,
         extract_url_srcs,
-        uv_lock_json,
-        logger,
-        is_rules_python_root = False):
+        uv_lock,
+        logger):
     """Parse requirements using uv.lock as the primary source."""
-    ret = _parse_uv_lock_json(
-        uv_lock_json = uv_lock_json,
-        all_platforms = _get_all_platforms(requirements_by_platform) if requirements_by_platform else sorted(platforms.keys()),
-        extra_pip_args = extra_pip_args,
-        logger = logger,
-        is_rules_python_root = is_rules_python_root,
-    )
-
-    if requirements_by_platform:
-        ret_from_reqs = _parse_requirements_from_req_files(
-            ctx = ctx,
-            requirements_by_platform = requirements_by_platform,
+    if uv_lock:
+        return _parse_uv_lock_json(
+            uv_lock = uv_lock,
+            all_platforms = _get_all_platforms(requirements_by_platform) if requirements_by_platform else sorted(platforms.keys()),
             extra_pip_args = extra_pip_args,
-            platforms = platforms,
-            get_index_urls = get_index_urls,
-            evaluate_markers = evaluate_markers,
-            extract_url_srcs = extract_url_srcs,
             logger = logger,
         )
-        if is_rules_python_root:
-            _check_ret_consistency(ret_from_reqs, ret, logger = logger)
 
-    return ret
+    return _parse_requirements_from_req_files(
+        ctx = ctx,
+        requirements_by_platform = requirements_by_platform,
+        extra_pip_args = extra_pip_args,
+        platforms = platforms,
+        get_index_urls = get_index_urls,
+        evaluate_markers = evaluate_markers,
+        extract_url_srcs = extract_url_srcs,
+        logger = logger,
+    )
 
-def _parse_uv_lock_json(uv_lock_json, all_platforms, logger, is_rules_python_root = False, extra_pip_args = None):
+def _parse_uv_lock_json(uv_lock, all_platforms, logger, extra_pip_args = None):
     """Parse uv.lock JSON and build the same return structs as parse_requirements.
 
     Args:
-        uv_lock_json: {type}`str` A JSON-encoded string of the uv.lock contents.
+        uv_lock: {type}`str` A JSON-encoded string of the uv.lock contents.
         all_platforms: {type}`list[str]` The list of all platform names.
         logger: {type}`struct` A logger for diagnostic messages.
-        is_rules_python_root: {type}`bool` When True, skip the "rules_python"
-            package entry (used when running inside the rules_python repository
-            itself). Defaults to False.
         extra_pip_args: {type}`list[str] | None` Extra pip arguments to pass through.
 
     Returns:
         {type}`list[struct]` The same format as {func}`parse_requirements`.
     """
-    lock_data = json.decode(uv_lock_json)
-    packages = lock_data.get("package", [])
-
     uv_packages = {}
-    for pkg in packages:
+    for pkg in uv_lock["package"]:
         name = pkg["name"]
-        if (name == "rules_python" and is_rules_python_root) or (pkg.get("source") or {}).get("virtual"):
-            continue
+        version = pkg["version"]
         norm_name = normalize_name(name)
         entry = uv_packages.setdefault(norm_name, {
             "distribution": name,
@@ -188,7 +173,6 @@ def _parse_uv_lock_json(uv_lock_json, all_platforms, logger, is_rules_python_roo
             "src_entries": [],
             "versions": {},
         })
-        version = pkg["version"]
         entry["versions"][version] = None
 
         # NOTE: includes all provides-extras in requirement_line. In pip context
@@ -200,7 +184,7 @@ def _parse_uv_lock_json(uv_lock_json, all_platforms, logger, is_rules_python_roo
 
         seen = {}
         for wheel in pkg.get("wheels", []):
-            sha256 = wheel["hash"].replace("sha256:", "")
+            sha256 = wheel.get("hash", "").replace("sha256:", "")
             url = wheel["url"]
             _, _, filename = url.rpartition("/")
             key = (filename, sha256)
@@ -216,9 +200,9 @@ def _parse_uv_lock_json(uv_lock_json, all_platforms, logger, is_rules_python_roo
                     yanked = None,
                 ))
 
-        sdist = pkg.get("sdist")
+        sdist = pkg.get("sdist", None)
         if sdist:
-            sha256 = sdist.get("hash", "").replace("sha256:", "") if sdist.get("hash") else ""
+            sha256 = sdist.get("hash", "").replace("sha256:", "")
             url = sdist["url"]
             _, _, filename = url.rpartition("/")
             entry["src_entries"].append(struct(
@@ -228,7 +212,7 @@ def _parse_uv_lock_json(uv_lock_json, all_platforms, logger, is_rules_python_roo
                 filename = filename,
                 yanked = None,
             ))
-        elif (pkg.get("source") or {}).get("git"):
+        elif pkg.get("source", {}).get("git"):
             _add_vcs_entry(entry, version, pkg["source"])
 
     ret = []
