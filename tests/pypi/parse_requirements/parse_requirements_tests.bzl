@@ -119,6 +119,7 @@ bar==0.0.1 --hash=sha256:deadb00f
 _tests = []
 
 def parse_requirements(debug = False, **kwargs):
+    kwargs.setdefault("toml_decode", json.decode)
     return _parse_requirements(
         ctx = _mock_ctx(),
         logger = repo_utils.logger(struct(
@@ -1037,13 +1038,12 @@ def _test_get_index_urls_all_versions(env):
 _tests.append(_test_get_index_urls_all_versions)
 
 def _test_uv_lock_consistent(env):
-    """Test that uv_lock consistency check passes when data matches."""
+    """Test that uv_lock with requirements_by_platform uses correct platforms."""
     got = parse_requirements(
         requirements_by_platform = {
             "requirements_lock": ["linux_x86_64", "windows_x86_64"],
         },
         uv_lock = "uv_lock_foo_with_extras",
-        is_rules_python_root = True,
     )
     env.expect.that_collection(got).contains_exactly([
         struct(
@@ -1172,8 +1172,8 @@ def _test_uv_lock_primary_source_with_extras(env):
 
 _tests.append(_test_uv_lock_primary_source_with_extras)
 
-def _test_uv_lock_primary_source_skips_virtual(env):
-    """Test that virtual packages in uv.lock are skipped."""
+def _test_uv_lock_primary_source_includes_virtual(env):
+    """Test that virtual packages in uv.lock are included."""
     got = parse_requirements(
         uv_lock = "uv_lock_foo_virtual",
     )
@@ -1196,18 +1196,24 @@ def _test_uv_lock_primary_source_skips_virtual(env):
                 ),
             ],
         ),
+        struct(
+            name = "virtual_pkg",
+            index_url = "",
+            is_exposed = True,
+            is_multiple_versions = False,
+            srcs = [],
+        ),
     ])
 
-_tests.append(_test_uv_lock_primary_source_skips_virtual)
+_tests.append(_test_uv_lock_primary_source_includes_virtual)
 
 def _test_uv_lock_cross_consistent(env):
-    """Test that the uv.lock and requirements cross-check passes when data matches."""
+    """Test that the uv.lock and requirements work together for cross-platform."""
     got = parse_requirements(
         requirements_by_platform = {
             "requirements_lock": ["linux_x86_64", "windows_x86_64"],
         },
         uv_lock = "uv_lock_foo_with_extras",
-        is_rules_python_root = True,
     )
     env.expect.that_collection(got).contains_exactly([
         struct(
@@ -1261,7 +1267,7 @@ def _test_uv_lock_vcs_entry(env):
 _tests.append(_test_uv_lock_vcs_entry)
 
 def _test_uv_lock_rules_python_pkg_not_skipped(env):
-    """Test that 'rules_python' package is not skipped when is_rules_python_root=False."""
+    """Test that 'rules_python' package is not skipped from uv.lock."""
     got = parse_requirements(
         uv_lock = "uv_lock_rules_python_pkg",
     )
@@ -1288,28 +1294,13 @@ def _test_uv_lock_rules_python_pkg_not_skipped(env):
 
 _tests.append(_test_uv_lock_rules_python_pkg_not_skipped)
 
-def _test_uv_lock_rules_python_pkg_skipped_when_root(env):
-    """Test that 'rules_python' package IS skipped when is_rules_python_root=True."""
-    got = parse_requirements(
-        uv_lock = "uv_lock_rules_python_pkg",
-        is_rules_python_root = True,
-    )
-    env.expect.that_collection(got).has_size(0)
-
-_tests.append(_test_uv_lock_rules_python_pkg_skipped_when_root)
-
-def _test_uv_lock_no_consistency_check_when_not_root(env):
-    """Test that consistency check does NOT run when is_rules_python_root=False.
-
-    In this test the uv.lock data has different extras than the requirements
-    file, but since we are not a root module, no failure should occur.
-    """
+def _test_uv_lock_no_consistency_check(env):
+    """Test that uv.lock is used as the primary source when both uv.lock and requirements exist."""
     got = parse_requirements(
         requirements_by_platform = {
             "requirements_lock": ["linux_x86_64"],
         },
         uv_lock = "uv_lock_foo",
-        is_rules_python_root = False,
     )
 
     # The result comes from uv.lock (no extras since uv_lock_foo doesn't have provides-extras)
@@ -1334,7 +1325,7 @@ def _test_uv_lock_no_consistency_check_when_not_root(env):
         ),
     ])
 
-_tests.append(_test_uv_lock_no_consistency_check_when_not_root)
+_tests.append(_test_uv_lock_no_consistency_check)
 
 def _test_uv_lock_multiple_packages(env):
     """Test that multiple packages from uv.lock are all returned."""
@@ -1412,14 +1403,13 @@ def _test_uv_lock_with_extra_pip_args(env):
 _tests.append(_test_uv_lock_with_extra_pip_args)
 
 def _test_uv_lock_multi_os_with_requirements(env):
-    """Test that uv.lock works with requirements_by_platform when not the root."""
+    """Test that uv.lock works with requirements_by_platform for multi-platform."""
     got = parse_requirements(
         requirements_by_platform = {
             "requirements_foo": ["linux_aarch64"],
             "requirements_lock": ["linux_x86_64", "windows_x86_64"],
         },
         uv_lock = "uv_lock_foo",
-        is_rules_python_root = False,
     )
     env.expect.that_collection(got).contains_exactly([
         struct(

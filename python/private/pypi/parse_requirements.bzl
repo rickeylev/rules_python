@@ -71,7 +71,8 @@ def parse_requirements(
             If provided, the function will use the uv.lock file as the primary
             source for package metadata and perform a consistency check against
             requirements files if both are provided.
-        toml_decode: TODO
+        toml_decode: {type}`callable | None` A function to decode TOML
+            content (e.g. `toml.decode`). Required when `uv_lock` is provided.
         logger: repo_utils.logger, a simple struct to log diagnostic messages.
 
     Returns:
@@ -632,70 +633,3 @@ def _add_dists(*, requirement, index_urls, target_platform, logger = None):
         whl_platform_tags = target_platform.whl_platform_tags,
         logger = logger,
     ) or sdist, sdist != None
-
-def _check_ret_consistency(ret_from_reqs, ret_from_uvlock, _fail = fail, logger = None):
-    """Cross-check that results from requirements files and uv.lock match.
-
-    Args:
-        ret_from_reqs: {type}`list[struct]` Result from parsing requirements files.
-        ret_from_uvlock: {type}`list[struct]` Result from parsing uv.lock.
-        _fail: {type}`callable` A callable used to report failures.
-        logger: {type}`struct` A logger for diagnostic messages.
-    """
-    reqs_by_name = {}
-    for item in ret_from_reqs:
-        reqs_by_name[item.name] = item
-
-    uv_by_name = {}
-    for item in ret_from_uvlock:
-        uv_by_name[item.name] = item
-
-    for name, req_item in sorted(reqs_by_name.items()):
-        uv_item = uv_by_name.get(name)
-        if not uv_item:
-            _fail("Package '{}' from requirements not found in uv.lock result".format(name))
-            return
-
-        req_versions = {}
-        for src in req_item.srcs:
-            v = requirement(src.requirement_line).version
-            if v:
-                req_versions[v] = None
-
-        uv_versions = {}
-        for src in uv_item.srcs:
-            v = requirement(src.requirement_line).version
-            if v:
-                uv_versions[v] = None
-
-        for v in req_versions:
-            if v not in uv_versions:
-                _fail((
-                    "Package '{}' version '{}' from requirements not found in uv.lock result. " +
-                    "Available versions: [{}]"
-                ).format(name, v, ", ".join(sorted(uv_versions))))
-
-        req_extras = {}
-        for src in req_item.srcs:
-            for e in requirement(src.requirement_line).extras:
-                req_extras[e] = None
-
-        uv_extras = {}
-        for src in uv_item.srcs:
-            for e in requirement(src.requirement_line).extras:
-                uv_extras[e] = None
-
-        for e in req_extras:
-            if e not in uv_extras:
-                _fail((
-                    "Package '{}' extra '{}' from requirements not found in uv.lock result. " +
-                    "Available extras: [{}]"
-                ).format(name, e, ", ".join(sorted(uv_extras))))
-
-    for name in uv_by_name:
-        if name not in reqs_by_name:
-            _fail("Package '{}' found in uv.lock result but not in requirements result".format(name))
-            return
-
-    if logger:
-        logger.debug(lambda: "All {} packages from requirements are consistent with uv.lock result".format(len(ret_from_reqs)))

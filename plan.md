@@ -75,6 +75,8 @@ When addressing PR review comments:
    - provides-extras: comment explaining inclusion rationale
    - extra_pip_args: pass through to _parse_uv_lock_json
    - Added uv_lock test coverage: multiple packages, extra_pip_args, multi-os
-2. Python 3.14 toolchain in MODULE.bazel + uv_lock.bzl uses it
+2. Python 3.14 toolchain in MODULE.bazel for toml.bzl usage
 3. Integration test in tests/integration/uv_lock/
 4. Dead code removed (uv_pypi test data), tomli fallback restored
+5. toml2json removed in favor of pure Starlark toml.bzl decoder
+6. uv_lock.bzl and toml2json tool deleted

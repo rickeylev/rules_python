@@ -1,7 +1,0 @@
-[uv]
-exclude-newer = "2026-05-17T00:00:00Z"
-
-[[package]]
-name = "test-project"
-version = "0.0.1"
-source = { virtual = true }
