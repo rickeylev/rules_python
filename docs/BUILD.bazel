@@ -207,7 +207,6 @@ lock(
     name = "uv_lock",
     srcs = ["pyproject.toml"],
     out = "uv.lock",
-    lock_format = "uv_lock",
     python_version = "3.9",
     visibility = ["//:__subpackages__"],
 )

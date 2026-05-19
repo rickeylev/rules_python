@@ -89,24 +89,19 @@ def _lock_impl(ctx):
     python = runtime.interpreter or runtime.interpreter_path
     python_files = runtime.files or depset()
 
+    is_uv_lock = ctx.attr.output.endswith(".lock")
     args = _args(ctx)
     run_info = None
 
-    if ctx.attr.lock_format == "uv_lock":
+    if is_uv_lock:
         src_dir = ctx.files.srcs[0].dirname if ctx.files.srcs else "."
         extra_args = " ".join([shell.quote(a) for a in ctx.attr.args])
         uv_path = uv.path
         python_path = getattr(python, "path", python)
         python_run = getattr(python, "short_path", python)
 
-        # Make python path absolute since uv changes directory via --directory
         python_abs = python_path if python_path.startswith("/") else "$PWD/" + python_path
 
-        # uv lock doesn't support --output-file, it writes uv.lock
-        # in the project directory. We use --directory to point it at
-        # the sources, then copy the result to the declared output.
-        # Note: we don't handle existing_output separately because uv lock
-        # reads the existing uv.lock from the project directory automatically.
         output_path = output.path
         command = " && ".join([
             '"' + uv_path + '" lock --no-cache --python "' + python_abs + '" --directory "' + src_dir + '" --no-progress --quiet ' + extra_args,
@@ -174,7 +169,7 @@ def _lock_impl(ctx):
     return [
         DefaultInfo(files = depset([output])),
         _RunLockInfo(
-            args = args.run_info if ctx.attr.lock_format != "uv_lock" else run_info,
+            args = run_info if is_uv_lock else args.run_info,
             env = ctx.attr.env,
             srcs = depset(
                 srcs + [uv],
@@ -230,11 +225,6 @@ modifications and the locking is not done from scratch.
             doc = "Public, see the docs in the macro.",
             default = True,
         ),
-        "lock_format": attr.string(
-            doc = "Public, see the docs in the macro.",
-            default = "requirements_txt",
-            values = ["requirements_txt", "uv_lock"],
-        ),
         "output": attr.string(
             doc = "Public, see the docs in the macro.",
             mandatory = True,
@@ -284,7 +274,7 @@ def _lock_run_impl(ctx):
 
     info = ctx.attr.lock[_RunLockInfo]
 
-    if ctx.attr.lock_format == "uv_lock":
+    if ctx.attr.output.endswith(".lock"):
         template = ctx.files._uv_lock_template[0]
     else:
         template = ctx.files._template[0]
@@ -324,11 +314,6 @@ _lock_run = rule(
             providers = [_RunLockInfo],
             cfg = "exec",
         ),
-        "lock_format": attr.string(
-            default = "requirements_txt",
-            values = ["requirements_txt", "uv_lock"],
-            doc = "The lock format, determines which template to use.",
-        ),
         "output": attr.string(
             doc = """\
 The output that we would be updated, relative to the package the macro is used in.
@@ -342,10 +327,9 @@ script depending on what the target platform is executed on.
 """,
         ),
         "_uv_lock_template": attr.label(
-            default = "//python/uv/private:lock_uv_lock.sh",
-            allow_single_file = True,
+            default = "//python/uv/private:lock_uv_lock_template",
             doc = """\
-The template to be used for 'uv lock'. Used when lock_format is 'uv_lock'.
+The template to be used for 'uv lock'. Used when output ends with '.lock'.
 """,
         ),
     },
@@ -414,7 +398,6 @@ def lock(
         constraints = [],
         env = None,
         generate_hashes = True,
-        lock_format = "requirements_txt",
         python_version = None,
         strip_extras = False,
         **kwargs):
@@ -455,13 +438,9 @@ def lock(
         build_constraints: {type}`list[Label]` The list of build constraints to use.
         constraints: {type}`list[Label]` The list of constraints files to use.
         generate_hashes: {type}`bool` Generate hashes for all of the
-            requirements. Only meaningful when {attr}`lock_format` is
-            `"requirements_txt"`. This is a must if you want to use
+            requirements. Only meaningful for `requirements.txt` style output.
+            This is a must if you want to use
             {attr}`pip.parse.experimental_index_url`. Defaults to `True`.
-        lock_format: {type}`str` The format of the lock to generate. Can be
-            `"requirements_txt"` for a requirements.txt style lock (using
-            `uv pip compile`) or `"uv_lock"` for a uv.lock style lock (using
-            `uv lock`). Defaults to `"requirements_txt"`.
         strip_extras: {type}`bool` whether to strip extras from the output.
             Currently `rules_python` requires `--no-strip-extras` to properly
             function, but sometimes one may want to not have the extras if you
@@ -492,7 +471,6 @@ def lock(
         env = env,
         existing_output = maybe_out,
         generate_hashes = generate_hashes,
-        lock_format = lock_format,
         python_version = python_version,
         srcs = srcs,
         strip_extras = strip_extras,
@@ -510,7 +488,6 @@ def lock(
     _lock_run(
         name = locker_target,
         lock = name,
-        lock_format = lock_format,
         output = out,
         is_windows = select({
             "@platforms//os:windows": True,
