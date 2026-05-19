@@ -91,34 +91,29 @@ def _lock_impl(ctx):
 
     is_uv_lock = ctx.attr.output.endswith(".lock")
     args = _args(ctx)
-    run_info = None
 
     if is_uv_lock:
-        src_dir = ctx.files.srcs[0].dirname if ctx.files.srcs else "."
-        extra_args = " ".join([shell.quote(a) for a in ctx.attr.args])
-        uv_path = uv.path
-        python_path = getattr(python, "path", python)
-        python_run = getattr(python, "short_path", python)
-
-        python_abs = python_path if python_path.startswith("/") else "$PWD/" + python_path
-
-        output_path = output.path
-        command = " && ".join([
-            '"' + uv_path + '" lock --no-cache --python "' + python_abs + '" --directory "' + src_dir + '" --no-progress --quiet ' + extra_args,
-            'cp "{}/uv.lock" "{}"'.format(src_dir, output_path),
+        args.add_all([
+            uv,
+            "lock",
+            "--no-python-downloads",
+            "--no-cache",
         ])
 
-        ctx.actions.run_shell(
-            command = command,
-            mnemonic = "PyUvLock",
-            inputs = srcs,
-            outputs = [output],
-            tools = [uv, python_files],
-            progress_message = "Creating a uv.lock with uv: %{label}",
-            env = ctx.attr.env,
-        )
+        args.add_all(ctx.attr.args)
+        args.add("--python", python)
+        args.add_all(srcs)
+        args.run_shell.add("--no-progress")
+        args.run_shell.add("--quiet")
+        args.run_shell.add(output)
+        if ctx.files.build_constraints:
+            fail("Can't specify build constraints files: {}".format(ctx.files.build_constraints))
 
-        run_info = [uv.short_path, "lock", "--no-cache", "--python", python_run] + ctx.attr.args
+        if ctx.files.constraints:
+            fail("Can't specify constraints files: {}".format(ctx.files.constraints))
+
+        mnemonic = "PyUvLock"
+        progress_message = "Creating a uv.lock with uv: %{label}"
     else:
         args.add_all([
             uv,
@@ -130,46 +125,54 @@ def _lock_impl(ctx):
         pkg = ctx.label.package
         update_target = ctx.attr.update_target
         args.add("--custom-compile-command", "bazel run //{}:{}".format(pkg, update_target))
+
         if ctx.attr.generate_hashes:
             args.add("--generate-hashes")
         if not ctx.attr.strip_extras:
             args.add("--no-strip-extras")
+
         args.add_all(ctx.files.build_constraints, before_each = "--build-constraints")
         args.add_all(ctx.files.constraints, before_each = "--constraints")
+
         args.add_all(ctx.attr.args)
         args.add("--python", python)
         args.add_all(srcs)
         args.run_shell.add("--output-file", output)
         args.run_shell.add("--no-progress")
         args.run_shell.add("--quiet")
-        if ctx.files.existing_output:
-            command = '{python} -c {python_cmd} && "$@"'.format(
-                python = getattr(python, "path", python),
-                python_cmd = shell.quote(
-                    "from shutil import copy; copy(\"{src}\", \"{dst}\")".format(
-                        src = ctx.files.existing_output[0].path,
-                        dst = output.path,
-                    ),
+        mnemonic = "PyRequirementsLockUv"
+        progress_message = "Creating a requirements.txt with uv: %{label}"
+
+    if ctx.files.existing_output:
+        command = '{python} -c {python_cmd} && "$@"'.format(
+            python = getattr(python, "path", python),
+            python_cmd = shell.quote(
+                "from shutil import copy; copy(\"{src}\", \"{dst}\")".format(
+                    src = ctx.files.existing_output[0].path,
+                    dst = output.path,
                 ),
-            )
-        else:
-            command = '"$@"'
-        srcs = srcs + ctx.files.build_constraints + ctx.files.constraints
-        ctx.actions.run_shell(
-            command = command,
-            inputs = srcs + ctx.files.existing_output,
-            mnemonic = "PyRequirementsLockUv",
-            outputs = [output],
-            arguments = [args.run_shell],
-            tools = [uv, python_files],
-            progress_message = "Creating a requirements.txt with uv: %{label}",
-            env = ctx.attr.env,
+            ),
         )
+    else:
+        command = '"$@"'
+
+    srcs = srcs + ctx.files.build_constraints + ctx.files.constraints
+
+    ctx.actions.run_shell(
+        command = command,
+        mnemonic = mnemonic,
+        inputs = srcs + ctx.files.existing_output,
+        outputs = [output],
+        arguments = [args.run_shell],
+        tools = [uv, python_files],
+        progress_message = progress_message,
+        env = ctx.attr.env,
+    )
 
     return [
         DefaultInfo(files = depset([output])),
         _RunLockInfo(
-            args = run_info if is_uv_lock else args.run_info,
+            args = args.run_info,
             env = ctx.attr.env,
             srcs = depset(
                 srcs + [uv],
