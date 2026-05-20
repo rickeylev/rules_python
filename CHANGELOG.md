@@ -84,6 +84,9 @@ END_UNRELEASED_TEMPLATE
 * (pypi) Fix `importlib.metadata.files` by ensuring `RECORD` is included in
   installed wheel targets, except when built from sdist
   ([#3024](https://github.com/bazel-contrib/rules_python/issues/3024)).
+* (system_python) Fix AttributeError exception on Debian 10 Buster
+  python installations which may not set `sys._base_executable`
+  ([#3774](https://github.com/bazel-contrib/rules_python/issues/3774)).
 * (windows) Fix `py_test`/`py_binary` failure when the target name contains
   path separators; the bootstrap stub is now declared as a sibling of the
   `.exe` launcher
@@ -91,7 +94,6 @@ END_UNRELEASED_TEMPLATE
 * Fix the forwarding of `target_compatible_with` from `compile_pip_requirements`
   towards the underlying `*.update` target.
   ([#3787](https://github.com/bazel-contrib/rules_python/pull/3787))
-
 
 {#v0-0-0-added}
 ### Added
