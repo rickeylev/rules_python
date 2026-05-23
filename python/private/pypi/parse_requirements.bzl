@@ -31,6 +31,7 @@ load("//python/private:repo_utils.bzl", "repo_utils")
 load(":argparse.bzl", "argparse")
 load(":index_sources.bzl", "index_sources")
 load(":parse_requirements_txt.bzl", "parse_requirements_txt")
+load(":pep508_evaluate.bzl", "evaluate")
 load(":pep508_requirement.bzl", "requirement")
 load(":select_whl.bzl", "select_whl")
 
@@ -41,7 +42,6 @@ def parse_requirements(
         extra_pip_args = [],
         platforms = {},
         get_index_urls = None,
-        evaluate_markers = None,
         extract_url_srcs = True,
         logger):
     """Get the requirements with platforms that the requirements apply to.
@@ -57,11 +57,6 @@ def parse_requirements(
         get_index_urls: Callable[[ctx, dict[str, list[str]]], dict], a callable to get all
             of the distribution URLs from a PyPI index. Accepts ctx and
             distribution names to query.
-        evaluate_markers: A function to use to evaluate the requirements.
-            Accepts a dict where keys are requirement lines to evaluate against
-            the platforms stored as values in the input dict. Returns the same
-            dict, but with values being platforms that are compatible with the
-            requirements line.
         extract_url_srcs: A boolean to enable extracting URLs from requirement
             lines to enable using bazel downloader.
         logger: repo_utils.logger, a simple struct to log diagnostic messages.
@@ -86,11 +81,9 @@ def parse_requirements(
 
         The second element is extra_pip_args should be passed to `whl_library`.
     """
-    evaluate_markers = evaluate_markers or (lambda _requirements: {})
     options = {}
     requirements = {}
     all_files_parsed = {}
-    reqs_with_env_markers = {}
     index_url = None
     extra_index_urls = []
     for file, plats in requirements_by_platform.items():
@@ -114,39 +107,31 @@ def parse_requirements(
                 tokenized_options.append(p)
 
         pip_args = tokenized_options + extra_pip_args
+
+        # Parse the index URL from the requirement files once per file
+        index_url = argparse.index_url(pip_args, index_url)
+        extra_index_urls = argparse.extra_index_url(pip_args, [])
+        if argparse.platform(pip_args, []):
+            # No use of downloader if the user specifies "--platform" pip arg. This means that
+            # they intend to use pip to download the wheels
+            #
+            # TODO @aignas 2026-04-11: consider removing this line in the next major release
+            # (3.0).
+            get_index_urls = None
+
+        # Pre-parse requirements once per file to avoid redundant parsing in loops
+        parsed_reqs = [(entry, requirement(entry[1])) for entry in parse_result.requirements]
+
         for plat in plats:
-            requirements[plat] = parse_result.requirements
-            for entry in parse_result.requirements:
-                requirement_line = entry[1]
+            plat_env = platforms.get(plat)
 
-                # output all of the requirement lines that have a marker
-                if ";" in requirement_line:
-                    reqs_with_env_markers.setdefault(requirement_line, []).append(plat)
+            requirements[plat] = [
+                entry
+                for entry, req in parsed_reqs
+                if not req.marker or (plat_env and evaluate(req.marker, env = plat_env.env))
+            ]
+
             options[plat] = pip_args
-
-            # Parse the index URL from the requirement files
-            index_url = argparse.index_url(pip_args, index_url)
-            extra_index_urls = argparse.extra_index_url(pip_args, [])
-            platform = argparse.platform(pip_args, [])
-            if platform:
-                # No use of downloader if the user specifies "--platform" pip arg. This means that
-                # they intend to use pip to download the wheels
-                #
-                # TODO @aignas 2026-04-11: consider removing this line in the next major release
-                # (3.0).
-                get_index_urls = None
-
-    # This may call to Python, so execute it early (before calling to the
-    # internet below) and ensure that we call it only once.
-    #
-    # TODO @aignas 2026-05-10: remove this assumption in the code because we
-    # are always using pipstar, so we can do the marker evaluation when we are
-    # parsing the files.
-    resolved_marker_platforms = evaluate_markers(reqs_with_env_markers)
-    logger.trace(lambda: "Evaluated env markers from:\n{}\n\nTo:\n{}".format(
-        reqs_with_env_markers,
-        resolved_marker_platforms,
-    ))
 
     requirements_by_platform = {}
     for plat, parse_results in requirements.items():
@@ -169,9 +154,6 @@ def parse_requirements(
         ):
             req_line = entry[1]
             req = requirement(req_line)
-
-            if req.marker and plat not in resolved_marker_platforms.get(req_line, []):
-                continue
 
             requirements_dict[req.name] = entry
 
