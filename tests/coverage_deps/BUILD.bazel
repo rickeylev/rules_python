@@ -1,4 +1,4 @@
-# Copyright 2023 The Bazel Authors. All rights reserved.
+# Copyright 2026 The Bazel Authors. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -12,14 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import sys
+load(":coverage_deps_test.bzl", "coverage_deps_test_suite")
 
-import libs.my_lib as my_lib
-
-# This variable is used to match the repository folder structure
-# If we update the folder structure or naming we need to modify this test.
-sanitized_version_check = f"{sys.version_info.major}{sys.version_info.minor}"
-
-if not my_lib.websockets_is_for_python_version(sanitized_version_check):
-    print("expected package for Python version is different than returned")
-    sys.exit(1)
+coverage_deps_test_suite(name = "coverage_deps_tests")
