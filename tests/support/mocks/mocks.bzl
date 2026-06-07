@@ -74,16 +74,17 @@ def _file_new(short_path, *, path = None, is_source = True, owner = None):
         short_path = actual_short_path,
     )
 
-def _tag_new(**kwargs):
+def _tag_new(_dev_dependency = False, **kwargs):
     """Create a mock tag.
 
     Args:
+        _dev_dependency: {type}`bool` Whether the tag is a dev dependency.
         **kwargs: {type}`dict` The tag attributes.
 
     Returns:
         {type}`MockTag` A mock tag object.
     """
-    return struct(**kwargs)
+    return struct(_dev_dependency = _dev_dependency, **kwargs)
 
 def _module_new(name, *, is_root = False, **tags):
     """Create a mock module object.
@@ -203,6 +204,10 @@ def _mctx_add_module(self, **kwargs):
     self.modules.append(module)
     return self
 
+def _mctx_is_dev_dependency(self, tag):
+    _ = self  # @unused
+    return tag._dev_dependency
+
 def _mctx_new(
         *args,
         modules = None,
@@ -258,6 +263,7 @@ def _mctx_new(
         download = lambda *a, **k: _mctx_download(self, *a, **k),
         report_progress = lambda *a, **k: _mctx_report_progress(self, *a, **k),
         add_module = lambda **k: _mctx_add_module(self, **k),
+        is_dev_dependency = lambda *a, **k: _mctx_is_dev_dependency(self, *a, **k),
     )
     return self
 

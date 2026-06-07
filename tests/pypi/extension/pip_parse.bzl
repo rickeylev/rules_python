@@ -1,5 +1,7 @@
 """A simple test helper"""
 
+load("//tests/support/mocks:mocks.bzl", "mocks")
+
 def pip_parse(
         *,
         hub_name,
@@ -33,7 +35,7 @@ def pip_parse(
         whl_modifications = {},
         **kwargs):
     """A simple helper for testing to simulate the PyPI extension parse tag class"""
-    return struct(
+    return mocks.tag(
         auth_patterns = auth_patterns,
         add_libdir_to_library_search_path = add_libdir_to_library_search_path,
         download_only = download_only,

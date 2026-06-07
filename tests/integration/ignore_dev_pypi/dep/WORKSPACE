@@ -1,0 +1,2 @@
+# This file is required by the rules_bazel_integration_test framework
+# (_select_workspace_file_impl) even when testing pure bzlmod modules.

@@ -1,0 +1,7 @@
+load("@rules_python//python:defs.bzl", "py_test")
+
+py_test(
+    name = "verify_pypi_dep_version_test",
+    srcs = ["verify_pypi_dep_version_test.py"],
+    deps = ["@pypi//click"],
+)

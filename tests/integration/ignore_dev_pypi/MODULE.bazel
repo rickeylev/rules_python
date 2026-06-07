@@ -1,0 +1,25 @@
+module(name = "ignore_dev_pypi_root")
+
+bazel_dep(name = "rules_python")
+local_path_override(
+    module_name = "rules_python",
+    path = "../../..",
+)
+
+bazel_dep(name = "ignore_dev_pypi_dep")
+local_path_override(
+    module_name = "ignore_dev_pypi_dep",
+    path = "dep",
+)
+
+python = use_extension("@rules_python//python/extensions:python.bzl", "python")
+python.toolchain(python_version = "3.11")
+use_repo(python, "python_3_11")
+
+pip = use_extension("@rules_python//python/extensions:pip.bzl", "pip", dev_dependency = True)
+pip.parse(
+    hub_name = "pypi",
+    python_version = "3.11",
+    requirements_lock = "//:requirements_lock.txt",
+)
+use_repo(pip, "pypi")

@@ -65,6 +65,10 @@ rules_python_integration_test(
 )
 
 rules_python_integration_test(
+    name = "ignore_dev_pypi_test",
+)
+
+rules_python_integration_test(
     name = "local_toolchains_test",
     env = {
         "RULES_PYTHON_BZLMOD_DEBUG": "1",

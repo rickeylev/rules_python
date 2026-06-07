@@ -1,0 +1,4 @@
+# Bazel configuration flags
+
+build --enable_runfiles
+

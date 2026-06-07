@@ -345,6 +345,8 @@ You cannot use both the additive_build_content and additive_build_content_file a
 
     for mod in module_ctx.modules:
         for pip_attr in mod.tags.parse:
+            if module_ctx.is_dev_dependency(pip_attr) and not mod.is_root:
+                continue
             hub_name = pip_attr.hub_name
             if hub_name not in pip_hub_map:
                 builder = hub_builder(
