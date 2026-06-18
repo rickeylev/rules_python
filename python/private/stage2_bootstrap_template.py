@@ -357,6 +357,7 @@ def _maybe_collect_coverage(enable):
     print_verbose_coverage("Sources:\n" + "\n".join(unique_dirs))
 
     import coverage
+    from coverage.exceptions import NoDataError
 
     coverage_dir = os.environ["COVERAGE_DIR"]
     unique_id = uuid.uuid4()
@@ -416,7 +417,7 @@ source =
                     # they were transient code-under-test in /tmp
                     ignore_errors=True,
                 )
-            except coverage.exceptions.NoDataError:
+            except NoDataError:
                 # coverage.py raises NoDataError instead of writing a report when
                 # no instrumented Python code was executed. This is common and
                 # benign, e.g. a binary that only spawns another process, or a
