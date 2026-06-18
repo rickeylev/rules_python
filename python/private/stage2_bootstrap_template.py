@@ -408,15 +408,28 @@ source =
             cov.stop()
             lcov_path = os.path.join(coverage_dir, "pylcov_{}.dat".format(unique_id))
             print_verbose_coverage("generating lcov from:", lcov_path)
-            cov.lcov_report(
-                outfile=lcov_path,
-                # Ignore errors because sometimes instrumented files aren't
-                # readable afterwards. e.g. if they come from /dev/fd or if
-                # they were transient code-under-test in /tmp
-                ignore_errors=True,
-            )
-            if os.path.isfile(lcov_path):
-                unresolve_symlinks(lcov_path)
+            try:
+                cov.lcov_report(
+                    outfile=lcov_path,
+                    # Ignore errors because sometimes instrumented files aren't
+                    # readable afterwards. e.g. if they come from /dev/fd or if
+                    # they were transient code-under-test in /tmp
+                    ignore_errors=True,
+                )
+            except coverage.exceptions.NoDataError:
+                # coverage.py raises NoDataError instead of writing a report when
+                # no instrumented Python code was executed. This is common and
+                # benign, e.g. a binary that only spawns another process, or a
+                # test whose instrumented sources happen not to run any Python.
+                # Letting the error propagate would fail an otherwise passing
+                # test, so skip writing the (empty) report instead.
+                # See https://github.com/bazel-contrib/rules_python/issues/2762.
+                print_verbose_coverage(
+                    "no coverage data collected; skipping lcov report:", lcov_path
+                )
+            else:
+                if os.path.isfile(lcov_path):
+                    unresolve_symlinks(lcov_path)
     finally:
         try:
             os.unlink(rcfile_name)
