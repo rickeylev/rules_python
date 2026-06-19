@@ -28,24 +28,16 @@ BEGIN_UNRELEASED_TEMPLATE
 
 [0.0.0]: https://github.com/bazel-contrib/rules_python/releases/tag/0.0.0
 
-{#v0-0-0-removed}
-### Removed
-* Nothing removed.
-
-{#v0-0-0-changed}
-### Changed
-* Nothing changed.
-
-{#v0-0-0-fixed}
-### Fixed
-* Nothing fixed.
-
-{#v0-0-0-added}
-### Added
-* Nothing added.
+Unreleased changes are tracked as individual files in the [news/](./news) directory.
 
 END_UNRELEASED_TEMPLATE
 -->
+{#v0-0-0}
+## Unreleased
+
+[0.0.0]: https://github.com/bazel-contrib/rules_python/releases/tag/0.0.0
+
+Unreleased changes are tracked as individual files in the [news/](./news) directory.
 
 {#v2-1-0}
 ## [2.1.0] - 2026-06-17
@@ -137,6 +129,7 @@ END_UNRELEASED_TEMPLATE
 * (pypi) `package_metadata` support, fixes 
   [#2054](https://github.com/bazel-contrib/rules_python/issues/2054).
 * (coverage) Add support for python 3.14 and bump `coverage.py` to 7.10.7.
+
 
 {#v2-0-3}
 ## [2.0.3] - 2026-06-15
