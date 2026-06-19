@@ -418,12 +418,9 @@ source =
                     ignore_errors=True,
                 )
             except NoDataError:
-                # coverage.py raises NoDataError instead of writing a report when
-                # no instrumented Python code was executed. This is common and
-                # benign, e.g. a binary that only spawns another process, or a
-                # test whose instrumented sources happen not to run any Python.
-                # Letting the error propagate would fail an otherwise passing
-                # test, so skip writing the (empty) report instead.
+                # coverage.py raises NoDataError if no instrumented Python code ran
+                # (e.g. tests not running Python, or subprocess-only binaries).
+                # Skip the report to avoid failing otherwise passing tests.
                 # See https://github.com/bazel-contrib/rules_python/issues/2762.
                 print_verbose_coverage(
                     "no coverage data collected; skipping lcov report:", lcov_path
