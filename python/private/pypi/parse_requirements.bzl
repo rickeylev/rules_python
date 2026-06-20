@@ -129,6 +129,7 @@ def _parse_requirements_with_uv_lock(
         return _parse_uv_lock_json(
             uv_lock = uv_lock,
             all_platforms = _get_all_platforms(requirements_by_platform) if requirements_by_platform else sorted(platforms.keys()),
+            platforms = platforms,
             extra_pip_args = extra_pip_args,
             logger = logger,
         )
@@ -143,7 +144,7 @@ def _parse_requirements_with_uv_lock(
         logger = logger,
     )
 
-def _parse_uv_lock_json(uv_lock, all_platforms, logger, extra_pip_args = None):
+def _parse_uv_lock_json(uv_lock, all_platforms, logger, extra_pip_args = None, platforms = {}):
     """Parse uv.lock JSON and build the same return structs as parse_requirements.
 
     Args:
@@ -151,6 +152,8 @@ def _parse_uv_lock_json(uv_lock, all_platforms, logger, extra_pip_args = None):
         all_platforms: {type}`list[str]` The list of all platform names.
         logger: {type}`struct` A logger for diagnostic messages.
         extra_pip_args: {type}`list[str] | None` Extra pip arguments to pass through.
+        platforms: {type}`dict[str, struct]` A dict of platform name to platform info
+            (containing `.env` with PEP 508 marker environment).
 
     Returns:
         {type}`list[struct]` The same format as {func}`parse_requirements`.
@@ -174,6 +177,17 @@ def _parse_uv_lock_json(uv_lock, all_platforms, logger, extra_pip_args = None):
             if extra not in entry["extras"]:
                 entry["extras"][extra] = None
 
+        markers = pkg.get("resolution-markers", [])
+        if markers:
+            marker_expr = " or ".join(markers)
+            pkg_platforms = [
+                p
+                for p in all_platforms
+                if p in platforms and evaluate(marker_expr, env = platforms[p].env)
+            ]
+        else:
+            pkg_platforms = list(all_platforms)
+
         seen = {}
         for wheel in pkg.get("wheels", []):
             sha256 = wheel.get("hash", "").replace("sha256:", "")
@@ -187,9 +201,8 @@ def _parse_uv_lock_json(uv_lock, all_platforms, logger, extra_pip_args = None):
                     sha256 = sha256,
                     url = url,
                     filename = filename,
-                    # NOTE @aignas 2026-05-17: we don't know if it is yanked because we are not
-                    # checking the SimpleAPI, maybe we should?
                     yanked = None,
+                    target_platforms = pkg_platforms,
                 ))
 
         sdist = pkg.get("sdist", None)
@@ -203,9 +216,10 @@ def _parse_uv_lock_json(uv_lock, all_platforms, logger, extra_pip_args = None):
                 url = url,
                 filename = filename,
                 yanked = None,
+                target_platforms = pkg_platforms,
             ))
         elif pkg.get("source", {}).get("git"):
-            _add_vcs_entry(entry, version, pkg["source"])
+            _add_vcs_entry(entry, version, pkg["source"], pkg_platforms)
 
     ret = []
     for norm_name, info in sorted(uv_packages.items()):
@@ -224,7 +238,7 @@ def _parse_uv_lock_json(uv_lock, all_platforms, logger, extra_pip_args = None):
                 distribution = info["distribution"],
                 extra_pip_args = extra_pip_args or [],
                 requirement_line = requirement_line,
-                target_platforms = list(all_platforms),
+                target_platforms = list(src_entry.target_platforms),
                 filename = src_entry.filename,
                 sha256 = src_entry.sha256,
                 url = src_entry.url,
@@ -246,13 +260,14 @@ def _parse_uv_lock_json(uv_lock, all_platforms, logger, extra_pip_args = None):
     logger.debug(lambda: "Parsed {} packages from uv.lock".format(len(ret)))
     return ret
 
-def _add_vcs_entry(entry, version, source):
+def _add_vcs_entry(entry, version, source, target_platforms):
     """Add a VCS entry from a uv.lock source.
 
     Args:
         entry: {type}`dict` The package entry being built.
         version: {type}`str` The package version.
         source: {type}`dict` The source dict from uv.lock (e.g. {"git": url}).
+        target_platforms: {type}`list[str]` The platforms this entry applies to.
     """
     url = source["git"]
     _, _, filename = url.rpartition("/")
@@ -262,6 +277,7 @@ def _add_vcs_entry(entry, version, source):
         url = url,
         filename = filename,
         yanked = None,
+        target_platforms = target_platforms,
     ))
 
 def _parse_requirements_from_req_files(
