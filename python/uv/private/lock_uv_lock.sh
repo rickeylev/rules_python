@@ -7,8 +7,11 @@ else
     exit 1
 fi
 
-# uv lock doesn't support --output-file, so we let it write uv.lock
-# in the project directory, then copy it to the expected output path.
-project_dir="$(dirname "$out")"
-"{{args}}" --directory "$project_dir" "$@"
-cp "$project_dir/uv.lock" "$out"
+if [[ -f "$out" ]]; then
+    # Ensure that the lock file is present in the output dir as a symlink - if it gets
+    # changed, then the src also get changed. Remove anything that was added there by
+    # bazel.
+    rm "{{src_out}}"
+    ln -s "$out" "{{src_out}}"
+fi
+exec "{{args}}" "$@"
