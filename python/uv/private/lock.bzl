@@ -245,7 +245,6 @@ def _pip_compile_impl(ctx):
         args.add_all(ctx.files.build_constraints, before_each = "--build-constraints")
         args.add_all(ctx.files.constraints, before_each = "--constraints")
 
-        args.add_all(ctx.attr.args)
         args.run_shell.add("--output-file", output)
         mnemonic = "PyRequirementsLockUv"
         progress_message = "Creating a requirements.txt with uv: %{label}"
