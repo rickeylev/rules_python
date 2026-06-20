@@ -85,23 +85,14 @@ def _common_lock(ctx, locker):
     toolchain_info = ctx.toolchains[UV_TOOLCHAIN_TYPE]
     uv = toolchain_info.uv_toolchain_info.uv[DefaultInfo].files_to_run.executable
 
-    exec_tools = ctx.toolchains[EXEC_TOOLS_TOOLCHAIN_TYPE].exec_tools
-    runtime = exec_tools.exec_interpreter[platform_common.ToolchainInfo].py3_runtime
-    python = runtime.interpreter or runtime.interpreter_path
-    python_files = runtime.files or depset()
-
     args = _args(ctx)
     args.add(uv)
     mnemonic, progress_message = locker(args)
 
-    args.add_all(srcs)
     args.add_all([
         "--no-python-downloads",
         "--no-cache",
     ])
-    args.add("--python", python)
-    args.run_shell.add("--no-progress")
-    args.run_shell.add("--quiet")
 
     project = None
     if ctx.attr.project:
@@ -124,6 +115,18 @@ def _common_lock(ctx, locker):
         args.add_all([project], before_each = "--project")
 
     args.add_all(ctx.attr.args)
+
+    exec_tools = ctx.toolchains[EXEC_TOOLS_TOOLCHAIN_TYPE].exec_tools
+    runtime = exec_tools.exec_interpreter[platform_common.ToolchainInfo].py3_runtime
+    python = runtime.interpreter or runtime.interpreter_path
+    python_files = runtime.files or depset()
+    args.add("--python", python)
+    args.add_all(srcs)
+
+    # These arguments does not change behaviour, but it reduces the output from
+    # the command, which is especially verbose in stderr.
+    args.run_shell.add("--no-progress")
+    args.run_shell.add("--quiet")
 
     # Generate a wrapper script that copies the existing output (if any) and
     # then runs uv. On POSIX, args are forwarded via exec "$@". On Windows,
@@ -205,7 +208,11 @@ def _common_lock(ctx, locker):
         # script (with backslash paths). On POSIX, args are forwarded via
         # exec "$@" in the .sh script.
         arguments = [args.run_shell] if not ctx.attr.is_windows else [],
-        tools = [uv, python_files, script],
+        tools = [
+            uv,
+            python_files,
+            script,
+        ],
 
         # User reported being unable to add `--action_env` and get it to work.
         # Without this flag.
@@ -601,8 +608,7 @@ def lock(
         constraints: {type}`list[Label]` The list of constraints files to use.
         generate_hashes: {type}`bool` Generate hashes for all of the
             requirements. Only meaningful for `requirements.txt` style output.
-            This is a must if you want to use
-            {attr}`pip.parse.experimental_index_url`. Defaults to `True`.
+            Defaults to `True`.
         strip_extras: {type}`bool` whether to strip extras from the output.
             Currently `rules_python` requires `--no-strip-extras` to properly
             function, but sometimes one may want to not have the extras if you
@@ -679,13 +685,8 @@ def lock(
     _run_locker(
         name = locker_target,
         lock = name,
-        output = out,
-        is_windows = select({
-            "@platforms//os:windows": True,
-            "//conditions:default": False,
-        }),
         tags = tags,
-        **kwargs
+        **uv_kwargs
     )
 
     # FIXME @aignas 2025-03-20: is it possible to extend `py_binary` so that the
