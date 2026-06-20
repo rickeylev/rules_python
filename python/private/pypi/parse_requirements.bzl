@@ -159,9 +159,6 @@ def _parse_uv_lock_json(uv_lock, all_platforms, logger, extra_pip_args = None):
 
     uv_packages = {}
     for pkg in uv_lock["package"]:
-        if "metadata" in pkg:
-            fail(pkg)
-
         name = pkg["name"]
         version = pkg["version"]
         norm_name = normalize_name(name)
