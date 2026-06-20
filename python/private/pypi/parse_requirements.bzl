@@ -202,7 +202,12 @@ def _parse_uv_lock_json(uv_lock, all_platforms, logger, extra_pip_args = None, p
                     url = url,
                     filename = filename,
                     yanked = None,
-                    target_platforms = pkg_platforms,
+                    target_platforms = _wheel_target_platforms(
+                        filename,
+                        pkg_platforms,
+                        platforms,
+                        logger,
+                    ),
                 ))
 
         sdist = pkg.get("sdist", None)
@@ -279,6 +284,39 @@ def _add_vcs_entry(entry, version, source, target_platforms):
         yanked = None,
         target_platforms = target_platforms,
     ))
+
+def _wheel_target_platforms(filename, all_platforms, platforms, logger):
+    """Filter platforms to those compatible with the given wheel filename.
+
+    Args:
+        filename: {type}`str` The wheel filename.
+        all_platforms: {type}`list[str]` Platforms to filter from.
+        platforms: {type}`dict[str, struct]` Platform info keyed by name.
+        logger: {type}`struct` Logger instance.
+
+    Returns:
+        {type}`list[str]` Platforms compatible with the wheel.
+    """
+    if not platforms:
+        return all_platforms
+    result = []
+    for p in all_platforms:
+        platform = platforms.get(p)
+        if not platform:
+            result.append(p)
+            continue
+        matched = select_whl(
+            whls = [struct(filename = filename)],
+            python_version = platform.env["python_full_version"],
+            whl_platform_tags = platform.whl_platform_tags,
+            whl_abi_tags = platform.whl_abi_tags,
+            implementation_name = platform.env.get("implementation_name", "cpython"),
+            limit = 1,
+            logger = logger,
+        )
+        if matched != None:
+            result.append(p)
+    return result
 
 def _parse_requirements_from_req_files(
         ctx,
