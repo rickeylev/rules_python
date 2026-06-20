@@ -100,8 +100,12 @@ bar==0.0.1 --hash=sha256:deadb00f
         "uv_lock_empty": """{"package":[]}""",
         "uv_lock_foo": """{"package":[{"dependencies":[{"extra":"extra","name":"bar"}],"name":"foo","source":{"registry":"https://pypi.org/simple"},"version":"0.0.1","wheels":[{"hash":"sha256:deadbeef","url":"https://files.pythonhosted.org/packages/foo-0.0.1-py3-none-any.whl"}]}]}""",
         "uv_lock_foo_bar": """{"package":[{"name":"bar","version":"0.0.1","source":{"registry":"https://pypi.org/simple"},"sdist":{"hash":"sha256:deadb00f","url":"https://files.pythonhosted.org/packages/bar-0.0.1.tar.gz"}},{"name":"foo","version":"0.0.1","source":{"registry":"https://pypi.org/simple"},"wheels":[{"hash":"sha256:deadbeef","url":"https://files.pythonhosted.org/packages/foo-0.0.1-py3-none-any.whl"}]}]}""",
+        "uv_lock_foo_dep_extra": """{"package":[{"name":"bar","version":"0.0.2","source":{"registry":"https://pypi.org/simple"},"wheels":[{"hash":"sha256:deadbeef","url":"https://files.pythonhosted.org/packages/bar-0.0.2-py3-none-any.whl"}]},{"name":"foo","version":"0.0.1","source":{"registry":"https://pypi.org/simple"},"dependencies":[{"name":"bar","extra":["extra1"]}],"wheels":[{"hash":"sha256:baadbeef","url":"https://files.pythonhosted.org/packages/foo-0.0.1-py3-none-any.whl"}]}]}""",
         "uv_lock_foo_multi_versions": """{"package":[{"name":"foo","source":{"registry":"https://pypi.org/simple"},"version":"0.0.1","wheels":[{"hash":"sha256:deadbeef","url":"https://files.pythonhosted.org/packages/foo-0.0.1-py3-none-any.whl"}]},{"name":"foo","source":{"registry":"https://pypi.org/simple"},"version":"0.0.2","wheels":[{"hash":"sha256:deadb11f","url":"https://files.pythonhosted.org/packages/foo-0.0.2-py3-none-any.whl"}]}]}""",
+        "uv_lock_foo_multi_wheel_dedup": """{"package":[{"name":"foo","version":"0.0.1","source":{"registry":"https://pypi.org/simple"},"wheels":[{"hash":"sha256:aaa","url":"https://files.pythonhosted.org/packages/foo-0.0.1-cp39-cp39-manylinux_2_17_x86_64.whl"},{"hash":"sha256:bbb","url":"https://files.pythonhosted.org/packages/foo-0.0.1-py3-none-any.whl"}]}]}""",
         "uv_lock_foo_only": """{"package":[{"name":"foo","source":{"registry":"https://pypi.org/simple"},"version":"0.0.2"}]}""",
+        "uv_lock_foo_optional_deps": """{"package":[{"name":"foo","version":"0.0.1","source":{"registry":"https://pypi.org/simple"},"optional-dependencies":{"extra1":[],"extra2":[]},"wheels":[{"hash":"sha256:deadbeef","url":"https://files.pythonhosted.org/packages/foo-0.0.1-py3-none-any.whl"}]}]}""",
+        "uv_lock_foo_resolution_markers_dedup": """{"package":[{"name":"foo","source":{"registry":"https://pypi.org/simple"},"version":"0.0.1","resolution-markers":["sys_platform == 'linux'"],"wheels":[{"hash":"sha256:aaa","url":"https://files.pythonhosted.org/packages/foo-0.0.1-cp39-cp39-manylinux_2_17_x86_64.whl"},{"hash":"sha256:bbb","url":"https://files.pythonhosted.org/packages/foo-0.0.1-py3-none-any.whl"}]},{"name":"foo","source":{"registry":"https://pypi.org/simple"},"version":"0.0.2","resolution-markers":["sys_platform == 'darwin'"],"wheels":[{"hash":"sha256:ccc","url":"https://files.pythonhosted.org/packages/foo-0.0.2-cp39-cp39-macosx_11_0_arm64.whl"},{"hash":"sha256:ddd","url":"https://files.pythonhosted.org/packages/foo-0.0.2-py3-none-any.whl"}]}]}""",
         "uv_lock_foo_sdist": """{"package":[{"name":"foo","sdist":{"hash":"sha256:feedcafe","url":"https://files.pythonhosted.org/packages/foo-0.0.1.tar.gz"},"source":{"registry":"https://pypi.org/simple"},"version":"0.0.1","wheels":[{"hash":"sha256:deadbeef","url":"https://files.pythonhosted.org/packages/foo-0.0.1-py3-none-any.whl"}]}]}""",
         "uv_lock_foo_virtual": """{"package":[{"name":"foo","source":{"registry":"https://pypi.org/simple"},"version":"0.0.1","wheels":[{"hash":"sha256:deadbeef","url":"https://files.pythonhosted.org/packages/foo-0.0.1-py3-none-any.whl"}]},{"name":"virtual-pkg","source":{"virtual":true},"version":"0.0.0"}]}""",
         "uv_lock_foo_with_extras": """{"package":[{"name":"foo","provides-extras":["extra"],"source":{"registry":"https://pypi.org/simple"},"version":"0.0.1","wheels":[{"hash":"sha256:deadbeef","url":"https://files.pythonhosted.org/packages/foo-0.0.1-py3-none-any.whl"}]}]}""",
@@ -1399,6 +1403,171 @@ def _test_uv_lock_multi_os_with_requirements(env):
     ])
 
 _tests.append(_test_uv_lock_multi_os_with_requirements)
+
+def _test_uv_lock_extras_optional_deps(env):
+    """Test that extras from optional-dependencies in uv.lock are included."""
+    got = parse_requirements(
+        uv_lock = "uv_lock_foo_optional_deps",
+    )
+    env.expect.that_collection(got).contains_exactly([
+        struct(
+            name = "foo",
+            index_url = "",
+            is_exposed = True,
+            is_multiple_versions = False,
+            srcs = [
+                struct(
+                    distribution = "foo",
+                    extra_pip_args = [],
+                    requirement_line = "foo[extra1,extra2]==0.0.1",
+                    target_platforms = [],
+                    filename = "foo-0.0.1-py3-none-any.whl",
+                    sha256 = "deadbeef",
+                    url = "https://files.pythonhosted.org/packages/foo-0.0.1-py3-none-any.whl",
+                    yanked = None,
+                ),
+            ],
+        ),
+    ])
+
+_tests.append(_test_uv_lock_extras_optional_deps)
+
+def _test_uv_lock_extras_dep_edge(env):
+    """Test that dep extra edges in uv.lock add extras to the dependency."""
+    got = parse_requirements(
+        uv_lock = "uv_lock_foo_dep_extra",
+    )
+    env.expect.that_collection(got).contains_exactly([
+        struct(
+            name = "bar",
+            index_url = "",
+            is_exposed = True,
+            is_multiple_versions = False,
+            srcs = [
+                struct(
+                    distribution = "bar",
+                    extra_pip_args = [],
+                    requirement_line = "bar[extra1]==0.0.2",
+                    target_platforms = [],
+                    filename = "bar-0.0.2-py3-none-any.whl",
+                    sha256 = "deadbeef",
+                    url = "https://files.pythonhosted.org/packages/bar-0.0.2-py3-none-any.whl",
+                    yanked = None,
+                ),
+            ],
+        ),
+        struct(
+            name = "foo",
+            index_url = "",
+            is_exposed = True,
+            is_multiple_versions = False,
+            srcs = [
+                struct(
+                    distribution = "foo",
+                    extra_pip_args = [],
+                    requirement_line = "foo==0.0.1",
+                    target_platforms = [],
+                    filename = "foo-0.0.1-py3-none-any.whl",
+                    sha256 = "baadbeef",
+                    url = "https://files.pythonhosted.org/packages/foo-0.0.1-py3-none-any.whl",
+                    yanked = None,
+                ),
+            ],
+        ),
+    ])
+
+_tests.append(_test_uv_lock_extras_dep_edge)
+
+def _test_uv_lock_wheel_dedup_single_version(env):
+    """Test that overlapping wheels for a single version are deduplicated to one per platform."""
+    got = parse_requirements(
+        uv_lock = "uv_lock_foo_multi_wheel_dedup",
+        platforms = {
+            "cp39_linux_x86_64": struct(
+                env = pep508_env(python_version = "3.9.0", os = "linux", arch = "x86_64"),
+                whl_abi_tags = ["none", "abi3", "cp39"],
+                whl_platform_tags = ["any", "linux_x86_64", "manylinux_*_x86_64"],
+            ),
+        },
+    )
+    env.expect.that_collection(got).contains_exactly([
+        struct(
+            name = "foo",
+            index_url = "",
+            is_exposed = True,
+            is_multiple_versions = False,
+            srcs = [
+                struct(
+                    distribution = "foo",
+                    extra_pip_args = [],
+                    requirement_line = "foo==0.0.1",
+                    target_platforms = ["cp39_linux_x86_64"],
+                    filename = "foo-0.0.1-cp39-cp39-manylinux_2_17_x86_64.whl",
+                    sha256 = "aaa",
+                    url = "https://files.pythonhosted.org/packages/foo-0.0.1-cp39-cp39-manylinux_2_17_x86_64.whl",
+                    yanked = None,
+                ),
+            ],
+        ),
+    ])
+
+_tests.append(_test_uv_lock_wheel_dedup_single_version)
+
+def _test_uv_lock_wheel_dedup_resolution_markers(env):
+    """Test that resolution-markers filtering and wheel dedup work together.
+
+    Two versions of foo with resolution-markers for different platforms.
+    Each version has a platform-specific wheel and a generic py3-none-any wheel.
+    The dedup should pick the platform-specific wheel for each platform and
+    the resolution-markers should split versions across platforms.
+    """
+    got = parse_requirements(
+        uv_lock = "uv_lock_foo_resolution_markers_dedup",
+        platforms = {
+            "cp39_linux_x86_64": struct(
+                env = pep508_env(python_version = "3.9.0", os = "linux", arch = "x86_64"),
+                whl_abi_tags = ["none", "abi3", "cp39"],
+                whl_platform_tags = ["any", "linux_x86_64", "manylinux_*_x86_64"],
+            ),
+            "cp39_osx_aarch64": struct(
+                env = pep508_env(python_version = "3.9.0", os = "osx", arch = "aarch64"),
+                whl_abi_tags = ["none", "abi3", "cp39"],
+                whl_platform_tags = ["any", "macosx_*_arm64"],
+            ),
+        },
+    )
+    env.expect.that_collection(got).contains_exactly([
+        struct(
+            name = "foo",
+            index_url = "",
+            is_exposed = True,
+            is_multiple_versions = True,
+            srcs = [
+                struct(
+                    distribution = "foo",
+                    extra_pip_args = [],
+                    requirement_line = "foo==0.0.1",
+                    target_platforms = ["cp39_linux_x86_64"],
+                    filename = "foo-0.0.1-cp39-cp39-manylinux_2_17_x86_64.whl",
+                    sha256 = "aaa",
+                    url = "https://files.pythonhosted.org/packages/foo-0.0.1-cp39-cp39-manylinux_2_17_x86_64.whl",
+                    yanked = None,
+                ),
+                struct(
+                    distribution = "foo",
+                    extra_pip_args = [],
+                    requirement_line = "foo==0.0.2",
+                    target_platforms = ["cp39_osx_aarch64"],
+                    filename = "foo-0.0.2-cp39-cp39-macosx_11_0_arm64.whl",
+                    sha256 = "ccc",
+                    url = "https://files.pythonhosted.org/packages/foo-0.0.2-cp39-cp39-macosx_11_0_arm64.whl",
+                    yanked = None,
+                ),
+            ],
+        ),
+    ])
+
+_tests.append(_test_uv_lock_wheel_dedup_resolution_markers)
 
 def parse_requirements_test_suite(name):
     """Create the test suite.

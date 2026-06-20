@@ -196,19 +196,21 @@ def _parse_uv_lock_json(uv_lock, all_platforms, logger, extra_pip_args = None, p
             key = (filename, sha256)
             if key not in seen:
                 seen[key] = None
-                entry["src_entries"].append(struct(
-                    version = version,
-                    sha256 = sha256,
-                    url = url,
-                    filename = filename,
-                    yanked = None,
-                    target_platforms = _wheel_target_platforms(
-                        filename,
-                        pkg_platforms,
-                        platforms,
-                        logger,
-                    ),
-                ))
+                wheel_platforms = _wheel_target_platforms(
+                    filename,
+                    pkg_platforms,
+                    platforms,
+                    logger,
+                )
+                if not platforms or wheel_platforms:
+                    entry["src_entries"].append(struct(
+                        version = version,
+                        sha256 = sha256,
+                        url = url,
+                        filename = filename,
+                        yanked = None,
+                        target_platforms = wheel_platforms,
+                    ))
 
         sdist = pkg.get("sdist", None)
         if sdist:
@@ -233,22 +235,32 @@ def _parse_uv_lock_json(uv_lock, all_platforms, logger, extra_pip_args = None, p
         extra_str = "[{}]".format(",".join(extras)) if extras else ""
 
         pkg_srcs = []
-        for src_entry in info["src_entries"]:
-            requirement_line = "{name}{extras}=={version}".format(
-                name = info["distribution"],
-                extras = extra_str,
-                version = src_entry.version,
+        if platforms:
+            pkg_srcs = _resolve_version_wheels(
+                info["src_entries"],
+                info["distribution"],
+                extra_pip_args or [],
+                extra_str,
+                platforms,
+                logger,
             )
-            pkg_srcs.append(struct(
-                distribution = info["distribution"],
-                extra_pip_args = extra_pip_args or [],
-                requirement_line = requirement_line,
-                target_platforms = list(src_entry.target_platforms),
-                filename = src_entry.filename,
-                sha256 = src_entry.sha256,
-                url = src_entry.url,
-                yanked = src_entry.yanked,
-            ))
+        else:
+            for src_entry in info["src_entries"]:
+                requirement_line = "{name}{extras}=={version}".format(
+                    name = info["distribution"],
+                    extras = extra_str,
+                    version = src_entry.version,
+                )
+                pkg_srcs.append(struct(
+                    distribution = info["distribution"],
+                    extra_pip_args = extra_pip_args or [],
+                    requirement_line = requirement_line,
+                    target_platforms = list(src_entry.target_platforms),
+                    filename = src_entry.filename,
+                    sha256 = src_entry.sha256,
+                    url = src_entry.url,
+                    yanked = src_entry.yanked,
+                ))
 
         item = struct(
             name = norm_name,
@@ -298,7 +310,8 @@ def _wheel_target_platforms(filename, all_platforms, platforms, logger):
         {type}`list[str]` Platforms compatible with the wheel.
     """
     if not platforms:
-        return all_platforms
+        return list(all_platforms)
+
     result = []
     for p in all_platforms:
         platform = platforms.get(p)
@@ -307,7 +320,7 @@ def _wheel_target_platforms(filename, all_platforms, platforms, logger):
             continue
         matched = select_whl(
             whls = [struct(filename = filename)],
-            python_version = platform.env["python_full_version"],
+            python_version = platform.env.get("python_full_version", "3"),
             whl_platform_tags = platform.whl_platform_tags,
             whl_abi_tags = platform.whl_abi_tags,
             implementation_name = platform.env.get("implementation_name", "cpython"),
@@ -316,6 +329,114 @@ def _wheel_target_platforms(filename, all_platforms, platforms, logger):
         )
         if matched != None:
             result.append(p)
+    return result
+
+def _resolve_version_wheels(src_entries, distribution, extra_pip_args, extra_str, platforms, logger):
+    """Resolve overlapping wheel entries for a single version to one-per-platform.
+
+    When multiple wheels target the same platform, only the best-matching one
+    is kept per platform, preventing the hub builder from seeing duplicate
+    config_settings for ``is_multiple_versions=False`` packages.
+
+    Args:
+        src_entries: {type}`list[struct]` Source entries for this version.
+        distribution: {type}`str` The distribution name.
+        extra_pip_args: {type}`list[str]` Extra pip args.
+        extra_str: {type}`str` The extras string, e.g. ``[extra1,extra2]``.
+        platforms: {type}`dict[str, struct]` Platform info keyed by name.
+        logger: {type}`struct` Logger instance.
+
+    Returns:
+        {type}`list[struct]``pkg_srcs``-style entries.
+    """
+    all_plats = {}
+    for s in src_entries:
+        for p in s.target_platforms:
+            all_plats[p] = None
+    if not all_plats:
+        return []
+
+    # Group entries by version for correct deduplication.
+    version_entries = {}
+    for s in src_entries:
+        version_entries.setdefault(s.version, []).append(s)
+
+    result = []
+    for version, ves in version_entries.items():
+        result += _resolve_single_version(
+            ves,
+            distribution,
+            extra_pip_args,
+            extra_str,
+            version,
+            platforms,
+            logger,
+        )
+    return result
+
+def _resolve_single_version(src_entries, distribution, extra_pip_args, extra_str, version_str, platforms, logger):
+    """Resolve multiple wheels for a single version to at most one per platform."""
+    all_plats = {}
+    for s in src_entries:
+        for p in s.target_platforms:
+            all_plats[p] = None
+    if not all_plats:
+        return []
+
+    plat_to_entry = {}
+    for p in all_plats:
+        platform = platforms.get(p)
+        if not platform:
+            plat_to_entry[p] = src_entries[0]
+            continue
+        best = select_whl(
+            whls = [struct(filename = s.filename) for s in src_entries if s.filename.endswith(".whl")],
+            python_version = platform.env.get("python_full_version", "3"),
+            whl_platform_tags = platform.whl_platform_tags,
+            whl_abi_tags = platform.whl_abi_tags,
+            implementation_name = platform.env.get("implementation_name", "cpython"),
+            limit = 1,
+            logger = logger,
+        )
+        if best != None:
+            matched = False
+            for s in src_entries:
+                if s.filename == best.filename:
+                    plat_to_entry[p] = s
+                    matched = True
+                    break
+            if not matched and src_entries:
+                plat_to_entry[p] = src_entries[0]
+        elif src_entries:
+            plat_to_entry[p] = src_entries[0]
+
+    # Group platforms by their best-matching entry and build pkg_srcs.
+    entry_to_plats = {}
+    entry_to_src = {}
+    for p, entry in plat_to_entry.items():
+        key = entry.filename + entry.sha256
+        entry_to_plats.setdefault(key, []).append(p)
+        entry_to_src[key] = entry
+
+    result = []
+    for key in entry_to_plats:
+        entry = entry_to_src[key]
+        plats = sorted(entry_to_plats[key])
+        requirement_line = "{name}{extras}=={version}".format(
+            name = distribution,
+            extras = extra_str,
+            version = entry.version,
+        )
+        result.append(struct(
+            distribution = distribution,
+            extra_pip_args = extra_pip_args,
+            requirement_line = requirement_line,
+            target_platforms = plats,
+            filename = entry.filename,
+            sha256 = entry.sha256,
+            url = entry.url,
+            yanked = entry.yanked,
+        ))
     return result
 
 def _parse_requirements_from_req_files(
