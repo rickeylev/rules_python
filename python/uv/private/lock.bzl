@@ -406,7 +406,7 @@ def _run_impl(ctx):
     if ctx.attr.output.endswith(".lock"):
         template = ctx.files._uv_lock_template[0]
     else:
-        template = ctx.files._template[0]
+        template = ctx.files._uv_pip_compile_template[0]
 
     executable = ctx.actions.declare_file(ctx.label.name + ext)
     ctx.actions.expand_template(
@@ -448,17 +448,17 @@ _run_locker = rule(
 The output that we would be updated, relative to the package the macro is used in.
 """,
         ),
-        "_template": attr.label(
-            default = "//python/uv/private:lock_template",
-            doc = """\
-The template to be used for 'uv pip compile'. This is either .ps1 or bash
-script depending on what the target platform is executed on.
-""",
-        ),
         "_uv_lock_template": attr.label(
-            default = "//python/uv/private:lock_uv_lock_template",
+            default = "//python/uv/private:uv_lock_template",
             doc = """\
 The template to be used for 'uv lock'. Used when output ends with '.lock'.
+""",
+        ),
+        "_uv_pip_compile_template": attr.label(
+            default = "//python/uv/private:uv_pip_compile_template",
+            doc = """\
+The template to be used for 'uv pip compile'. This is either .bat or bash
+script depending on what the target platform is executed on.
 """,
         ),
     },
@@ -493,7 +493,7 @@ def _expand_template_impl(ctx):
     dst = "{}/{}".format(pkg, ctx.attr.output) if pkg else ctx.attr.output
 
     ctx.actions.expand_template(
-        template = ctx.files._template[0],
+        template = ctx.files._lock_copier_template[0],
         substitutions = {
             "{{dst}}": dst,
             "{{src}}": "{}".format(ctx.files.src[0].short_path),
@@ -509,8 +509,8 @@ _expand_template = rule(
         "output": attr.string(mandatory = True),
         "src": attr.label(mandatory = True),
         "update_target": attr.string(mandatory = True),
-        "_template": attr.label(
-            default = "//python/uv/private:lock_copier.py",
+        "_lock_copier_template": attr.label(
+            default = "//python/uv/private:lock_copier_template",
             allow_single_file = True,
         ),
     },
