@@ -90,7 +90,6 @@ def parse_requirements(
             extra_pip_args = extra_pip_args,
             platforms = platforms,
             get_index_urls = get_index_urls,
-            evaluate_markers = evaluate_markers,
             extract_url_srcs = extract_url_srcs,
             uv_lock = uv_lock,
             logger = logger,
@@ -102,7 +101,6 @@ def parse_requirements(
         extra_pip_args = extra_pip_args,
         platforms = platforms,
         get_index_urls = get_index_urls,
-        evaluate_markers = evaluate_markers,
         extract_url_srcs = extract_url_srcs,
         logger = logger,
     )
@@ -122,7 +120,6 @@ def _parse_requirements_with_uv_lock(
         extra_pip_args,
         platforms,
         get_index_urls,
-        evaluate_markers,
         extract_url_srcs,
         uv_lock,
         logger):
@@ -141,7 +138,6 @@ def _parse_requirements_with_uv_lock(
         extra_pip_args = extra_pip_args,
         platforms = platforms,
         get_index_urls = get_index_urls,
-        evaluate_markers = evaluate_markers,
         extract_url_srcs = extract_url_srcs,
         logger = logger,
     )
@@ -160,6 +156,9 @@ def _parse_uv_lock_json(uv_lock, all_platforms, logger, extra_pip_args = None):
     """
     uv_packages = {}
     for pkg in uv_lock["package"]:
+        if "metadata" in pkg:
+            fail(pkg)
+
         name = pkg["name"]
         version = pkg["version"]
         norm_name = normalize_name(name)
@@ -275,12 +274,9 @@ def _parse_requirements_from_req_files(
         extra_pip_args,
         platforms,
         get_index_urls,
-        evaluate_markers,
         extract_url_srcs,
         logger):
     """Parse requirements from requirements.txt files (existing behavior)."""
-    evaluate_markers = evaluate_markers or (lambda _requirements: {})
-
     options = {}
     requirements = {}
     all_files_parsed = {}
@@ -325,8 +321,6 @@ def _parse_requirements_from_req_files(
                 if not req.marker or (plat_env and evaluate(req.marker, env = plat_env.env))
             ]
 
-                if ";" in requirement_line:
-                    reqs_with_env_markers.setdefault(requirement_line, []).append(plat)
             options[plat] = pip_args
 
             index_url = argparse.index_url(pip_args, index_url)
@@ -334,12 +328,6 @@ def _parse_requirements_from_req_files(
             platform = argparse.platform(pip_args, [])
             if platform:
                 get_index_urls = None
-
-    resolved_marker_platforms = evaluate_markers(reqs_with_env_markers)
-    logger.trace(lambda: "Evaluated env markers from:\n{}\n\nTo:\n{}".format(
-        reqs_with_env_markers,
-        resolved_marker_platforms,
-    ))
 
     reqs_by_name = {}
     requirements_by_platform = {}
