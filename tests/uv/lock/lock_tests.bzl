@@ -15,6 +15,7 @@
 ""
 
 load("@bazel_skylib//rules:diff_test.bzl", "diff_test")
+load("@bazel_skylib//rules:native_binary.bzl", "native_test")
 load("//python/uv:lock.bzl", "lock")
 load("//tests/support:py_reconfig.bzl", "py_reconfig_test")
 

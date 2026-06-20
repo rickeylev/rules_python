@@ -630,7 +630,7 @@ def lock(
     if constraints:
         lock_target_kwargs["constraints"] = constraints
 
-    if out.endswith("uv.lock"):
+    if out.endswith(".lock"):
         _lock(name = name, **lock_target_kwargs)
     else:
         _pip_compile(
