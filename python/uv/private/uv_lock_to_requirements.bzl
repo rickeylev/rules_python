@@ -28,6 +28,14 @@ def uv_lock_extras_map(uv_lock):
             if dep_extras and dep_name != pkg_name:
                 _add_extras(extras_map, dep_name, dep_extras)
 
+        metadata = pkg.get("metadata", {})
+        for rd in metadata.get("requires-dist", []):
+            rd_name = rd.get("name", "")
+            rd_extras_raw = rd.get("extras", [])
+            rd_extras = [rd_extras_raw] if type(rd_extras_raw) == "string" else rd_extras_raw
+            if rd_extras and rd_name != pkg_name:
+                _add_extras(extras_map, rd_name, rd_extras)
+
     return extras_map
 
 def uv_lock_to_requirements(uv_lock):

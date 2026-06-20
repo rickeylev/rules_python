@@ -105,6 +105,7 @@ bar==0.0.1 --hash=sha256:deadb00f
         "uv_lock_foo_multi_wheel_dedup": """{"package":[{"name":"foo","version":"0.0.1","source":{"registry":"https://pypi.org/simple"},"wheels":[{"hash":"sha256:aaa","url":"https://files.pythonhosted.org/packages/foo-0.0.1-cp39-cp39-manylinux_2_17_x86_64.whl"},{"hash":"sha256:bbb","url":"https://files.pythonhosted.org/packages/foo-0.0.1-py3-none-any.whl"}]}]}""",
         "uv_lock_foo_only": """{"package":[{"name":"foo","source":{"registry":"https://pypi.org/simple"},"version":"0.0.2"}]}""",
         "uv_lock_foo_optional_deps": """{"package":[{"name":"foo","version":"0.0.1","source":{"registry":"https://pypi.org/simple"},"optional-dependencies":{"extra1":[],"extra2":[]},"wheels":[{"hash":"sha256:deadbeef","url":"https://files.pythonhosted.org/packages/foo-0.0.1-py3-none-any.whl"}]}]}""",
+        "uv_lock_foo_requires_dist_extras": """{"package":[{"name":"foo","version":"0.0.1","source":{"registry":"https://pypi.org/simple"},"wheels":[{"hash":"sha256:deadbeef","url":"https://files.pythonhosted.org/packages/foo-0.0.1-py3-none-any.whl"}]},{"name":"root-pkg","source":{"virtual":"."},"version":"0.0.0","dependencies":[{"name":"foo"}],"metadata":{"requires-dist":[{"name":"foo","extras":["all"]}]}}]}""",
         "uv_lock_foo_resolution_markers_dedup": """{"package":[{"name":"foo","source":{"registry":"https://pypi.org/simple"},"version":"0.0.1","resolution-markers":["sys_platform == 'linux'"],"wheels":[{"hash":"sha256:aaa","url":"https://files.pythonhosted.org/packages/foo-0.0.1-cp39-cp39-manylinux_2_17_x86_64.whl"},{"hash":"sha256:bbb","url":"https://files.pythonhosted.org/packages/foo-0.0.1-py3-none-any.whl"}]},{"name":"foo","source":{"registry":"https://pypi.org/simple"},"version":"0.0.2","resolution-markers":["sys_platform == 'darwin'"],"wheels":[{"hash":"sha256:ccc","url":"https://files.pythonhosted.org/packages/foo-0.0.2-cp39-cp39-macosx_11_0_arm64.whl"},{"hash":"sha256:ddd","url":"https://files.pythonhosted.org/packages/foo-0.0.2-py3-none-any.whl"}]}]}""",
         "uv_lock_foo_sdist": """{"package":[{"name":"foo","sdist":{"hash":"sha256:feedcafe","url":"https://files.pythonhosted.org/packages/foo-0.0.1.tar.gz"},"source":{"registry":"https://pypi.org/simple"},"version":"0.0.1","wheels":[{"hash":"sha256:deadbeef","url":"https://files.pythonhosted.org/packages/foo-0.0.1-py3-none-any.whl"}]}]}""",
         "uv_lock_foo_virtual": """{"package":[{"name":"foo","source":{"registry":"https://pypi.org/simple"},"version":"0.0.1","wheels":[{"hash":"sha256:deadbeef","url":"https://files.pythonhosted.org/packages/foo-0.0.1-py3-none-any.whl"}]},{"name":"virtual-pkg","source":{"virtual":true},"version":"0.0.0"}]}""",
@@ -1568,6 +1569,41 @@ def _test_uv_lock_wheel_dedup_resolution_markers(env):
     ])
 
 _tests.append(_test_uv_lock_wheel_dedup_resolution_markers)
+
+def _test_uv_lock_requires_dist_extras(env):
+    """Test that extras from metadata.requires-dist appear in requirement_line."""
+    got = parse_requirements(
+        uv_lock = "uv_lock_foo_requires_dist_extras",
+    )
+    env.expect.that_collection(got).contains_exactly([
+        struct(
+            name = "foo",
+            index_url = "",
+            is_exposed = True,
+            is_multiple_versions = False,
+            srcs = [
+                struct(
+                    distribution = "foo",
+                    extra_pip_args = [],
+                    requirement_line = "foo[all]==0.0.1",
+                    target_platforms = [],
+                    filename = "foo-0.0.1-py3-none-any.whl",
+                    sha256 = "deadbeef",
+                    url = "https://files.pythonhosted.org/packages/foo-0.0.1-py3-none-any.whl",
+                    yanked = None,
+                ),
+            ],
+        ),
+        struct(
+            name = "root_pkg",
+            index_url = "",
+            is_exposed = True,
+            is_multiple_versions = False,
+            srcs = [],
+        ),
+    ])
+
+_tests.append(_test_uv_lock_requires_dist_extras)
 
 def parse_requirements_test_suite(name):
     """Create the test suite.

@@ -362,19 +362,18 @@ def _resolve_version_wheels(src_entries, distribution, extra_pip_args, extra_str
         version_entries.setdefault(s.version, []).append(s)
 
     result = []
-    for version, ves in version_entries.items():
+    for _, ves in version_entries.items():
         result += _resolve_single_version(
             ves,
             distribution,
             extra_pip_args,
             extra_str,
-            version,
             platforms,
             logger,
         )
     return result
 
-def _resolve_single_version(src_entries, distribution, extra_pip_args, extra_str, version_str, platforms, logger):
+def _resolve_single_version(src_entries, distribution, extra_pip_args, extra_str, platforms, logger):
     """Resolve multiple wheels for a single version to at most one per platform."""
     all_plats = {}
     for s in src_entries:

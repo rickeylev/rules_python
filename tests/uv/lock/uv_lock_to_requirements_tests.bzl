@@ -271,5 +271,19 @@ pkg_b==0.2.0 \\
 
 _tests.append(_test_extras_from_multiple_dependents)
 
+def _test_requires_dist_extras(env):
+    """Test that extras from metadata.requires-dist are included."""
+    got = uv_lock_to_requirements(json.decode("""{"package":[
+        {"name":"pytest-bazel","version":"0.1.6","source":{"registry":"https://pypi.org/simple"},"wheels":[{"hash":"sha256:a29e80e1d67c3db801bdd4d0b6b742f2bfb48cd6841caa33401458e5c4e29c21","url":"https://example.org/pytest_bazel-0.1.6.whl"}]},
+        {"name":"root-pkg","version":"0.0.0","source":{"virtual":"."},"dependencies":[{"name":"pytest-bazel"}],"metadata":{"requires-dist":[{"name":"pytest-bazel","extras":["all"]}]}}
+    ]}"""))
+    env.expect.that_str(got).equals("""\
+pytest-bazel[all]==0.1.6 \\
+    --hash=sha256:a29e80e1d67c3db801bdd4d0b6b742f2bfb48cd6841caa33401458e5c4e29c21
+    # via root-pkg
+""")
+
+_tests.append(_test_requires_dist_extras)
+
 def uv_lock_to_requirements_test_suite(name):
     test_suite(name = name, basic_tests = _tests)
