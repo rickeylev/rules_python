@@ -1,5 +1,35 @@
 """Convert a parsed uv.lock to requirements.txt format."""
 
+def uv_lock_extras_map(uv_lock):
+    """Compute extras for each package from uv.lock data.
+
+    Args:
+      uv_lock: a decoded JSON struct from a uv.lock file.
+
+    Returns:
+      A dict of {package_name: [extra1, extra2, ...]} for packages with extras.
+    """
+    extras_map = {}
+    for pkg in uv_lock.get("package", []):
+        pkg_name = pkg.get("name", "")
+
+        for extra in pkg.get("provides-extras", pkg.get("extras", [])):
+            _add_extras(extras_map, pkg_name, [extra])
+
+        opt_deps = pkg.get("optional-dependencies", {})
+        if opt_deps:
+            _add_extras(extras_map, pkg_name, _sorted(opt_deps.keys()))
+
+        deps = pkg.get("dependencies", [])
+        for dep in deps:
+            dep_name = dep.get("name", "")
+            dep_extras_raw = dep.get("extra", [])
+            dep_extras = [dep_extras_raw] if type(dep_extras_raw) == "string" else dep_extras_raw
+            if dep_extras and dep_name != pkg_name:
+                _add_extras(extras_map, dep_name, dep_extras)
+
+    return extras_map
+
 def uv_lock_to_requirements(uv_lock):
     """Convert a parsed uv.lock JSON struct to a requirements.txt formatted string.
 
@@ -10,9 +40,9 @@ def uv_lock_to_requirements(uv_lock):
       A requirements.txt formatted string.
     """
     packages = uv_lock.get("package", [])
+    extras_map = uv_lock_extras_map(uv_lock)
 
     dependents = {}
-    extras_map = {}
     for pkg in packages:
         pkg_name = pkg.get("name", "")
         deps = pkg.get("dependencies", [])
@@ -20,12 +50,7 @@ def uv_lock_to_requirements(uv_lock):
             dep_name = dep.get("name", "")
             if dep_name != pkg_name:
                 _add_dependent(dependents, dep_name, pkg_name)
-            dep_extras = dep.get("extra", [])
-            if dep_extras and dep_name != pkg_name:
-                _add_extras(extras_map, dep_name, dep_extras)
         opt_deps = pkg.get("optional-dependencies", {})
-        if opt_deps:
-            _add_extras(extras_map, pkg_name, _sorted(opt_deps.keys()))
         for _extra, deps in opt_deps.items():
             for dep in deps:
                 dep_name = dep.get("name", "")

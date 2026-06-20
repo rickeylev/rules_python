@@ -28,6 +28,7 @@ behavior.
 
 load("//python/private:normalize_name.bzl", "normalize_name")
 load("//python/private:repo_utils.bzl", "repo_utils")
+load("//python/uv/private:uv_lock_to_requirements.bzl", "uv_lock_extras_map")  # buildifier: disable=bzl-visibility
 load(":argparse.bzl", "argparse")
 load(":index_sources.bzl", "index_sources")
 load(":parse_requirements_txt.bzl", "parse_requirements_txt")
@@ -154,6 +155,8 @@ def _parse_uv_lock_json(uv_lock, all_platforms, logger, extra_pip_args = None):
     Returns:
         {type}`list[struct]` The same format as {func}`parse_requirements`.
     """
+    extras_map = uv_lock_extras_map(uv_lock)
+
     uv_packages = {}
     for pkg in uv_lock["package"]:
         if "metadata" in pkg:
@@ -170,10 +173,7 @@ def _parse_uv_lock_json(uv_lock, all_platforms, logger, extra_pip_args = None):
         })
         entry["versions"][version] = None
 
-        # NOTE: includes all provides-extras in requirement_line. In pip context
-        # this would install all optional deps, but in rules_python the
-        # requirement_line is just metadata; deps are already resolved in uv.lock.
-        for extra in pkg.get("provides-extras", pkg.get("extras", [])):
+        for extra in extras_map.get(name, []):
             if extra not in entry["extras"]:
                 entry["extras"][extra] = None
 
