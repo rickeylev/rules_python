@@ -168,8 +168,8 @@ def _common_lock(ctx, locker):
     if is_windows:
         args_parts = []
         for arg in args.run_info:
-            if hasattr(arg, "short_path"):
-                arg = arg.short_path
+            if hasattr(arg, "path"):
+                arg = arg.path
             a = arg.replace("/", "\\")
             a = a.replace('"', '""')
             args_parts.append('"' + a + '"')
