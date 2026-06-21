@@ -15,13 +15,8 @@
 load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
 load("//python/private:bzlmod_enabled.bzl", "BZLMOD_ENABLED")  # buildifier: disable=bzl-visibility
 
-exports_files(
-    srcs = [
-        "lock_copier.py",
-    ],
-    # only because this is used from a macro to template
-    visibility = ["//visibility:public"],
-)
+# public only because this is used from a macro to template
+_NOT_REALLY_PUBLIC = ["//visibility:public"]
 
 filegroup(
     name = "distribution",
@@ -110,7 +105,7 @@ filegroup(
     name = "lock_copier_template",
     srcs = ["template/lock_copier.py"],
     target_compatible_with = [] if BZLMOD_ENABLED else ["@platforms//:incompatible"],
-    visibility = ["//visibility:public"],
+    visibility = _NOT_REALLY_PUBLIC,
 )
 
 filegroup(
@@ -120,7 +115,7 @@ filegroup(
         "//conditions:default": ["template/uv_lock.sh"],
     }),
     target_compatible_with = [] if BZLMOD_ENABLED else ["@platforms//:incompatible"],
-    visibility = ["//visibility:public"],
+    visibility = _NOT_REALLY_PUBLIC,
 )
 
 filegroup(
@@ -130,5 +125,5 @@ filegroup(
         "//conditions:default": ["template/uv_pip_compile.sh"],
     }),
     target_compatible_with = [] if BZLMOD_ENABLED else ["@platforms//:incompatible"],
-    visibility = ["//visibility:public"],
+    visibility = _NOT_REALLY_PUBLIC,
 )

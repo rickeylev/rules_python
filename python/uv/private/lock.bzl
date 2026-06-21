@@ -133,8 +133,8 @@ def _common_lock(ctx, locker):
 
     # These arguments does not change behaviour, but it reduces the output from
     # the command, which is especially verbose in stderr.
-    args.run_shell.add("--no-progress")
-    args.run_shell.add("--quiet")
+    args.add("--no-progress")
+    args.add("--quiet")
 
     if ctx.files.existing_output:
         src_out = ctx.files.existing_output[0].path
@@ -152,13 +152,45 @@ def _common_lock(ctx, locker):
     else:
         src_out = ""
 
+    is_windows = ctx.attr.is_windows
+    if is_windows:
+        path_sep = "\\"
+        ext = ".bat"
+    else:
+        path_sep = "/"
+        ext = ""
+
+    output_path = output.path.replace("/", path_sep) if is_windows else output.path
+    src_out_path = src_out.replace("/", path_sep) if is_windows else src_out
+
+    # On Windows, all args must be embedded in the .bat script because
+    # arguments are not passed on the command line.
+    if is_windows:
+        args_parts = []
+        for arg in args.run_info:
+            if hasattr(arg, "short_path"):
+                arg = arg.short_path
+            a = arg.replace("/", "\\")
+            a = a.replace('"', '""')
+            args_parts.append('"' + a + '"')
+
+        # uv pip compile adds --output-file to run_shell (not run_info).
+        # For the lock case, output_filename is "uv.lock" and uv lock
+        # writes to the project directory without --output-file.
+        if not output_filename:
+            args_parts.append('"--output-file"')
+            args_parts.append('"' + output_path + '"')
+        windows_args = " ".join(args_parts)
+    else:
+        windows_args = " ".join([])
+
     script = ctx.actions.declare_file(ctx.label.name + "_lock" + ext)
     ctx.actions.expand_template(
         template = ctx.files._template[0],
         substitutions = {
-            '"{{args}}"': " ".join([]),  # TODO @aignas 2026-06-21: for windows embed things
-            "{{out}}": output.path,
-            "{{src_out}}": src_out,
+            '"{{args}}"': windows_args,
+            "{{out}}": output_path,
+            "{{src_out}}": src_out_path,
         },
         output = script,
         is_executable = True,

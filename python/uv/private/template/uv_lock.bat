@@ -1,3 +1,9 @@
 @echo off
-if not defined BUILD_WORKSPACE_DIRECTORY exit /b 1
+if defined BUILD_WORKSPACE_DIRECTORY (
+    "{{args}}" %*
+    exit /b 0
+)
+
+if exist "{{src_out}}" del /f "{{src_out}}"
 "{{args}}" %*
+copy /y "{{src_out}}" "{{out}}"
