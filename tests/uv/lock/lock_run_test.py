@@ -63,6 +63,33 @@ class LockTests(unittest.TestCase):
                 env[key] = os.environ[key]
         return env
 
+    def test_requirements_run_script_for_new_file(self):
+        """Verify the requirements_new_file.run script has expected args."""
+        run_script_path = _relative_rpath("requirements_new_file.run")
+        content = run_script_path.read_text()
+
+        self.assertIn("#!/usr/bin/env bash", content)
+        self.assertIn("BUILD_WORKSPACE_DIRECTORY", content)
+        self.assertIn("--no-progress", content)
+        self.assertIn("--quiet", content)
+        self.assertIn("does_not_exist.txt", content)
+
+    def test_uv_lock_run_script(self):
+        """Verify the uv_lock_test.run script has expected args."""
+        run_script_path = _relative_rpath("uv_lock_test.run")
+        content = run_script_path.read_text()
+
+        self.assertIn("#!/usr/bin/env bash", content)
+        self.assertIn("--no-progress", content)
+        self.assertIn("--quiet", content)
+
+    def test_run_script_has_no_output_file_arg(self):
+        """Verify the uv lock .run script does NOT have --output-file (uv lock doesn't use it)."""
+        run_script_path = _relative_rpath("uv_lock_test.run")
+        content = run_script_path.read_text()
+
+        self.assertNotIn("--output-file", content)
+
     def test_requirements_updating_for_the_first_time(self):
         # Given
         copier_path = _relative_rpath("requirements_new_file.update")
@@ -158,6 +185,24 @@ class LockTests(unittest.TestCase):
                 got_contents,
                 output.stdout.decode("utf-8"),
             )
+
+    def test_requirements_run_script_has_expected_args(self):
+        """Verify the .run script template has expected args embedded."""
+        run_script_path = _relative_rpath("requirements.run")
+        content = run_script_path.read_text()
+
+        self.assertIn("#!/usr/bin/env bash", content)
+        self.assertIn("BUILD_WORKSPACE_DIRECTORY", content)
+        self.assertIn('"$@"', content)
+        self.assertIn("--custom-compile-command", content)
+        self.assertIn("--generate-hashes", content)
+        self.assertIn("--no-strip-extras", content)
+        self.assertIn("--no-python-downloads", content)
+        self.assertIn("--no-cache", content)
+        self.assertIn("--no-progress", content)
+        self.assertIn("--quiet", content)
+        self.assertIn("--output-file", content)
+        self.assertIn("requirements.txt", content)
 
     def test_requirements_run(self):
         # Given
