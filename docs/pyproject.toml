@@ -16,7 +16,5 @@ dependencies = [
     "pefile",
     "pyelftools",
     "macholib",
-    "fastapi[standard]",
     "markupsafe",
-    "pytest-bazel[all]",
 ]

@@ -72,6 +72,9 @@ def _args(ctx):
 
 def _common_lock(ctx, locker):
     fname = "{}.out".format(ctx.label.name)
+
+    # TODO @aignas 2026-06-21: do not append python_version for uv.lock as it should work for all
+    # python versions
     python_version = ctx.attr.python_version
     if python_version:
         fname = "{}.{}.out".format(
@@ -85,7 +88,14 @@ def _common_lock(ctx, locker):
 
     args = _args(ctx)
     args.add(uv)
-    srcs, mnemonic, progress_message = locker(args, output)
+
+    # The output params are:
+    # * srcs are the srcs for the locking command action inputs tracking
+    # * output_filename if set is to ensure that we can do special prep for uv.lock versus
+    #   requirements.txt
+    # * mnemonic is for the action mnemonic
+    # * progress_message is the same
+    srcs, output_filename, mnemonic, progress_message = locker(args, output)
 
     args.add_all([
         "--no-python-downloads",
@@ -134,29 +144,67 @@ def _common_lock(ctx, locker):
         lines = ["@echo off"]
     else:
         ext = ".sh"
-        lines = ["#!/usr/bin/env bash", "set -euo pipefail"]
+        lines = [
+            "#!/usr/bin/env bash",
+            "set -euo pipefail",
+        ]
 
     python_path = getattr(python, "path", python)
 
     if ctx.files.existing_output:
-        python_cmd = "from shutil import copy; copy(\"{src}\", \"{dst}\")".format(
-            src = ctx.files.existing_output[0].path,
-            dst = output.path,
-        )
+        existing_output = ctx.files.existing_output[0]
         if ctx.attr.is_windows:
-            # In batch files, use "" to escape internal double quotes.
-            lines.append(
-                "\"{py}\" -c \"from shutil import copy; copy(\"\"{src}\"\", \"\"{dst}\"\")\"".format(
-                    py = python_path,
-                    src = ctx.files.existing_output[0].path,
-                    dst = output.path,
-                ),
-            )
+            # TODO @aignas 2026-06-21: use native windows commands to achieve the same
+            fail("TODO")
         else:
-            lines.append("{py} -c '{cmd}'".format(
-                py = python_path,
-                cmd = python_cmd,
-            ))
+            lines.extend([
+                # Copy the contents to the output directory, so that we modify existing contents
+                # instead of creating a new file. This is useful for requirements.txt and uv.lock
+                # equally
+                "cp \"{src}\" \"{dst}\"".format(src = existing_output.path, dst = output.path),
+            ])
+
+            if output_filename:
+                # uv normally works with files in the project directory, so we have to do
+                # some careful shuffling around to get it to work. Our strategy is to:
+                #   1. Remove the existing output from the file, which is a read-only
+                #      symlink to the src tree.
+                #   2. Do a symlink to the output directory and replace the existing
+                #      output.
+                #
+                # This ensures that whatever we do the uv.lock is generated into the output
+                # directory in the sandbox.
+                lines.extend([
+                    # Then remove the existing output from the source folder
+                    "rm \"{src}\"".format(src = existing_output.path),
+                    # Then symlink the current tree to the output
+                    "ln -s $(pwd)/\"{dst}\" \"{src}\"".format(
+                        dst = output.path,
+                        src = existing_output.path,
+                    ),
+                ])
+    elif output_filename:
+        # special case - the output filename has to be in the source tree and it has to have a
+        # special name, we use the project folder to determine this.
+
+        if not project:
+            fail("Cannot lock this if the project dir is unset or cannot be infered")
+
+        if ctx.attr.is_windows:
+            # TODO @aignas 2026-06-21: use native windows commands to achieve the same
+            fail("TODO")
+        else:
+            # There is no uv.lock file yet, so symlink to an empty file in the output
+            # directory
+            lines.extend([
+                "ln -s $(pwd)/\"{dst}\" \"{src}\"".format(
+                    dst = output.path,
+                    src = "{project}/{out_filename}".format(
+                        project = project,
+                        out_filename = output_filename,
+                    ),
+                ),
+            ])
 
     if ctx.attr.is_windows:
         # Build the command line with backslash paths for CMD.
@@ -252,7 +300,7 @@ def _pip_compile_impl(ctx):
         args.add_all(ctx.files.srcs)
         srcs = ctx.files.srcs + ctx.files.build_constraints + ctx.files.constraints
 
-        return srcs, mnemonic, progress_message
+        return srcs, None, mnemonic, progress_message
 
     return _common_lock(ctx, _setup_args)
 
@@ -360,7 +408,7 @@ def _lock_impl(ctx):
         mnemonic = "PyUvLock"
         progress_message = "Creating a uv.lock with uv: %{label}"
 
-        return ctx.files.srcs, mnemonic, progress_message
+        return ctx.files.srcs, "uv.lock", mnemonic, progress_message
 
     return _common_lock(ctx, _setup_args)
 
@@ -478,8 +526,10 @@ def _maybe_file(path):
         path: {type}`str` the file name.
     """
     for p in native.glob([path], allow_empty = True):
-        if path == p:
-            return p
+        if path != p:
+            continue
+
+        return p
 
     return None
 
