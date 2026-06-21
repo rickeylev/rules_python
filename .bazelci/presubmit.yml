@@ -25,13 +25,9 @@ buildifier:
   bazel: 7.x
   skip_in_bazel_downstream_pipeline: "Bazel 7 required"
 .reusable_config: &reusable_config
-  # We do not enable USE_BAZEL_DIFF because this project makes heavy use of
-  # target_compatible_with to restrict targets/tests to compatible platforms.
-  # Bazel CI's built-in bazel-diff integration runs in plain query mode by
-  # default, which ignores compatibility. This causes it to select and schedule
-  # platform-incompatible tests on the wrong runners, breaking the build.
-  # Attempts to use the experimental EXP_USE_CQUERY=true also failed to
-  # resolve this reliably.
+  # USE_BAZEL_DIFF is disabled because Bazel CI's plain query mode ignores
+  # target_compatible_with, causing platform-incompatible tests to be scheduled
+  # on the wrong runners and breaking the build.
   # environment:
   #   USE_BAZEL_DIFF: "1"
   build_targets:
