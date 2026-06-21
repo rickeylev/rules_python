@@ -4,6 +4,13 @@ if defined BUILD_WORKSPACE_DIRECTORY (
     exit /b 0
 )
 
-if exist "{{src_out}}" del /f "{{src_out}}"
-"{{args}}" %*
-copy /y "{{src_out}}" "{{out}}"
+if exist "{{src_out}}" (
+    copy /y "{{src_out}}" "{{out}}"
+    del /f "{{src_out}}"
+    copy /y "{{out}}" "{{src_out}}"
+    "{{args}}" %*
+    copy /y "{{src_out}}" "{{out}}"
+) else (
+    "{{args}}" %*
+    copy /y "{{src_out}}" "{{out}}"
+)

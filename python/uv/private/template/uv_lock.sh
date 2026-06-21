@@ -23,6 +23,7 @@ fi
 #    2. Copy the contents to out.
 readonly out="{{out}}"
 if [[ -f "{{src_out}}" ]]; then
+    cp "{{src_out}}" "$out"
     rm "{{src_out}}"
     ln -s "$(pwd)"/"$out" "{{src_out}}"
 else
