@@ -30,6 +30,7 @@ _RunLockInfo = provider(
         "args": "The args passed to the `uv` by default when running the runnable target.",
         "env": "The env passed to the execution.",
         "srcs": "Source files required to run the runnable target.",
+        "template": "The template file for writing a script.",
     },
 )
 
@@ -135,54 +136,8 @@ def _common_lock(ctx, locker):
     args.run_shell.add("--no-progress")
     args.run_shell.add("--quiet")
 
-    # Generate a wrapper script that copies the existing output (if any) and
-    # then runs uv. On POSIX, args are forwarded via exec "$@". On Windows,
-    # the full command line is embedded in the .bat file with backslash paths
-    # (CMD doesn't recognize forward slashes in executable paths).
-    if ctx.attr.is_windows:
-        ext = ".bat"
-        lines = ["@echo off"]
-    else:
-        ext = ".sh"
-        lines = [
-            "#!/usr/bin/env bash",
-            "set -euo pipefail",
-        ]
-
-    python_path = getattr(python, "path", python)
-
     if ctx.files.existing_output:
-        existing_output = ctx.files.existing_output[0]
-        if ctx.attr.is_windows:
-            # TODO @aignas 2026-06-21: use native windows commands to achieve the same
-            fail("TODO")
-        else:
-            lines.extend([
-                # Copy the contents to the output directory, so that we modify existing contents
-                # instead of creating a new file. This is useful for requirements.txt and uv.lock
-                # equally
-                "cp \"{src}\" \"{dst}\"".format(src = existing_output.path, dst = output.path),
-            ])
-
-            if output_filename:
-                # uv normally works with files in the project directory, so we have to do
-                # some careful shuffling around to get it to work. Our strategy is to:
-                #   1. Remove the existing output from the file, which is a read-only
-                #      symlink to the src tree.
-                #   2. Do a symlink to the output directory and replace the existing
-                #      output.
-                #
-                # This ensures that whatever we do the uv.lock is generated into the output
-                # directory in the sandbox.
-                lines.extend([
-                    # Then remove the existing output from the source folder
-                    "rm \"{src}\"".format(src = existing_output.path),
-                    # Then symlink the current tree to the output
-                    "ln -s $(pwd)/\"{dst}\" \"{src}\"".format(
-                        dst = output.path,
-                        src = existing_output.path,
-                    ),
-                ])
+        src_out = ctx.files.existing_output[0].path
     elif output_filename:
         # special case - the output filename has to be in the source tree and it has to have a
         # special name, we use the project folder to determine this.
@@ -190,57 +145,24 @@ def _common_lock(ctx, locker):
         if not project:
             fail("Cannot lock this if the project dir is unset or cannot be infered")
 
-        if ctx.attr.is_windows:
-            # TODO @aignas 2026-06-21: use native windows commands to achieve the same
-            fail("TODO")
-        else:
-            # There is no uv.lock file yet, so symlink to an empty file in the output
-            # directory
-            lines.extend([
-                "ln -s $(pwd)/\"{dst}\" \"{src}\"".format(
-                    dst = output.path,
-                    src = "{project}/{out_filename}".format(
-                        project = project,
-                        out_filename = output_filename,
-                    ),
-                ),
-            ])
-
-    if ctx.attr.is_windows:
-        # Build the command line with backslash paths for CMD.
-        # args.run_info has most args; add the output/progress/quiet
-        # args that were only added directly to args.run_shell.
-        def _quote(arg):
-            if hasattr(arg, "path"):
-                arg = arg.path.replace("/", "\\")
-            else:
-                arg = str(arg)
-            return '"' + arg.replace('"', '""') + '"'
-
-        bat_args = args.run_info + [
-            "--output-file",
-            output,
-            "--no-progress",
-            "--quiet",
-        ]
-        lines.append(" ".join([_quote(a) for a in bat_args]))
-
-        # Normalize CRLF line endings in the output on Windows.
-        lines.append(
-            "\"{py}\" -c \"import pathlib;p=pathlib.Path(r\"\"{dst}\"\");p.write_bytes(p.read_bytes().replace(b'\\r\\n', b'\\n'))\"".format(
-                py = python_path,
-                dst = output.path,
-            ),
+        src_out = "{project}/{out_filename}".format(
+            project = project,
+            out_filename = output_filename,
         )
     else:
-        lines.append('exec "$@"')
+        src_out = ""
 
     script = ctx.actions.declare_file(ctx.label.name + "_lock" + ext)
-    if ctx.attr.is_windows:
-        content = "\r\n".join(lines) + "\r\n"
-    else:
-        content = "\n".join(lines) + "\n"
-    ctx.actions.write(output = script, content = content, is_executable = True)
+    ctx.actions.expand_template(
+        template = ctx.files._template[0],
+        substitutions = {
+            '"{{args}}"': " ".join([]),  # TODO @aignas 2026-06-21: for windows embed things
+            "{{out}}": output.path,
+            "{{src_out}}": src_out,
+        },
+        output = script,
+        is_executable = True,
+    )
 
     ctx.actions.run(
         executable = script,
@@ -275,6 +197,7 @@ def _common_lock(ctx, locker):
                 srcs + [uv],
                 transitive = [python_files],
             ),
+            template = ctx.files._template[0],
         ),
     ]
 
@@ -394,6 +317,13 @@ Added the {attr}`project` to configure the project setting if autodetection fail
 The string to input for the 'uv pip compile'.
 """,
         ),
+        "_template": attr.label(
+            default = "//python/uv/private:uv_pip_compile_template",
+            doc = """\
+The template to be used for 'uv pip compile'. This is either .bat or bash
+script depending on what the target platform is executed on.
+""",
+        ),
     } | _common_attrs,
     toolchains = [
         EXEC_TOOLS_TOOLCHAIN_TYPE,
@@ -421,7 +351,14 @@ run` executable rule.
 :::{versionadded} VERSION_NEXT_FEATURE
 :::
 """,
-    attrs = _common_attrs,
+    attrs = _common_attrs | {
+        "_template": attr.label(
+            default = "//python/uv/private:uv_lock_template",
+            doc = """\
+The template to be used for 'uv lock'. Used when output ends with '.lock'.
+""",
+        ),
+    },
     toolchains = [
         EXEC_TOOLS_TOOLCHAIN_TYPE,
         UV_TOOLCHAIN_TYPE,
@@ -450,14 +387,9 @@ def _run_impl(ctx):
 
     info = ctx.attr.lock[_RunLockInfo]
 
-    if ctx.attr.output.endswith(".lock"):
-        template = ctx.files._uv_lock_template[0]
-    else:
-        template = ctx.files._uv_pip_compile_template[0]
-
     executable = ctx.actions.declare_file(ctx.label.name + ext)
     ctx.actions.expand_template(
-        template = template,
+        template = info.template,
         substitutions = {
             '"{{args}}"': " ".join([_maybe_path(arg) for arg in info.args]),
             "{{src_out}}": "{}/{}".format(ctx.label.package, ctx.attr.output).replace(
@@ -493,19 +425,6 @@ _run_locker = rule(
         "output": attr.string(
             doc = """\
 The output that we would be updated, relative to the package the macro is used in.
-""",
-        ),
-        "_uv_lock_template": attr.label(
-            default = "//python/uv/private:uv_lock_template",
-            doc = """\
-The template to be used for 'uv lock'. Used when output ends with '.lock'.
-""",
-        ),
-        "_uv_pip_compile_template": attr.label(
-            default = "//python/uv/private:uv_pip_compile_template",
-            doc = """\
-The template to be used for 'uv pip compile'. This is either .bat or bash
-script depending on what the target platform is executed on.
 """,
         ),
     },
