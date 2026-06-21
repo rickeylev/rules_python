@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-set -euxo pipefail
+set -euo pipefail
 
 if [[ -n "${BUILD_WORKSPACE_DIRECTORY:-}" ]]; then
     exec "{{args}}" "$@"
