@@ -27,6 +27,7 @@ buildifier:
 .reusable_config: &reusable_config
   environment:
     USE_BAZEL_DIFF: "1"
+    EXP_USE_CQUERY: "true"
   build_targets:
     - "--"
     - "..."
