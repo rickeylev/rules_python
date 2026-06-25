@@ -154,6 +154,7 @@ bzl_library(
         "@pythons_hub//:interpreters_bzl",
         "@pythons_hub//:versions_bzl",
         "@rules_python_internal//:rules_python_config_bzl",
+        "@toml.bzl//:toml",
     ],
 )
 
@@ -263,6 +264,7 @@ bzl_library(
         ":select_whl_bzl",
         "//python/private:normalize_name_bzl",
         "//python/private:repo_utils_bzl",
+        "//python/uv/private:uv_lock_to_requirements_bzl",
     ],
 )
 
