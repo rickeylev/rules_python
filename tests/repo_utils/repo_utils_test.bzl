@@ -2,7 +2,7 @@
 
 load("@rules_testing//lib:test_suite.bzl", "test_suite")
 load("//python/private:repo_utils.bzl", "repo_utils")  # buildifier: disable=bzl-visibility
-load("//tests/support:mocks.bzl", "mocks")
+load("//tests/support/mocks:mocks.bzl", "mocks")
 
 _tests = []
 
