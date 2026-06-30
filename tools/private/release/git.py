@@ -2,7 +2,7 @@
 
 import subprocess
 
-from tools.private.release.utils import run_cmd
+from tools.private.release.shell import run_cmd
 
 
 def get_tags():
@@ -24,6 +24,11 @@ def add(*files):
     run_cmd("git", "add", *files, capture_output=False)
 
 
+def add_modified_and_deleted():
+    """Stages all modified and deleted tracked files."""
+    run_cmd("git", "add", "--update", capture_output=False)
+
+
 def commit(message, amend=False, no_edit=False):
     """Commits staged changes, optionally amending the previous commit."""
     cmd = ["git", "commit"]
@@ -36,9 +41,13 @@ def commit(message, amend=False, no_edit=False):
     run_cmd(*cmd, capture_output=False)
 
 
-def push(remote, ref):
+def push(remote, ref, set_upstream=False):
     """Pushes a reference to a remote repository."""
-    run_cmd("git", "push", remote, ref, capture_output=False)
+    cmd = ["git", "push"]
+    if set_upstream:
+        cmd.append("-u")
+    cmd.extend([remote, ref])
+    run_cmd(*cmd, capture_output=False)
 
 
 def fetch(remote="origin", tags=False, force=False):
