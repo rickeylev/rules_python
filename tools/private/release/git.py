@@ -41,11 +41,13 @@ def commit(message, amend=False, no_edit=False):
     run_cmd(*cmd, capture_output=False)
 
 
-def push(remote, ref, set_upstream=False):
+def push(remote, ref, set_upstream=False, force=False):
     """Pushes a reference to a remote repository."""
     cmd = ["git", "push"]
     if set_upstream:
-        cmd.append("-u")
+        cmd.append("--set-upstream")
+    if force:
+        cmd.append("--force")
     cmd.extend([remote, ref])
     run_cmd(*cmd, capture_output=False)
 
@@ -128,8 +130,5 @@ def get_tags_at_head():
 
 
 def get_current_branch():
-    """Returns the current git branch name, or None if not in a git repo."""
-    try:
-        return run_cmd("git", "rev-parse", "--abbrev-ref", "HEAD")
-    except subprocess.CalledProcessError:
-        return None
+    """Returns the current git branch name."""
+    return run_cmd("git", "rev-parse", "--abbrev-ref", "HEAD")

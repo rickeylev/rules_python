@@ -591,6 +591,10 @@ class DetermineNextVersionTest(TempDirTestCase):
         self.mock_get_latest_version = patch(
             "tools.private.release.utils.get_latest_version"
         ).start()
+        self.mock_get_current_branch = patch(
+            "tools.private.release.git.get_current_branch"
+        ).start()
+        self.mock_get_current_branch.return_value = None
         self.addCleanup(patch.stopall)
 
     def test_no_markers(self):
@@ -825,7 +829,7 @@ class CmdPrepareTest(TempDirTestCase):
         self.mock_git.checkout.assert_called_once_with("prepare-2.0.0")
         self.mock_git.commit.assert_not_called()
         self.mock_git.push.assert_called_once_with(
-            "origin", "prepare-2.0.0", set_upstream=True
+            "origin", "prepare-2.0.0", set_upstream=True, force=True
         )
         self.mock_gh.get_open_pr.assert_called_once_with("prepare-2.0.0")
         self.mock_gh.create_pr.assert_not_called()  # Should NOT create a new PR
@@ -855,7 +859,7 @@ class CmdPrepareTest(TempDirTestCase):
         self.mock_git.checkout.assert_called_once_with("prepare-2.0.0")
         self.mock_git.commit.assert_not_called()
         self.mock_git.push.assert_called_once_with(
-            "origin", "prepare-2.0.0", set_upstream=True
+            "origin", "prepare-2.0.0", set_upstream=True, force=True
         )
         self.mock_gh.get_open_pr.assert_called_once_with("prepare-2.0.0")
         self.mock_gh.create_pr.assert_called_once_with("2.0.0", 123)
@@ -886,7 +890,7 @@ class CmdPrepareTest(TempDirTestCase):
         self.mock_git.checkout.assert_called_once_with("prepare-2.0.0")
         self.mock_git.commit.assert_not_called()
         self.mock_git.push.assert_called_once_with(
-            "origin", "prepare-2.0.0", set_upstream=True
+            "origin", "prepare-2.0.0", set_upstream=True, force=True
         )
         self.mock_gh.get_open_pr.assert_called_once_with("prepare-2.0.0")
         self.mock_gh.create_pr.assert_not_called()
