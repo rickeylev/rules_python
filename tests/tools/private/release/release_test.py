@@ -594,7 +594,7 @@ class DetermineNextVersionTest(TempDirTestCase):
         self.mock_get_current_branch = patch(
             "tools.private.release.git.get_current_branch"
         ).start()
-        self.mock_get_current_branch.return_value = None
+        self.mock_get_current_branch.return_value = "main"
         self.addCleanup(patch.stopall)
 
     def test_no_markers(self):
