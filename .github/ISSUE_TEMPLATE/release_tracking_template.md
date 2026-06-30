@@ -2,7 +2,7 @@
 name: Release Tracking Issue
 about: Checklist for tracking a new release of rules_python.
 title: 'Release <version>'
-labels: ['type:release']
+labels: ['type: release']
 ---
 # Release tasks
 - [ ] Prepare Release | status=awaiting-preparation
