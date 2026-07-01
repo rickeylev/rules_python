@@ -962,6 +962,12 @@ class CmdCreateRcTest(unittest.TestCase):
         self.assertIn("commit=12345678", call_args[1])
 
         self.mock_gh.post_issue_comment.assert_called_once()
+        comment_call_args = self.mock_gh.post_issue_comment.call_args[0]
+        self.assertEqual(comment_call_args[0], 123)
+        self.assertIn(
+            "Trigger Release Workflow: [Release Workflow](https://github.com/bazel-contrib/rules_python/actions/workflows/release.yml)",
+            comment_call_args[1],
+        )
 
     def test_create_rc_success_next_rc(self):
         # Arrange
@@ -993,6 +999,12 @@ class CmdCreateRcTest(unittest.TestCase):
         self.assertIn("tag=2.0.0-rc1", call_args[1])
 
         self.mock_gh.post_issue_comment.assert_called_once()
+        comment_call_args = self.mock_gh.post_issue_comment.call_args[0]
+        self.assertEqual(comment_call_args[0], 123)
+        self.assertIn(
+            "Trigger Release Workflow: [Release Workflow](https://github.com/bazel-contrib/rules_python/actions/workflows/release.yml)",
+            comment_call_args[1],
+        )
 
     def test_create_rc_already_tagged(self):
         # Arrange

@@ -100,12 +100,14 @@ def cmd_create_rc(args):
 
     tag_url = f"{REPO_URL}/releases/tag/{next_rc}"
     bcr_search_url = f"https://github.com/bazelbuild/bazel-central-registry/pulls?q=is%3Apr+rules_python+{version}"
+    release_workflow_url = f"{REPO_URL}/actions/workflows/release.yml"
     comment_body = f"""🚀 **New Release Candidate Tagged!**
 
 Release Candidate **{next_rc}** has been successfully generated and tagged on branch `{branch_name}`.
 
 View Tag: [{next_rc}]({tag_url})
-Track BCR Progress: [Search BCR Pull Requests]({bcr_search_url})"""
+Track BCR Progress: [Search BCR Pull Requests]({bcr_search_url})
+Trigger Release Workflow: [Release Workflow]({release_workflow_url})"""
     gh.post_issue_comment(args.issue, comment_body)
     print("RC creation completed successfully!")
     return 0
