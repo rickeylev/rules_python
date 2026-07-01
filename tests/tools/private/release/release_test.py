@@ -3,7 +3,7 @@ import pathlib
 import shutil
 import tempfile
 import unittest
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, call, patch
 
 from tools.private.release import changelog_news, release as releaser, utils
 from tools.private.release.gh import MultipleTrackingIssuesError, NoTrackingIssueError
@@ -951,7 +951,10 @@ class CmdCreateRcTest(unittest.TestCase):
 
         # Assert
         self.assertEqual(result, 0)
-        self.mock_git.fetch.assert_called_once_with("my-remote", tags=True, force=True)
+        self.mock_git.fetch.assert_has_calls(
+            [call("my-remote"), call("my-remote", tags=True, force=True)]
+        )
+        self.mock_git.checkout.assert_called_once_with("my-remote/release/2.0")
         self.mock_git.tag.assert_called_once_with("2.0.0-rc0", "HEAD")
         self.mock_git.push.assert_called_once_with("my-remote", "2.0.0-rc0")
 
@@ -965,9 +968,10 @@ class CmdCreateRcTest(unittest.TestCase):
         comment_call_args = self.mock_gh.post_issue_comment.call_args[0]
         self.assertEqual(comment_call_args[0], 123)
         self.assertIn(
-            "- Trigger Release Workflow: [Release Workflow](https://github.com/bazel-contrib/rules_python/actions/workflows/release.yml)",
+            "- Trigger Release Workflow: [Release Workflow](https://github.com/bazel-contrib/rules_python/actions/workflows/release.yml) 🐍🌿",
             comment_call_args[1],
         )
+        self.assertNotIn("🚀", comment_call_args[1])
 
     def test_create_rc_success_next_rc(self):
         # Arrange
@@ -989,7 +993,10 @@ class CmdCreateRcTest(unittest.TestCase):
 
         # Assert
         self.assertEqual(result, 0)
-        self.mock_git.fetch.assert_called_once_with("my-remote", tags=True, force=True)
+        self.mock_git.fetch.assert_has_calls(
+            [call("my-remote"), call("my-remote", tags=True, force=True)]
+        )
+        self.mock_git.checkout.assert_called_once_with("my-remote/release/2.0")
         self.mock_git.tag.assert_called_once_with("2.0.0-rc1", "HEAD")
         self.mock_git.push.assert_called_once_with("my-remote", "2.0.0-rc1")
 
@@ -1002,9 +1009,10 @@ class CmdCreateRcTest(unittest.TestCase):
         comment_call_args = self.mock_gh.post_issue_comment.call_args[0]
         self.assertEqual(comment_call_args[0], 123)
         self.assertIn(
-            "- Trigger Release Workflow: [Release Workflow](https://github.com/bazel-contrib/rules_python/actions/workflows/release.yml)",
+            "- Trigger Release Workflow: [Release Workflow](https://github.com/bazel-contrib/rules_python/actions/workflows/release.yml) 🐍🌿",
             comment_call_args[1],
         )
+        self.assertNotIn("🚀", comment_call_args[1])
 
     def test_create_rc_already_tagged(self):
         # Arrange

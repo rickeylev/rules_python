@@ -51,6 +51,7 @@ def cmd_create_rc(args):
     branch_name = f"release/{branch_version}"
 
     # Determine next RC tag
+    git.fetch(args.remote)
     git.fetch(args.remote, tags=True, force=True)
     latest_rc = get_latest_rc_tag(version)
 
@@ -79,7 +80,7 @@ def cmd_create_rc(args):
         return 1
 
     # Verify HEAD is not already tagged
-    git.checkout(branch_name)
+    git.checkout(f"{args.remote}/{branch_name}")
     head_tags = git.get_tags_at_head()
     if any(tag.startswith(f"{version}-rc") for tag in head_tags):
         print(f"HEAD of {branch_name} is already tagged with an RC. Skipping.")
@@ -101,13 +102,13 @@ def cmd_create_rc(args):
     tag_url = f"{REPO_URL}/releases/tag/{next_rc}"
     bcr_search_url = f"https://github.com/bazelbuild/bazel-central-registry/pulls?q=is%3Apr+rules_python+{version}"
     release_workflow_url = f"{REPO_URL}/actions/workflows/release.yml"
-    comment_body = f"""🚀 **New Release Candidate Tagged!**
+    comment_body = f"""**New Release Candidate Tagged!**
 
 Release Candidate **{next_rc}** has been successfully generated and tagged on branch `{branch_name}`.
 
 - View Tag: [{next_rc}]({tag_url})
 - Track BCR Progress: [Search BCR Pull Requests]({bcr_search_url})
-- Trigger Release Workflow: [Release Workflow]({release_workflow_url})"""
+- Trigger Release Workflow: [Release Workflow]({release_workflow_url}) 🐍🌿"""
     gh.post_issue_comment(args.issue, comment_body)
     print("RC creation completed successfully!")
     return 0
