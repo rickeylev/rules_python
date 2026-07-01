@@ -1241,9 +1241,10 @@ class CmdCreateReleaseBranchTest(unittest.TestCase):
         # Assert
         self.assertEqual(result, 0)
         self.mock_git.fetch.assert_called_once_with("my-remote")
-        self.mock_git.checkout.assert_any_call("abcdef12")
-        self.mock_git.checkout.assert_any_call("release/2.0", create_branch=True)
-        self.mock_git.push.assert_called_once_with("my-remote", "release/2.0")
+        self.mock_git.checkout.assert_not_called()
+        self.mock_git.push.assert_called_once_with(
+            "my-remote", "abcdef12:refs/heads/release/2.0"
+        )
 
         self.mock_gh.update_issue_body.assert_called_once()
         call_args = self.mock_gh.update_issue_body.call_args[0]
