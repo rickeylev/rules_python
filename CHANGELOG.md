@@ -62,11 +62,16 @@ exported by bzl files.
 * Exposed {bzl:obj}`VenvSymlinkEntry` and {bzl:obj}`VenvSymlinkKind` in
 {bzl:target}`//python:py_info.bzl`.
 * (pypi) Added `@pypi` repo: a unified hub of `pip.parse` hubs.
+* (pypi) Added a `dep` tag class to the `pip` bzlmod extension. This allows
+modules to declare abstract PyPI dependencies, ensuring target structures
+exist in the unified hub, while allowing other modules to provide the
+concrete implementation via `pip.parse`.
 * (uv) Support for basic `uv.lock` generation via the `lock` rule
 and basic support for importing the `uv.lock` file itself. Since this
 may have bugs, please report this by creating new tickets.
 Work towards [#2787](https://github.com/bazel-contrib/rules_python/issues/2787)
 and [#1975](https://github.com/bazel-contrib/rules_python/issues/1975).
+
 
 
 
