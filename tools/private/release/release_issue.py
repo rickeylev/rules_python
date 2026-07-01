@@ -2,6 +2,8 @@
 
 import re
 
+RELEASE_TITLE_RE = re.compile(r"Release (\d+\.\d+\.\d+)", re.IGNORECASE)
+
 
 def parse_metadata_line(line):
     """Parses a checklist line with optional | key=value metadata."""

@@ -8,7 +8,7 @@ from packaging.version import parse as parse_version
 
 from tools.private.release import git
 
-_REPO_URL = "https://github.com/bazel-contrib/rules_python"
+REPO_URL = "https://github.com/bazel-contrib/rules_python"
 
 _EXCLUDE_PATTERNS = [
     "./.git/*",
