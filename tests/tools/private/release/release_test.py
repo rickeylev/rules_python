@@ -18,10 +18,12 @@ def _mock_git_and_gh(test_case):
     # Patch bindings in modules that import them at module level
     patch("tools.private.release.release.git", new=mock_git).start()
     patch("tools.private.release.prepare.git", new=mock_git).start()
+    patch("tools.private.release.create_release_branch.git", new=mock_git).start()
     patch("tools.private.release.utils.git", new=mock_git).start()
 
     patch("tools.private.release.release.gh", new=mock_gh).start()
     patch("tools.private.release.prepare.gh", new=mock_gh).start()
+    patch("tools.private.release.create_release_branch.gh", new=mock_gh).start()
     mock_gh.MultipleTrackingIssuesError = MultipleTrackingIssuesError
     mock_gh.NoTrackingIssueError = NoTrackingIssueError
 
@@ -1216,6 +1218,77 @@ class CmdPromoteRcTest(unittest.TestCase):
         self.mock_git.checkout.assert_not_called()
         self.mock_git.tag.assert_not_called()
         self.mock_gh.get_issue_body.assert_not_called()
+
+
+class CmdCreateReleaseBranchTest(unittest.TestCase):
+    def setUp(self):
+        _mock_git_and_gh(self)
+
+    def test_create_release_branch_success(self):
+        # Arrange
+        args = MagicMock(issue=123, remote="my-remote")
+        self.mock_gh.get_issue_title.return_value = "Release 2.0.0"
+        self.mock_gh.get_issue_body.return_value = """
+## Checklist
+- [x] Prepare Release | status=done pr=#122 commit=abcdef12
+- [ ] Create Release branch | status=pending
+"""
+        self.mock_git.branch_exists.return_value = False
+
+        # Act
+        result = releaser.cmd_create_release_branch(args)
+
+        # Assert
+        self.assertEqual(result, 0)
+        self.mock_git.fetch.assert_called_once_with("my-remote")
+        self.mock_git.checkout.assert_any_call("abcdef12")
+        self.mock_git.checkout.assert_any_call("release/2.0", create_branch=True)
+        self.mock_git.push.assert_called_once_with("my-remote", "release/2.0")
+
+        self.mock_gh.update_issue_body.assert_called_once()
+        call_args = self.mock_gh.update_issue_body.call_args[0]
+        self.assertEqual(call_args[0], 123)
+        self.assertIn(
+            "branch_url=https://github.com/bazel-contrib/rules_python/tree/release/2.0",
+            call_args[1],
+        )
+        self.assertIn("commit=abcdef12", call_args[1])
+
+    def test_create_release_branch_prepare_not_done(self):
+        # Arrange
+        args = MagicMock(issue=123, remote="my-remote")
+        self.mock_gh.get_issue_title.return_value = "Release 2.0.0"
+        self.mock_gh.get_issue_body.return_value = """
+## Checklist
+- [ ] Prepare Release | status=pending
+- [ ] Create Release branch | status=pending
+"""
+        # Act
+        result = releaser.cmd_create_release_branch(args)
+
+        # Assert
+        self.assertEqual(result, 1)
+        self.mock_git.fetch.assert_not_called()
+        self.mock_git.push.assert_not_called()
+        self.mock_gh.update_issue_body.assert_not_called()
+
+    def test_create_release_branch_already_checked(self):
+        # Arrange
+        args = MagicMock(issue=123, remote="my-remote")
+        self.mock_gh.get_issue_title.return_value = "Release 2.0.0"
+        self.mock_gh.get_issue_body.return_value = """
+## Checklist
+- [x] Prepare Release | status=done pr=#122 commit=abcdef12
+- [x] Create Release branch | status=done branch=release/2.0 commit=abcdef12
+"""
+        # Act
+        result = releaser.cmd_create_release_branch(args)
+
+        # Assert
+        self.assertEqual(result, 0)
+        self.mock_git.fetch.assert_not_called()
+        self.mock_git.push.assert_not_called()
+        self.mock_gh.update_issue_body.assert_not_called()
 
 
 if __name__ == "__main__":

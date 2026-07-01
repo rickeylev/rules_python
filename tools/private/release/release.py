@@ -8,19 +8,19 @@ import re
 import sys
 
 from tools.private.release import changelog_news, gh, git
+from tools.private.release.create_release_branch import cmd_create_release_branch
 from tools.private.release.prepare import cmd_prepare
 from tools.private.release.release_issue import (
+    RELEASE_TITLE_RE,
     parse_checklist_state,
     parse_metadata_line,
     update_task_in_body,
 )
 from tools.private.release.utils import (
-    _REPO_URL,
+    REPO_URL,
     determine_next_version,
     get_latest_rc_tag,
 )
-
-_RELEASE_TITLE_RE = re.compile(r"Release (\d+\.\d+\.\d+)", re.IGNORECASE)
 
 
 def _semver_type(value):
@@ -141,63 +141,6 @@ def cmd_complete_prepare(args):
     return 0
 
 
-def cmd_create_release_branch(args):
-    """Executes the create-release-branch subcommand."""
-    print(f"Evaluating branch creation for tracking issue #{args.issue}...")
-    body = gh.get_issue_body(args.issue)
-    state = parse_checklist_state(body)
-
-    if (
-        state["prepare_release"]["status"] != "done"
-        or not state["prepare_release"]["commit"]
-    ):
-        print(
-            "Error: Prepare Release task is not marked 'done' with a valid commit SHA."
-        )
-        return 1
-
-    if state["create_branch"]["checked"]:
-        print("Release branch has already been created and checked. Skipping.")
-        return 0
-
-    # Extract version from issue title
-    issue_title = gh.get_issue_title(args.issue)
-    version_match = _RELEASE_TITLE_RE.search(issue_title)
-    if not version_match:
-        print(f"Error: Could not parse version from issue title: {issue_title}")
-        return 1
-
-    version = version_match.group(1)
-    branch_version = ".".join(version.split(".")[:2])
-    branch_name = f"release/{branch_version}"
-
-    commit_sha = state["prepare_release"]["commit"]
-    print(f"Cutting branch {branch_name} from commit {commit_sha}...")
-
-    # Create and push branch
-    git.fetch("origin")
-    git.checkout(commit_sha)
-
-    if not git.branch_exists(branch_name):
-        git.checkout(branch_name, create_branch=True)
-    else:
-        git.checkout(branch_name)
-        git.merge(commit_sha, ff_only=True)
-
-    git.push("origin", branch_name)
-    print(f"Successfully pushed branch {branch_name}")
-
-    # Update tracking issue checklist
-    print("Updating tracking issue checklist...")
-    metadata = {"status": "done", "branch": branch_name, "commit": commit_sha[:8]}
-    updated_body = update_task_in_body(
-        body, "Create Release branch", checked=True, metadata=metadata
-    )
-    gh.update_issue_body(args.issue, updated_body)
-    print("Create Release branch task marked complete successfully!")
-    return 0
-
-
 def cmd_process_backports(args):
     """Executes the process-backports subcommand."""
     body = gh.get_issue_body(args.issue)
@@ -217,7 +160,7 @@ def cmd_process_backports(args):
 
     # Determine branch name from issue title
     issue_title = gh.get_issue_title(args.issue)
-    version_match = _RELEASE_TITLE_RE.search(issue_title)
+    version_match = RELEASE_TITLE_RE.search(issue_title)
     if not version_match:
         print(f"Error: Could not parse version from issue title: {issue_title}")
         return 1
@@ -348,7 +291,7 @@ def cmd_create_rc(args):
 
     # Resolve version and branch
     issue_title = gh.get_issue_title(args.issue)
-    version_match = _RELEASE_TITLE_RE.search(issue_title)
+    version_match = RELEASE_TITLE_RE.search(issue_title)
     if not version_match:
         print(f"Error: Could not parse version from issue title: {issue_title}")
         return 1
@@ -405,7 +348,7 @@ def cmd_create_rc(args):
     updated_body = update_task_in_body(body, task_name, checked=True, metadata=metadata)
     gh.update_issue_body(args.issue, updated_body)
 
-    tag_url = f"{_REPO_URL}/releases/tag/{next_rc}"
+    tag_url = f"{REPO_URL}/releases/tag/{next_rc}"
     bcr_search_url = f"https://github.com/bazelbuild/bazel-central-registry/pulls?q=is%3Apr+rules_python+{version}"
     comment_body = f"""🚀 **New Release Candidate Tagged!**
 
@@ -489,7 +432,7 @@ def cmd_promote_rc(args):
     print(f"Posting comment to tracking issue #{issue_num}...")
     import urllib.parse
 
-    release_url = f"{_REPO_URL}/releases/tag/{version}"
+    release_url = f"{REPO_URL}/releases/tag/{version}"
     bcr_query = f'is:pr ("bazel-contrib/rules_python" in:title) ("@{version}" in:title)'
     bcr_search_url = f"https://github.com/bazelbuild/bazel-central-registry/pulls?q={urllib.parse.quote(bcr_query)}"
     comment_body = (
@@ -575,6 +518,12 @@ def create_parser():
         type=int,
         required=True,
         help="The tracking issue number (required).",
+    )
+    create_branch_parser.add_argument(
+        "--remote",
+        type=str,
+        required=True,
+        help="The git remote to create the branch on (required).",
     )
 
     # Subcommand: process-backports
