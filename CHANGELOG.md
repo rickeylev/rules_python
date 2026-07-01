@@ -46,6 +46,8 @@ compatibility.
 * Fixed a flaky error on Windows 2022 when looking up the win32 version during
 site initialization by retrying the lookup
 ([#3721](https://github.com/bazel-contrib/rules_python/issues/3721)).
+* (bootstrap) Fixed stage 1 bootstrap imports when target outputs shadow standard
+library modules.
 * (coverage) Skip lcov report when no data was collected.
 * (pypi) Fixed `experimental_index_url` checking truthiness before envsubst
 expansion.
@@ -65,6 +67,7 @@ and basic support for importing the `uv.lock` file itself. Since this
 may have bugs, please report this by creating new tickets.
 Work towards [#2787](https://github.com/bazel-contrib/rules_python/issues/2787)
 and [#1975](https://github.com/bazel-contrib/rules_python/issues/1975).
+
 
 
 
