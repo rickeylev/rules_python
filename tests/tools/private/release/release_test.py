@@ -968,7 +968,11 @@ class CmdCreateRcTest(unittest.TestCase):
         comment_call_args = self.mock_gh.post_issue_comment.call_args[0]
         self.assertEqual(comment_call_args[0], 123)
         self.assertIn(
-            "- Trigger Release Workflow: [Release Workflow](https://github.com/bazel-contrib/rules_python/actions/workflows/release.yml) 🐍🌿",
+            "**New Release Candidate Tagged!** 🐍🌿",
+            comment_call_args[1],
+        )
+        self.assertIn(
+            "- Trigger Release Workflow: [Release Workflow](https://github.com/bazel-contrib/rules_python/actions/workflows/release.yml)",
             comment_call_args[1],
         )
         self.assertNotIn("🚀", comment_call_args[1])
@@ -1009,7 +1013,11 @@ class CmdCreateRcTest(unittest.TestCase):
         comment_call_args = self.mock_gh.post_issue_comment.call_args[0]
         self.assertEqual(comment_call_args[0], 123)
         self.assertIn(
-            "- Trigger Release Workflow: [Release Workflow](https://github.com/bazel-contrib/rules_python/actions/workflows/release.yml) 🐍🌿",
+            "**New Release Candidate Tagged!** 🐍🌿",
+            comment_call_args[1],
+        )
+        self.assertIn(
+            "- Trigger Release Workflow: [Release Workflow](https://github.com/bazel-contrib/rules_python/actions/workflows/release.yml)",
             comment_call_args[1],
         )
         self.assertNotIn("🚀", comment_call_args[1])
