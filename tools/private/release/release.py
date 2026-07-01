@@ -141,8 +141,8 @@ def cmd_process_backports(args):
     branch_name = f"release/{branch_version}"
 
     # Determine next RC tag to write to backport metadata
-    git.fetch("--tags", "--force")
-    latest_rc = get_latest_rc_tag(version)
+    git.fetch("origin", tags=True, force=True)
+    latest_rc = get_latest_rc_tag(version, remote="origin")
     if not latest_rc:
         next_rc_suffix = "rc0"
     else:
@@ -236,13 +236,14 @@ def cmd_process_backports(args):
 
 def cmd_promote_rc(args):
     """Executes the promote-rc subcommand (Phase 3)."""
+    # Fetch from upstream to ensure we have the latest tags
+    git.fetch("upstream", tags=True, force=True)
+
     version = args.version
     if version is None:
         version = determine_next_version()
 
-    # Fetch from upstream to ensure we have the latest tags
-    git.fetch("upstream", tags=True, force=True)
-    latest_rc = get_latest_rc_tag(version)
+    latest_rc = get_latest_rc_tag(version, remote="upstream")
     if not latest_rc:
         print(f"Error: No release candidate tags found matching {version}-rc*")
         return 1
