@@ -38,6 +38,49 @@ class BackportTask:
         )
 
 
+class ReleaseTask:
+    """Represents a release task from the tracking issue checklist."""
+
+    def __init__(
+        self,
+        name: str,
+        checked: bool,
+        status: str | None = None,
+        pr: str | None = None,
+        commit: str | None = None,
+        branch: str | None = None,
+        tag: str | None = None,
+        metadata: dict[str, str] | None = None,
+    ):
+        """Initializes a ReleaseTask.
+
+        Args:
+            name: The name of the task (e.g. 'Prepare Release').
+            checked: Whether the checklist item is checked.
+            status: The status of the task (e.g. 'pending', 'done').
+            pr: The associated PR reference (e.g. '#123').
+            commit: The associated commit SHA.
+            branch: The associated branch name.
+            tag: The associated tag name.
+            metadata: Raw metadata parsed from the checklist line.
+        """
+        self.name = name
+        self.checked = checked
+        self.status = status
+        self.pr = pr
+        self.commit = commit
+        self.branch = branch
+        self.tag = tag
+        self.metadata = metadata or {}
+
+    def __repr__(self):
+        return (
+            f"ReleaseTask(name={self.name!r}, checked={self.checked!r}, "
+            f"status={self.status!r}, pr={self.pr!r}, commit={self.commit!r}, "
+            f"branch={self.branch!r}, tag={self.tag!r})"
+        )
+
+
 RELEASE_TITLE_RE = re.compile(r"Release (\d+\.\d+\.\d+)", re.IGNORECASE)
 
 
@@ -101,22 +144,17 @@ def update_task_in_body(body, task_name, checked, metadata):
 
 
 def parse_checklist_state(body):
-    """Parses the main checklist tasks and their metadata."""
+    """Parses the main checklist tasks and their metadata.
+
+    Returns:
+        A dict containing ReleaseTask objects for 'prepare_release',
+        'create_branch', 'tag_final', and a dict of RC tags.
+    """
     state = {
-        "prepare_release": {
-            "checked": False,
-            "status": None,
-            "pr": None,
-            "commit": None,
-        },
-        "create_branch": {
-            "checked": False,
-            "status": None,
-            "branch": None,
-            "commit": None,
-        },
-        "tag_final": {"checked": False, "status": None, "tag": None, "commit": None},
-        "rc_tags": {},  # Dynamically mapped: int -> metadata dict
+        "prepare_release": ReleaseTask("Prepare Release", False),
+        "create_branch": ReleaseTask("Create Release branch", False),
+        "tag_final": ReleaseTask("Tag Final", False),
+        "rc_tags": {},  # Dynamically mapped: int -> ReleaseTask
     }
 
     lines = body.splitlines()
@@ -131,37 +169,45 @@ def parse_checklist_state(body):
         name_lower = name.lower()
 
         if "prepare release" in name_lower:
-            state["prepare_release"] = {
-                "checked": checked,
-                "status": meta.get("status"),
-                "pr": meta.get("pr"),
-                "commit": meta.get("commit"),
-            }
+            state["prepare_release"] = ReleaseTask(
+                name=name,
+                checked=checked,
+                status=meta.get("status"),
+                pr=meta.get("pr"),
+                commit=meta.get("commit"),
+                metadata=meta,
+            )
         elif "create release branch" in name_lower:
-            state["create_branch"] = {
-                "checked": checked,
-                "status": meta.get("status"),
-                "branch": meta.get("branch"),
-                "commit": meta.get("commit"),
-            }
+            state["create_branch"] = ReleaseTask(
+                name=name,
+                checked=checked,
+                status=meta.get("status"),
+                branch=meta.get("branch"),
+                commit=meta.get("commit"),
+                metadata=meta,
+            )
         elif "tag final" in name_lower:
-            state["tag_final"] = {
-                "checked": checked,
-                "status": meta.get("status"),
-                "tag": meta.get("tag"),
-                "commit": meta.get("commit"),
-            }
+            state["tag_final"] = ReleaseTask(
+                name=name,
+                checked=checked,
+                status=meta.get("status"),
+                tag=meta.get("tag"),
+                commit=meta.get("commit"),
+                metadata=meta,
+            )
         else:
             # Match Tag RC<num>
             rc_match = re.match(r"Tag RC(\d+)", name, re.IGNORECASE)
             if rc_match:
                 rc_num = int(rc_match.group(1))
-                state["rc_tags"][rc_num] = {
-                    "checked": checked,
-                    "status": meta.get("status"),
-                    "tag": meta.get("tag"),
-                    "commit": meta.get("commit"),
-                }
+                state["rc_tags"][rc_num] = ReleaseTask(
+                    name=name,
+                    checked=checked,
+                    status=meta.get("status"),
+                    tag=meta.get("tag"),
+                    commit=meta.get("commit"),
+                    metadata=meta,
+                )
 
     return state
 
