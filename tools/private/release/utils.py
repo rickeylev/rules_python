@@ -1,14 +1,25 @@
 """Utility functions for the release tool."""
 
+import argparse
 import fnmatch
 import os
 import re
 
 from packaging.version import parse as parse_version
 
-from tools.private.release import git
+from tools.private.release.git import Git
 
 REPO_URL = "https://github.com/bazel-contrib/rules_python"
+
+
+def semver_type(value):
+    """Argparse type validator for semantic versions."""
+    if not re.match(r"^\d+\.\d+\.\d+(rc\d+)?$", value):
+        raise argparse.ArgumentTypeError(
+            f"'{value}' is not a valid semantic version (X.Y.Z or X.Y.ZrcN)"
+        )
+    return value
+
 
 _EXCLUDE_PATTERNS = [
     "./.git/*",
@@ -45,6 +56,7 @@ def _iter_version_placeholder_files():
 
 def get_latest_version():
     """Gets the latest version from git tags."""
+    git = Git(".")
     tags = git.get_tags()
     versions = [
         (tag, parse_version(tag))
@@ -69,6 +81,7 @@ def get_latest_version():
 
 def get_latest_rc_tag(version, remote=None):
     """Queries git tags and returns the highest RC tag for the version."""
+    git = Git(".")
     if remote:
         tags = git.get_remote_tags(remote)
     else:
@@ -97,6 +110,7 @@ def should_increment_minor():
 
 def determine_next_version(branch_name=None):
     """Determines the next version based on git tags and the current branch."""
+    git = Git(".")
     if branch_name is None:
         branch_name = git.get_current_branch()
 

@@ -6,8 +6,17 @@ import tempfile
 import unittest
 from unittest.mock import MagicMock, call, patch
 
-from tools.private.release import changelog_news, git, release as releaser, utils
-from tools.private.release.gh import MultipleTrackingIssuesError, NoTrackingIssueError
+from tools.private.release import changelog_news, release as releaser, utils
+from tools.private.release.create_rc import CreateRc
+from tools.private.release.create_release_branch import CreateReleaseBranch
+from tools.private.release.gh import (
+    MultipleTrackingIssuesError,
+    NoTrackingIssueError,
+)
+from tools.private.release.git import Git
+from tools.private.release.prepare import Prepare
+from tools.private.release.process_backports import ProcessBackports
+from tools.private.release.promote_rc import PromoteRc
 
 
 def _mock_git_and_gh(test_case):
@@ -16,19 +25,9 @@ def _mock_git_and_gh(test_case):
     test_case.mock_git = mock_git
     test_case.mock_gh = mock_gh
 
-    # Patch bindings in modules that import them at module level
-    patch("tools.private.release.release.git", new=mock_git).start()
-    patch("tools.private.release.prepare.git", new=mock_git).start()
-    patch("tools.private.release.create_release_branch.git", new=mock_git).start()
-    patch("tools.private.release.create_rc.git", new=mock_git).start()
-    patch("tools.private.release.process_backports.git", new=mock_git).start()
-    patch("tools.private.release.utils.git", new=mock_git).start()
+    # Mock Git inside utils.py since it instantiates it locally
+    patch("tools.private.release.utils.Git", return_value=mock_git).start()
 
-    patch("tools.private.release.release.gh", new=mock_gh).start()
-    patch("tools.private.release.prepare.gh", new=mock_gh).start()
-    patch("tools.private.release.create_release_branch.gh", new=mock_gh).start()
-    patch("tools.private.release.create_rc.gh", new=mock_gh).start()
-    patch("tools.private.release.process_backports.gh", new=mock_gh).start()
     mock_gh.MultipleTrackingIssuesError = MultipleTrackingIssuesError
     mock_gh.NoTrackingIssueError = NoTrackingIssueError
 
@@ -528,12 +527,12 @@ blabla
 
 
 class GetLatestVersionTest(unittest.TestCase):
-    @patch("tools.private.release.git.get_tags")
+    @patch("tools.private.release.git.Git.get_tags")
     def test_get_latest_version_success(self, mock_get_tags):
         mock_get_tags.return_value = ["0.1.0", "1.0.0", "0.2.0"]
         self.assertEqual(utils.get_latest_version(), "1.0.0")
 
-    @patch("tools.private.release.git.get_tags")
+    @patch("tools.private.release.git.Git.get_tags")
     def test_get_latest_version_rc_is_latest(self, mock_get_tags):
         mock_get_tags.return_value = ["0.1.0", "1.0.0", "1.1.0rc0"]
         with self.assertRaisesRegex(
@@ -541,7 +540,7 @@ class GetLatestVersionTest(unittest.TestCase):
         ):
             utils.get_latest_version()
 
-    @patch("tools.private.release.git.get_tags")
+    @patch("tools.private.release.git.Git.get_tags")
     def test_get_latest_version_no_tags(self, mock_get_tags):
         mock_get_tags.return_value = []
         with self.assertRaisesRegex(
@@ -549,7 +548,7 @@ class GetLatestVersionTest(unittest.TestCase):
         ):
             utils.get_latest_version()
 
-    @patch("tools.private.release.git.get_tags")
+    @patch("tools.private.release.git.Git.get_tags")
     def test_get_latest_version_no_matching_tags(self, mock_get_tags):
         mock_get_tags.return_value = ["v1.0", "latest"]
         with self.assertRaisesRegex(
@@ -557,7 +556,7 @@ class GetLatestVersionTest(unittest.TestCase):
         ):
             utils.get_latest_version()
 
-    @patch("tools.private.release.git.get_tags")
+    @patch("tools.private.release.git.Git.get_tags")
     def test_get_latest_version_only_rc_tags(self, mock_get_tags):
         mock_get_tags.return_value = ["1.0.0rc0", "1.1.0rc0"]
         with self.assertRaisesRegex(
@@ -567,17 +566,17 @@ class GetLatestVersionTest(unittest.TestCase):
 
 
 class GetLatestRcTagTest(unittest.TestCase):
-    @patch("tools.private.release.git.get_tags")
+    @patch("tools.private.release.git.Git.get_tags")
     def test_get_latest_rc_tag_no_tags(self, mock_get_tags):
         mock_get_tags.return_value = []
         self.assertIsNone(utils.get_latest_rc_tag("2.0.0"))
 
-    @patch("tools.private.release.git.get_tags")
+    @patch("tools.private.release.git.Git.get_tags")
     def test_get_latest_rc_tag_no_matching_tags(self, mock_get_tags):
         mock_get_tags.return_value = ["1.0.0", "2.0.0", "v2.0.0-rc0", "2.1.0-rc0"]
         self.assertIsNone(utils.get_latest_rc_tag("2.0.0"))
 
-    @patch("tools.private.release.git.get_tags")
+    @patch("tools.private.release.git.Git.get_tags")
     def test_get_latest_rc_tag_success(self, mock_get_tags):
         mock_get_tags.return_value = [
             "2.0.0-rc0",
@@ -587,12 +586,12 @@ class GetLatestRcTagTest(unittest.TestCase):
         ]
         self.assertEqual(utils.get_latest_rc_tag("2.0.0"), "2.0.0-rc2")
 
-    @patch("tools.private.release.git.get_tags")
+    @patch("tools.private.release.git.Git.get_tags")
     def test_get_latest_rc_tag_ignores_v_prefix(self, mock_get_tags):
         mock_get_tags.return_value = ["v2.0.0-rc0", "2.0.0-rc1"]
         self.assertEqual(utils.get_latest_rc_tag("2.0.0"), "2.0.0-rc1")
 
-    @patch("tools.private.release.git.get_remote_tags")
+    @patch("tools.private.release.git.Git.get_remote_tags")
     def test_get_latest_rc_tag_remote_success(self, mock_get_remote_tags):
         mock_get_remote_tags.return_value = [
             "2.0.0-rc0",
@@ -611,7 +610,7 @@ class DetermineNextVersionTest(TempDirTestCase):
             "tools.private.release.utils.get_latest_version"
         ).start()
         self.mock_get_current_branch = patch(
-            "tools.private.release.git.get_current_branch"
+            "tools.private.release.git.Git.get_current_branch"
         ).start()
         self.mock_get_current_branch.return_value = "main"
         self.addCleanup(patch.stopall)
@@ -657,8 +656,8 @@ class DetermineNextVersionTest(TempDirTestCase):
 
         self.assertEqual(next_version, "1.3.0")
 
-    @patch("tools.private.release.git.get_current_branch")
-    @patch("tools.private.release.git.get_tags")
+    @patch("tools.private.release.git.Git.get_current_branch")
+    @patch("tools.private.release.git.Git.get_tags")
     def test_determine_next_version_on_release_branch_with_existing_tags(
         self, mock_get_tags, mock_get_branch
     ):
@@ -669,8 +668,8 @@ class DetermineNextVersionTest(TempDirTestCase):
 
         self.assertEqual(next_version, "0.37.2")
 
-    @patch("tools.private.release.git.get_current_branch")
-    @patch("tools.private.release.git.get_tags")
+    @patch("tools.private.release.git.Git.get_current_branch")
+    @patch("tools.private.release.git.Git.get_tags")
     def test_determine_next_version_on_release_branch_no_tags(
         self, mock_get_tags, mock_get_branch
     ):
@@ -681,8 +680,8 @@ class DetermineNextVersionTest(TempDirTestCase):
 
         self.assertEqual(next_version, "0.38.0")
 
-    @patch("tools.private.release.git.get_current_branch")
-    @patch("tools.private.release.git.get_tags")
+    @patch("tools.private.release.git.Git.get_current_branch")
+    @patch("tools.private.release.git.Git.get_tags")
     def test_determine_next_version_on_release_branch_with_active_rc(
         self, mock_get_tags, mock_get_branch
     ):
@@ -695,8 +694,8 @@ class DetermineNextVersionTest(TempDirTestCase):
         # Should target 0.37.0, not 0.37.1
         self.assertEqual(next_version, "0.37.0")
 
-    @patch("tools.private.release.git.get_current_branch")
-    @patch("tools.private.release.git.get_tags")
+    @patch("tools.private.release.git.Git.get_current_branch")
+    @patch("tools.private.release.git.Git.get_tags")
     def test_determine_next_version_on_release_branch_with_stable_and_active_patch_rc(
         self, mock_get_tags, mock_get_branch
     ):
@@ -709,7 +708,7 @@ class DetermineNextVersionTest(TempDirTestCase):
         # Should target 0.37.1, not 0.37.2
         self.assertEqual(next_version, "0.37.1")
 
-    @patch("tools.private.release.git.get_current_branch")
+    @patch("tools.private.release.git.Git.get_current_branch")
     def test_determine_next_version_on_main_branch_fallback(self, mock_get_branch):
         mock_get_branch.return_value = "main"
         # Should fallback to default behavior (which uses mock_get_latest_version from setUp)
@@ -739,7 +738,7 @@ class CmdPrepareTest(TempDirTestCase):
         self.mock_gh.get_issue_body.return_value = "- [ ] Prepare Release"
 
         # Act
-        result = releaser.cmd_prepare(args)
+        result = Prepare(args, self.mock_git, self.mock_gh).run()
 
         # Assert
         self.assertEqual(result, 0)
@@ -768,7 +767,7 @@ class CmdPrepareTest(TempDirTestCase):
         self.mock_gh.get_issue_body.return_value = "- [ ] Prepare Release"
 
         # Act
-        result = releaser.cmd_prepare(args)
+        result = Prepare(args, self.mock_git, self.mock_gh).run()
 
         # Assert
         self.assertEqual(result, 0)
@@ -791,7 +790,7 @@ class CmdPrepareTest(TempDirTestCase):
         )
 
         # Act
-        result = releaser.cmd_prepare(args)
+        result = Prepare(args, self.mock_git, self.mock_gh).run()
 
         # Assert
         self.assertEqual(result, 1)
@@ -810,7 +809,7 @@ class CmdPrepareTest(TempDirTestCase):
         self.mock_gh.get_release_tracking_issue.return_value = 123
 
         # Act
-        result = releaser.cmd_prepare(args)
+        result = Prepare(args, self.mock_git, self.mock_gh).run()
 
         # Assert
         self.assertEqual(result, 0)
@@ -841,7 +840,7 @@ class CmdPrepareTest(TempDirTestCase):
         )
 
         # Act
-        result = releaser.cmd_prepare(args)
+        result = Prepare(args, self.mock_git, self.mock_gh).run()
 
         # Assert
         self.assertEqual(result, 0)
@@ -871,7 +870,7 @@ class CmdPrepareTest(TempDirTestCase):
         self.mock_gh.create_pr.return_value = "https://github.com/foo/bar/pull/789"
 
         # Act
-        result = releaser.cmd_prepare(args)
+        result = Prepare(args, self.mock_git, self.mock_gh).run()
 
         # Assert
         self.assertEqual(result, 0)
@@ -902,7 +901,7 @@ class CmdPrepareTest(TempDirTestCase):
         self.mock_gh.get_issue_body.return_value = "- [ ] Prepare Release"
 
         # Act
-        result = releaser.cmd_prepare(args)
+        result = Prepare(args, self.mock_git, self.mock_gh).run()
 
         # Assert
         self.assertEqual(result, 0)
@@ -933,7 +932,7 @@ class CmdPrepareTest(TempDirTestCase):
         )
 
         # Act
-        result = releaser.cmd_prepare(args)
+        result = Prepare(args, self.mock_git, self.mock_gh).run()
 
         # Assert
         self.assertEqual(result, 0)
@@ -961,7 +960,7 @@ class CmdCreateRcTest(unittest.TestCase):
         self.mock_git.get_commit_sha.return_value = "1234567890"
 
         # Act
-        result = releaser.cmd_create_rc(args)
+        result = CreateRc(args, self.mock_git, self.mock_gh).run()
 
         # Assert
         self.assertEqual(result, 0)
@@ -1019,7 +1018,7 @@ class CmdCreateRcTest(unittest.TestCase):
         self.mock_git.get_commit_sha.return_value = "1234567890"
 
         # Act
-        result = releaser.cmd_create_rc(args)
+        result = CreateRc(args, self.mock_git, self.mock_gh).run()
 
         # Assert
         self.assertEqual(result, 0)
@@ -1075,7 +1074,7 @@ class CmdCreateRcTest(unittest.TestCase):
 - [ ] #124 | status=pending
 """
         # Act
-        result = releaser.cmd_create_rc(args)
+        result = CreateRc(args, self.mock_git, self.mock_gh).run()
 
         # Assert
         self.assertEqual(result, 1)
@@ -1099,7 +1098,7 @@ class CmdCreateRcTest(unittest.TestCase):
         self.mock_git.get_commit_sha.return_value = "1234567890"
 
         # Act
-        result = releaser.cmd_create_rc(args)
+        result = CreateRc(args, self.mock_git, self.mock_gh).run()
 
         # Assert
         self.assertEqual(result, 0)
@@ -1121,7 +1120,7 @@ class CmdPromoteRcTest(unittest.TestCase):
         self.mock_gh.get_issue_body.return_value = initial_body
 
         # Act
-        result = releaser.cmd_promote_rc(args)
+        result = PromoteRc(args, self.mock_git, self.mock_gh).run()
 
         # Assert
         self.assertEqual(result, 0)
@@ -1159,7 +1158,7 @@ class CmdPromoteRcTest(unittest.TestCase):
         self.mock_gh.get_issue_body.return_value = initial_body
 
         # Act
-        result = releaser.cmd_promote_rc(args)
+        result = PromoteRc(args, self.mock_git, self.mock_gh).run()
 
         # Assert
         self.assertEqual(result, 0)
@@ -1194,7 +1193,7 @@ class CmdPromoteRcTest(unittest.TestCase):
         self.mock_gh.get_issue_body.return_value = initial_body
 
         # Act
-        result = releaser.cmd_promote_rc(args)
+        result = PromoteRc(args, self.mock_git, self.mock_gh).run()
 
         # Assert
         self.assertEqual(result, 0)
@@ -1230,7 +1229,7 @@ class CmdPromoteRcTest(unittest.TestCase):
         self.mock_gh.get_issue_body.return_value = initial_body
 
         # Act
-        result = releaser.cmd_promote_rc(args)
+        result = PromoteRc(args, self.mock_git, self.mock_gh).run()
 
         # Assert
         self.assertEqual(result, 0)
@@ -1251,7 +1250,7 @@ class CmdPromoteRcTest(unittest.TestCase):
         self.mock_git.tag_exists.return_value = True
 
         # Act
-        result = releaser.cmd_promote_rc(args)
+        result = PromoteRc(args, self.mock_git, self.mock_gh).run()
 
         # Assert
         self.assertEqual(result, 1)
@@ -1271,7 +1270,7 @@ class CmdPromoteRcTest(unittest.TestCase):
         )
 
         # Act
-        result = releaser.cmd_promote_rc(args)
+        result = PromoteRc(args, self.mock_git, self.mock_gh).run()
 
         # Assert
         self.assertEqual(result, 1)
@@ -1291,7 +1290,7 @@ class CmdPromoteRcTest(unittest.TestCase):
         self.mock_gh.get_issue_body.return_value = initial_body
 
         # Act
-        result = releaser.cmd_promote_rc(args)
+        result = PromoteRc(args, self.mock_git, self.mock_gh).run()
 
         # Assert
         self.assertEqual(result, 1)
@@ -1307,7 +1306,7 @@ class CmdPromoteRcTest(unittest.TestCase):
         self.mock_git.get_remote_tags.return_value = []
 
         # Act
-        result = releaser.cmd_promote_rc(args)
+        result = PromoteRc(args, self.mock_git, self.mock_gh).run()
 
         # Assert
         self.assertEqual(result, 1)
@@ -1333,7 +1332,7 @@ class CmdCreateReleaseBranchTest(unittest.TestCase):
         self.mock_git.remote_branch_exists.return_value = False
 
         # Act
-        result = releaser.cmd_create_release_branch(args)
+        result = CreateReleaseBranch(args, self.mock_git, self.mock_gh).run()
 
         # Assert
         self.assertEqual(result, 0)
@@ -1362,7 +1361,7 @@ class CmdCreateReleaseBranchTest(unittest.TestCase):
 - [ ] Create Release branch | status=pending
 """
         # Act
-        result = releaser.cmd_create_release_branch(args)
+        result = CreateReleaseBranch(args, self.mock_git, self.mock_gh).run()
 
         # Assert
         self.assertEqual(result, 1)
@@ -1380,7 +1379,7 @@ class CmdCreateReleaseBranchTest(unittest.TestCase):
 - [x] Create Release branch | status=done branch=release/2.0 commit=abcdef12
 """
         # Act
-        result = releaser.cmd_create_release_branch(args)
+        result = CreateReleaseBranch(args, self.mock_git, self.mock_gh).run()
 
         # Assert
         self.assertEqual(result, 0)
@@ -1401,7 +1400,7 @@ class CmdCreateReleaseBranchTest(unittest.TestCase):
         self.mock_git.get_commit_sha.return_value = "abcdef12"
 
         # Act
-        result = releaser.cmd_create_release_branch(args)
+        result = CreateReleaseBranch(args, self.mock_git, self.mock_gh).run()
 
         # Assert
         self.assertEqual(result, 0)
@@ -1423,7 +1422,7 @@ class CmdCreateReleaseBranchTest(unittest.TestCase):
         self.mock_git.is_ancestor.return_value = True
 
         # Act
-        result = releaser.cmd_create_release_branch(args)
+        result = CreateReleaseBranch(args, self.mock_git, self.mock_gh).run()
 
         # Assert
         self.assertEqual(result, 0)
@@ -1447,7 +1446,7 @@ class CmdCreateReleaseBranchTest(unittest.TestCase):
         self.mock_git.is_ancestor.return_value = False
 
         # Act
-        result = releaser.cmd_create_release_branch(args)
+        result = CreateReleaseBranch(args, self.mock_git, self.mock_gh).run()
 
         # Assert
         self.assertEqual(result, 1)
@@ -1468,7 +1467,7 @@ class CmdProcessBackportsTest(unittest.TestCase):
         args = MagicMock(issue=123, remote="origin", dry_run=False)
         self.mock_gh.get_issue_body.return_value = "No backports here"
 
-        result = releaser.cmd_process_backports(args)
+        result = ProcessBackports(args, self.mock_git, self.mock_gh).run()
 
         self.assertEqual(result, 0)
         self.mock_gh.get_issue_body.assert_called_once_with(123)
@@ -1502,7 +1501,7 @@ class CmdProcessBackportsTest(unittest.TestCase):
         self.mock_git.get_commit_sha.return_value = "12345678"
         self.mock_git.get_commit_message.return_value = 'Cherry-pick "fix bug"'
 
-        result = releaser.cmd_process_backports(args)
+        result = ProcessBackports(args, self.mock_git, self.mock_gh).run()
 
         self.assertEqual(result, 0)
         self.mock_git.fetch.assert_has_calls(
@@ -1554,7 +1553,7 @@ class CmdProcessBackportsTest(unittest.TestCase):
         self.mock_git.get_commit_sha.return_value = "12345678"
         self.mock_git.get_commit_message.return_value = 'Cherry-pick "fix bug"'
 
-        result = releaser.cmd_process_backports(args)
+        result = ProcessBackports(args, self.mock_git, self.mock_gh).run()
 
         self.assertEqual(result, 0)
         self.mock_git.fetch.assert_has_calls(
@@ -1601,7 +1600,7 @@ class CmdProcessBackportsTest(unittest.TestCase):
 
         self.mock_gh.get_merge_commits_for_prs.side_effect = mock_resolve
 
-        result = releaser.cmd_process_backports(args)
+        result = ProcessBackports(args, self.mock_git, self.mock_gh).run()
 
         self.assertEqual(result, 1)
         self.mock_gh.update_issue_body.assert_called_once()
@@ -1628,7 +1627,7 @@ class CmdProcessBackportsTest(unittest.TestCase):
         self.mock_git.get_remote_tags.return_value = []
         self.mock_gh.get_merge_commits_for_prs.return_value = []
 
-        result = releaser.cmd_process_backports(args)
+        result = ProcessBackports(args, self.mock_git, self.mock_gh).run()
 
         self.assertEqual(result, 0)
         self.mock_gh.get_merge_commits_for_prs.assert_not_called()
@@ -1661,7 +1660,7 @@ class CmdProcessBackportsTest(unittest.TestCase):
         self.mock_git.sort_commits_chronologically.return_value = ["abcdef12"]
         self.mock_git.cherry_pick.side_effect = Exception("Cherry-pick conflict")
 
-        result = releaser.cmd_process_backports(args)
+        result = ProcessBackports(args, self.mock_git, self.mock_gh).run()
 
         self.assertEqual(result, 1)
         self.mock_git.checkout.assert_called_once_with(
@@ -1680,38 +1679,41 @@ class CmdProcessBackportsTest(unittest.TestCase):
 
 
 class GitCheckoutTest(unittest.TestCase):
-    @patch("tools.private.release.git.run_cmd")
-    def test_checkout_simple(self, mock_run_cmd):
-        git.checkout("my-branch")
-        mock_run_cmd.assert_called_once_with(
-            "git", "checkout", "my-branch", capture_output=False
+    def setUp(self):
+        self.git = Git(".")
+        self.patcher = patch.object(self.git, "_run_git")
+        self.mock_run_git = self.patcher.start()
+        self.addCleanup(self.patcher.stop)
+
+    def test_checkout_simple(self):
+        self.git.checkout("my-branch")
+        self.mock_run_git.assert_called_once_with(
+            "checkout", "my-branch", capture_output=False
         )
 
-    @patch("tools.private.release.git.branch_exists")
-    @patch("tools.private.release.git.run_cmd")
-    def test_checkout_track_remote_new_branch(self, mock_run_cmd, mock_branch_exists):
+    @patch("tools.private.release.git.Git.branch_exists")
+    def test_checkout_track_remote_new_branch(self, mock_branch_exists):
         mock_branch_exists.return_value = False
 
-        git.checkout("my-branch", track_remote="origin")
+        self.git.checkout("my-branch", track_remote="origin")
 
         mock_branch_exists.assert_called_once_with("my-branch")
-        mock_run_cmd.assert_called_once_with(
-            "git", "checkout", "--track", "origin/my-branch", capture_output=False
+        self.mock_run_git.assert_called_once_with(
+            "checkout", "--track", "origin/my-branch", capture_output=False
         )
 
-    @patch("tools.private.release.git.reset_hard")
-    @patch("tools.private.release.git.branch_exists")
-    @patch("tools.private.release.git.run_cmd")
+    @patch("tools.private.release.git.Git.reset_hard")
+    @patch("tools.private.release.git.Git.branch_exists")
     def test_checkout_track_remote_existing_branch(
-        self, mock_run_cmd, mock_branch_exists, mock_reset_hard
+        self, mock_branch_exists, mock_reset_hard
     ):
         mock_branch_exists.return_value = True
 
-        git.checkout("my-branch", track_remote="origin")
+        self.git.checkout("my-branch", track_remote="origin")
 
         mock_branch_exists.assert_called_once_with("my-branch")
-        mock_run_cmd.assert_called_once_with(
-            "git", "checkout", "my-branch", capture_output=False
+        self.mock_run_git.assert_called_once_with(
+            "checkout", "my-branch", capture_output=False
         )
         mock_reset_hard.assert_called_once_with("origin/my-branch")
 

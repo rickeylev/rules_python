@@ -1,4 +1,4 @@
-name: Cut Release Branch
+name: "Release: Create Release Branch"
 
 on:
   issues:

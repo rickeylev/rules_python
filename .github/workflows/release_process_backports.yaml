@@ -1,16 +1,20 @@
-name: Prepare Release
+name: "Release: Process Backports"
 
 on:
   workflow_dispatch:
-    # Allow manual triggering to prepare the release immediately
+    inputs:
+      issue:
+        description: 'The Release Tracking Issue Number (e.g., 142)'
+        required: true
+        type: string
 
 permissions:
   contents: write
   issues: write
-  pull-requests: write
 
 jobs:
-  prepare_release:
+  process_backports:
+    # Always gate GHA runs to ensure we are operating on a type: release labeled issue if metadata is queried
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
@@ -28,9 +32,9 @@ jobs:
           git config --global user.name "github-actions[bot]"
           git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
-      - name: Run Release Preparation Pipeline
+      - name: Process Pending Backports
         run: |
-          # Manual trigger: run full preparation
-          bazel run //tools/private/release -- prepare --no-dry-run
+          bazel run //tools/private/release -- \
+            process-backports --issue ${{ inputs.issue }}
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
