@@ -1,3 +1,4 @@
+import datetime
 import os
 import pathlib
 import shutil
@@ -5,7 +6,7 @@ import tempfile
 import unittest
 from unittest.mock import MagicMock, call, patch
 
-from tools.private.release import changelog_news, release as releaser, utils
+from tools.private.release import changelog_news, git, release as releaser, utils
 from tools.private.release.gh import MultipleTrackingIssuesError, NoTrackingIssueError
 
 
@@ -20,12 +21,14 @@ def _mock_git_and_gh(test_case):
     patch("tools.private.release.prepare.git", new=mock_git).start()
     patch("tools.private.release.create_release_branch.git", new=mock_git).start()
     patch("tools.private.release.create_rc.git", new=mock_git).start()
+    patch("tools.private.release.process_backports.git", new=mock_git).start()
     patch("tools.private.release.utils.git", new=mock_git).start()
 
     patch("tools.private.release.release.gh", new=mock_gh).start()
     patch("tools.private.release.prepare.gh", new=mock_gh).start()
     patch("tools.private.release.create_release_branch.gh", new=mock_gh).start()
     patch("tools.private.release.create_rc.gh", new=mock_gh).start()
+    patch("tools.private.release.process_backports.gh", new=mock_gh).start()
     mock_gh.MultipleTrackingIssuesError = MultipleTrackingIssuesError
     mock_gh.NoTrackingIssueError = NoTrackingIssueError
 
@@ -984,7 +987,19 @@ class CmdCreateRcTest(unittest.TestCase):
             comment_call_args[1],
         )
         self.assertIn(
-            "- Trigger Release Workflow: [Release Workflow](https://github.com/bazel-contrib/rules_python/actions/workflows/release.yml)",
+            "- [Github Release 2.0.0-rc0](https://github.com/bazel-contrib/rules_python/releases/tag/2.0.0-rc0)",
+            comment_call_args[1],
+        )
+        self.assertIn(
+            "- BCR Entry: [rules_python@2.0.0](https://registry.bazel.build/modules/rules_python/2.0.0)",
+            comment_call_args[1],
+        )
+        self.assertIn(
+            "- [BCR PRs](https://github.com/bazelbuild/bazel-central-registry/pulls?q=is%3Apr+rules_python+2.0.0)",
+            comment_call_args[1],
+        )
+        self.assertIn(
+            "- [Release workflow status](https://github.com/bazel-contrib/rules_python/actions/workflows/release.yml)",
             comment_call_args[1],
         )
         self.assertNotIn("🚀", comment_call_args[1])
@@ -1029,10 +1044,67 @@ class CmdCreateRcTest(unittest.TestCase):
             comment_call_args[1],
         )
         self.assertIn(
-            "- Trigger Release Workflow: [Release Workflow](https://github.com/bazel-contrib/rules_python/actions/workflows/release.yml)",
+            "- [Github Release 2.0.0-rc1](https://github.com/bazel-contrib/rules_python/releases/tag/2.0.0-rc1)",
+            comment_call_args[1],
+        )
+        self.assertIn(
+            "- BCR Entry: [rules_python@2.0.0](https://registry.bazel.build/modules/rules_python/2.0.0)",
+            comment_call_args[1],
+        )
+        self.assertIn(
+            "- [BCR PRs](https://github.com/bazelbuild/bazel-central-registry/pulls?q=is%3Apr+rules_python+2.0.0)",
+            comment_call_args[1],
+        )
+        self.assertIn(
+            "- [Release workflow status](https://github.com/bazel-contrib/rules_python/actions/workflows/release.yml)",
             comment_call_args[1],
         )
         self.assertNotIn("🚀", comment_call_args[1])
+
+    def test_create_rc_gating_on_backports(self):
+        # Arrange
+        args = MagicMock(issue=123, remote="my-remote")
+        self.mock_gh.get_issue_title.return_value = "Release 2.0.0"
+        self.mock_gh.get_issue_body.return_value = """
+## Checklist
+- [x] Prepare Release | status=done pr=#122 commit=abcdef12
+- [x] Create Release branch | status=done branch=release/2.0 commit=abcdef12
+- [ ] Tag RC0 | status=pending
+
+## Backports
+- [ ] #124 | status=pending
+"""
+        # Act
+        result = releaser.cmd_create_rc(args)
+
+        # Assert
+        self.assertEqual(result, 1)
+        self.mock_git.tag.assert_not_called()
+        self.mock_git.push.assert_not_called()
+
+    def test_create_rc_with_finished_backports(self):
+        # Arrange
+        args = MagicMock(issue=123, remote="my-remote")
+        self.mock_gh.get_issue_title.return_value = "Release 2.0.0"
+        self.mock_gh.get_issue_body.return_value = """
+## Checklist
+- [x] Prepare Release | status=done pr=#122 commit=abcdef12
+- [x] Create Release branch | status=done branch=release/2.0 commit=abcdef12
+- [ ] Tag RC0 | status=pending
+
+## Backports
+- [x] #124 | status=done rc=rc0 commit=abcdef12
+"""
+        self.mock_git.get_remote_tags.return_value = []
+        self.mock_git.get_commit_sha.return_value = "1234567890"
+
+        # Act
+        result = releaser.cmd_create_rc(args)
+
+        # Assert
+        self.assertEqual(result, 0)
+        self.mock_git.tag.assert_called_once_with("2.0.0-rc0", "my-remote/release/2.0")
+        self.mock_git.push.assert_called_once_with("my-remote", "2.0.0-rc0")
 
 
 class CmdPromoteRcTest(unittest.TestCase):
@@ -1382,6 +1454,266 @@ class CmdCreateReleaseBranchTest(unittest.TestCase):
         self.mock_git.fetch.assert_called_once_with("my-remote")
         self.mock_git.push.assert_not_called()
         self.mock_gh.update_issue_body.assert_not_called()
+
+
+class CmdProcessBackportsTest(unittest.TestCase):
+    def setUp(self):
+        _mock_git_and_gh(self)
+        self.mock_changelog_news = patch(
+            "tools.private.release.process_backports.changelog_news"
+        ).start()
+        self.addCleanup(patch.stopall)
+
+    def test_process_backports_no_pending(self):
+        args = MagicMock(issue=123, remote="origin", dry_run=False)
+        self.mock_gh.get_issue_body.return_value = "No backports here"
+
+        result = releaser.cmd_process_backports(args)
+
+        self.assertEqual(result, 0)
+        self.mock_gh.get_issue_body.assert_called_once_with(123)
+        self.mock_git.fetch.assert_not_called()
+
+    @patch("tools.private.release.process_backports.datetime")
+    def test_process_backports_success(self, mock_datetime):
+        mock_datetime.date.today.return_value = datetime.date(2026, 7, 1)
+        args = MagicMock(issue=123, remote="origin", dry_run=False)
+        self.mock_gh.get_issue_title.return_value = "Release 2.0.0"
+        self.mock_gh.get_issue_body.return_value = """
+## Checklist
+- [ ] Prepare Release
+- [ ] Create Release branch
+
+## Backports
+- [ ] #124 | status=pending
+"""
+        self.mock_git.get_remote_tags.return_value = []
+
+        def mock_resolve(items):
+            for item in items:
+                if item.pr_ref == "#124":
+                    item.commit = "abcdef12"
+                    item.status = "done"
+            return items
+
+        self.mock_gh.get_merge_commits_for_prs.side_effect = mock_resolve
+
+        self.mock_git.sort_commits_chronologically.return_value = ["abcdef12"]
+        self.mock_git.get_commit_sha.return_value = "12345678"
+        self.mock_git.get_commit_message.return_value = 'Cherry-pick "fix bug"'
+
+        result = releaser.cmd_process_backports(args)
+
+        self.assertEqual(result, 0)
+        self.mock_git.fetch.assert_has_calls(
+            [call("origin", tags=True, force=True), call("origin")]
+        )
+        self.mock_git.checkout.assert_called_once_with(
+            "release/2.0", track_remote="origin"
+        )
+        self.mock_git.cherry_pick.assert_called_once_with("abcdef12")
+        self.mock_changelog_news.update_changelog.assert_called_once_with(
+            "2.0.0", "2026-07-01"
+        )
+        self.mock_git.add.assert_called_once_with("CHANGELOG.md", "news/")
+        self.mock_git.commit.assert_called_once_with(
+            'Cherry-pick "fix bug"\n\nWork towards #123', amend=True
+        )
+        self.mock_git.push.assert_called_once_with("origin", "release/2.0")
+
+        self.mock_gh.update_issue_body.assert_called_once()
+        call_args = self.mock_gh.update_issue_body.call_args[0]
+        self.assertEqual(call_args[0], 123)
+        self.assertIn("- [x] #124 | status=done rc=rc0 commit=12345678", call_args[1])
+
+    @patch("tools.private.release.process_backports.datetime")
+    def test_process_backports_dry_run(self, mock_datetime):
+        mock_datetime.date.today.return_value = datetime.date(2026, 7, 1)
+        args = MagicMock(issue=123, remote="origin", dry_run=True)
+        self.mock_gh.get_issue_title.return_value = "Release 2.0.0"
+        self.mock_gh.get_issue_body.return_value = """
+## Checklist
+- [ ] Prepare Release
+- [ ] Create Release branch
+
+## Backports
+- [ ] #124 | status=pending
+"""
+        self.mock_git.get_remote_tags.return_value = []
+
+        def mock_resolve(items):
+            for item in items:
+                if item.pr_ref == "#124":
+                    item.commit = "abcdef12"
+                    item.status = "done"
+            return items
+
+        self.mock_gh.get_merge_commits_for_prs.side_effect = mock_resolve
+
+        self.mock_git.sort_commits_chronologically.return_value = ["abcdef12"]
+        self.mock_git.get_commit_sha.return_value = "12345678"
+        self.mock_git.get_commit_message.return_value = 'Cherry-pick "fix bug"'
+
+        result = releaser.cmd_process_backports(args)
+
+        self.assertEqual(result, 0)
+        self.mock_git.fetch.assert_has_calls(
+            [call("origin", tags=True, force=True), call("origin")]
+        )
+        self.mock_git.checkout.assert_called_once_with(
+            "release/2.0", track_remote="origin"
+        )
+        self.mock_git.cherry_pick.assert_called_once_with("abcdef12")
+        self.mock_changelog_news.update_changelog.assert_called_once_with(
+            "2.0.0", "2026-07-01"
+        )
+        self.mock_git.commit.assert_called_once_with(
+            'Cherry-pick "fix bug"\n\nWork towards #123', amend=True
+        )
+        self.mock_git.reset_hard.assert_called_once_with("12345678")
+        self.mock_git.push.assert_not_called()
+        self.mock_gh.update_issue_body.assert_not_called()
+
+    def test_process_backports_ignored_and_failed_states(self):
+        args = MagicMock(issue=123, remote="origin", dry_run=False)
+        self.mock_gh.get_issue_title.return_value = "Release 2.0.0"
+        self.mock_gh.get_issue_body.return_value = """
+## Checklist
+- [ ] Prepare Release
+- [ ] Create Release branch
+
+## Backports
+- [ ] #124 | status=pending
+- [ ] #125 | status=pending
+- [ ] #126 | status=pending
+"""
+        self.mock_git.get_remote_tags.return_value = []
+
+        def mock_resolve(items):
+            for item in items:
+                if item.pr_ref == "#124":
+                    item.status = "open-pr"
+                elif item.pr_ref == "#125":
+                    item.status = "draft-pr"
+                elif item.pr_ref == "#126":
+                    item.status = "error-closed-pr"
+            return items
+
+        self.mock_gh.get_merge_commits_for_prs.side_effect = mock_resolve
+
+        result = releaser.cmd_process_backports(args)
+
+        self.assertEqual(result, 1)
+        self.mock_gh.update_issue_body.assert_called_once()
+        call_args = self.mock_gh.update_issue_body.call_args[0]
+        self.assertEqual(call_args[0], 123)
+        self.assertIn("- [ ] #126 | status=error-closed-pr", call_args[1])
+        self.assertNotIn("status=open-pr", call_args[1])
+        self.assertNotIn("status=draft-pr", call_args[1])
+        self.mock_git.checkout.assert_not_called()
+        self.mock_git.cherry_pick.assert_not_called()
+
+    def test_process_backports_ignored_error_status(self):
+        args = MagicMock(issue=123, remote="origin", dry_run=False)
+        self.mock_gh.get_issue_title.return_value = "Release 2.0.0"
+        self.mock_gh.get_issue_body.return_value = """
+## Checklist
+- [ ] Prepare Release
+- [ ] Create Release branch
+
+## Backports
+- [ ] #124 | status=error-merge-conflict
+- [ ] #125 | status=error-some-other-error
+"""
+        self.mock_git.get_remote_tags.return_value = []
+        self.mock_gh.get_merge_commits_for_prs.return_value = []
+
+        result = releaser.cmd_process_backports(args)
+
+        self.assertEqual(result, 0)
+        self.mock_gh.get_merge_commits_for_prs.assert_not_called()
+        self.mock_git.checkout.assert_not_called()
+
+    @patch("tools.private.release.process_backports.datetime")
+    def test_process_backports_cherry_pick_failed(self, mock_datetime):
+        mock_datetime.date.today.return_value = datetime.date(2026, 7, 1)
+        args = MagicMock(issue=123, remote="origin", dry_run=False)
+        self.mock_gh.get_issue_title.return_value = "Release 2.0.0"
+        self.mock_gh.get_issue_body.return_value = """
+## Checklist
+- [ ] Prepare Release
+- [ ] Create Release branch
+
+## Backports
+- [ ] #124 | status=pending
+"""
+        self.mock_git.get_remote_tags.return_value = []
+
+        def mock_resolve(items):
+            for item in items:
+                if item.pr_ref == "#124":
+                    item.commit = "abcdef12"
+                    item.status = "done"
+            return items
+
+        self.mock_gh.get_merge_commits_for_prs.side_effect = mock_resolve
+
+        self.mock_git.sort_commits_chronologically.return_value = ["abcdef12"]
+        self.mock_git.cherry_pick.side_effect = Exception("Cherry-pick conflict")
+
+        result = releaser.cmd_process_backports(args)
+
+        self.assertEqual(result, 1)
+        self.mock_git.checkout.assert_called_once_with(
+            "release/2.0", track_remote="origin"
+        )
+        self.mock_git.cherry_pick.assert_called_once_with("abcdef12")
+        self.mock_git.cherry_pick_abort.assert_called_once()
+
+        self.mock_gh.update_issue_body.assert_called_once()
+        call_args = self.mock_gh.update_issue_body.call_args[0]
+        self.assertEqual(call_args[0], 123)
+        self.assertIn("- [ ] #124 | status=error-merge-conflict", call_args[1])
+
+        self.mock_git.commit.assert_not_called()
+        self.mock_git.push.assert_not_called()
+
+
+class GitCheckoutTest(unittest.TestCase):
+    @patch("tools.private.release.git.run_cmd")
+    def test_checkout_simple(self, mock_run_cmd):
+        git.checkout("my-branch")
+        mock_run_cmd.assert_called_once_with(
+            "git", "checkout", "my-branch", capture_output=False
+        )
+
+    @patch("tools.private.release.git.branch_exists")
+    @patch("tools.private.release.git.run_cmd")
+    def test_checkout_track_remote_new_branch(self, mock_run_cmd, mock_branch_exists):
+        mock_branch_exists.return_value = False
+
+        git.checkout("my-branch", track_remote="origin")
+
+        mock_branch_exists.assert_called_once_with("my-branch")
+        mock_run_cmd.assert_called_once_with(
+            "git", "checkout", "--track", "origin/my-branch", capture_output=False
+        )
+
+    @patch("tools.private.release.git.reset_hard")
+    @patch("tools.private.release.git.branch_exists")
+    @patch("tools.private.release.git.run_cmd")
+    def test_checkout_track_remote_existing_branch(
+        self, mock_run_cmd, mock_branch_exists, mock_reset_hard
+    ):
+        mock_branch_exists.return_value = True
+
+        git.checkout("my-branch", track_remote="origin")
+
+        mock_branch_exists.assert_called_once_with("my-branch")
+        mock_run_cmd.assert_called_once_with(
+            "git", "checkout", "my-branch", capture_output=False
+        )
+        mock_reset_hard.assert_called_once_with("origin/my-branch")
 
 
 if __name__ == "__main__":

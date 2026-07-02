@@ -11,12 +11,34 @@ def get_tags():
     return output.splitlines() if output else []
 
 
-def checkout(ref, create_branch=False):
-    """Checks out a git reference (tag, branch, or commit)."""
+def checkout(
+    ref: str, create_branch: bool = False, track_remote: str | None = None
+) -> None:
+    """Checks out a git reference (tag, branch, or commit).
+
+    Args:
+        ref: The git reference (tag, branch, or commit) to checkout.
+        create_branch: If True, creates the branch before checking it out.
+        track_remote: If specified, checks out the branch tracking this remote's
+            corresponding branch.
+    """
+    cmd = ["git", "checkout"]
     if create_branch:
-        run_cmd("git", "checkout", "-b", ref, capture_output=False)
+        cmd.append("-b")
+
+    should_reset_hard = False
+    if track_remote:
+        if branch_exists(ref):
+            cmd.append(ref)
+            should_reset_hard = True
+        else:
+            cmd.extend(["--track", f"{track_remote}/{ref}"])
     else:
-        run_cmd("git", "checkout", ref, capture_output=False)
+        cmd.append(ref)
+    run_cmd(*cmd, capture_output=False)
+
+    if should_reset_hard:
+        reset_hard(f"{track_remote}/{ref}")
 
 
 def add(*files):
@@ -75,14 +97,27 @@ def tag(tag_name, commit_ref):
     run_cmd("git", "tag", tag_name, commit_ref, capture_output=False)
 
 
-def cherry_pick(sha):
-    """Cherry-picks a commit using -x to append the original commit info."""
+def cherry_pick(sha: str) -> None:
+    """Cherry-picks a commit.
+
+    Args:
+        sha: The commit SHA to cherry-pick.
+    """
     run_cmd("git", "cherry-pick", "-x", sha, capture_output=False)
 
 
 def cherry_pick_abort():
     """Aborts an in-progress cherry-pick operation."""
     run_cmd("git", "cherry-pick", "--abort", capture_output=False)
+
+
+def reset_hard(ref: str = "HEAD") -> None:
+    """Resets the index and working tree to a specific reference.
+
+    Args:
+        ref: The git reference to reset to. Defaults to 'HEAD'.
+    """
+    run_cmd("git", "reset", "--hard", ref, capture_output=False)
 
 
 def status():
@@ -97,6 +132,15 @@ def get_commit_sha(ref="HEAD", short=False):
         cmd.append("--short")
     cmd.append(ref)
     return run_cmd(*cmd)
+
+
+def get_commit_message(ref: str = "HEAD") -> str:
+    """Returns the commit message of a given reference.
+
+    Args:
+        ref: The git reference to get the message from. Defaults to 'HEAD'.
+    """
+    return run_cmd("git", "log", "-1", "--format=%B", ref)
 
 
 def branch_exists(branch_name):
