@@ -1,4 +1,4 @@
-name: Process Backports
+name: "Release: Process Backports"
 
 on:
   workflow_dispatch:

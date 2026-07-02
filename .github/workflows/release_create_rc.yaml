@@ -1,4 +1,4 @@
-name: Generate RC Tag
+name: "Release: Create RC"
 
 on:
   workflow_dispatch:
