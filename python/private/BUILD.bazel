@@ -729,6 +729,7 @@ bzl_library(
         ":full_version",
         ":pbs_manifest",
         ":platform_info",
+        ":pyproject_utils",
         ":python_register_toolchains",
         ":pythons_hub",
         ":repo_utils",
@@ -893,6 +894,15 @@ bzl_library(
         ":py_info",
         ":util",
         "@bazel_skylib//lib:paths",
+    ],
+)
+
+bzl_library(
+    name = "pyproject_utils",
+    srcs = ["pyproject_utils.bzl"],
+    deps = [
+        ":version",
+        "@toml.bzl//:toml",
     ],
 )
 
