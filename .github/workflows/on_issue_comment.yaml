@@ -5,8 +5,8 @@ on:
     types: [created]
 
 permissions:
-  contents: read
-  issues: read
+  contents: write
+  issues: write
 
 jobs:
   # This job always runs to prevent GHA from marking the run as failed when
