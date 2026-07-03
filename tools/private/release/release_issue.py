@@ -115,11 +115,11 @@ def format_metadata_line(checked, name, metadata):
 
     metadata_pairs = []
     for k, v in metadata.items():
-        if k == "commit":
-            # The 'commit' key is special-cased with a space after '=' so that
-            # GitHub autolinks the commit SHA. Autolinking requires certain
-            # characters to precede the value.
-            metadata_pairs.append(f"commit= {v}")
+        if k == "commit" or k.endswith("_commit"):
+            # The 'commit' key (and keys ending with '_commit') is special-cased with
+            # a space after '=' so that GitHub autolinks the commit SHA. Autolinking
+            # requires certain characters to precede the value.
+            metadata_pairs.append(f"{k}= {v}")
         else:
             metadata_pairs.append(f"{k}={v}")
     metadata_str = " ".join(metadata_pairs)
@@ -245,3 +245,42 @@ def parse_backports(body):
                 )
             )
     return items
+
+
+def add_backports_to_body(body: str, prs: list[int]) -> str:
+    """Adds new backport checklist items to the ## Backports section."""
+    body = body.replace("\r\n", "\n")
+    # Find the Backports section
+    pattern = r"(## Backports\n)(.*?)(?=\n##|\n---|\Z)"
+    match = re.search(pattern, body, re.DOTALL | re.IGNORECASE)
+    if not match:
+        raise ValueError("Could not find '## Backports' section in issue body.")
+
+    section_content = match.group(2)
+
+    # Parse existing backports to avoid duplicates
+    existing_items = parse_backports(body)
+    existing_prs = {
+        int(item.pr_ref.lstrip("#"))
+        for item in existing_items
+        if item.pr_ref.startswith("#")
+    }
+
+    new_lines = []
+    for pr in prs:
+        if pr in existing_prs:
+            print(f"PR #{pr} is already in the backports list. Skipping.")
+            continue
+        new_lines.append(f"- [ ] #{pr}")
+
+    if not new_lines:
+        return body
+
+    # Append new lines to the section content.
+    section_content_clean = section_content.rstrip("\n")
+    separator = "\n" if section_content_clean else ""
+    updated_section = section_content_clean + separator + "\n".join(new_lines) + "\n\n"
+
+    # Replace the old section with the updated one
+    start, end = match.span(2)
+    return body[:start] + updated_section + body[end:]

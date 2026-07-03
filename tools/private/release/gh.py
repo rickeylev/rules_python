@@ -7,6 +7,17 @@ import tempfile
 from tools.private.release.release_issue import BackportTask
 from tools.private.release.shell import run_cmd
 
+# GitHub reaction types
+# See: https://docs.github.com/en/rest/reactions/reactions?apiVersion=2022-11-28#about-reactions
+GH_REACTION_THUMBS_UP = "+1"
+GH_REACTION_THUMBS_DOWN = "-1"
+GH_REACTION_LAUGH = "laugh"
+GH_REACTION_CONFUSED = "confused"
+GH_REACTION_HEART = "heart"
+GH_REACTION_HOORAY = "hooray"
+GH_REACTION_ROCKET = "rocket"
+GH_REACTION_EYES = "eyes"
+
 
 class MultipleTrackingIssuesError(ValueError):
     """Raised when multiple open tracking issues are found for a version."""
@@ -316,6 +327,28 @@ class GitHub:
             "comment",
             str(issue_num),
             f"--body={comment_body}",
+            capture_output=False,
+        )
+
+    def add_comment_reaction(self, comment_id: int, reaction: str) -> None:
+        """Adds a reaction to a comment.
+
+        Args:
+            comment_id: The ID of the comment.
+            reaction: The reaction type (e.g. '+1', '-1', 'eyes', etc).
+        """
+        path = f"/repos/{self.repo}/issues/comments/{comment_id}/reactions"
+        self._run_gh(
+            "api",
+            "--method",
+            "POST",
+            "-H",
+            "Accept: application/vnd.github+json",
+            "-H",
+            "X-GitHub-Api-Version: 2022-11-28",
+            path,
+            "-f",
+            f"content={reaction}",
             capture_output=False,
         )
 

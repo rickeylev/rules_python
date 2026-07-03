@@ -5,7 +5,10 @@ import urllib.parse
 
 from tools.private.release.gh import GitHub
 from tools.private.release.git import Git
-from tools.private.release.release_issue import update_task_in_body
+from tools.private.release.release_issue import (
+    RELEASE_TITLE_RE,
+    update_task_in_body,
+)
 from tools.private.release.utils import (
     REPO_URL,
     determine_next_version,
@@ -30,7 +33,23 @@ class PromoteRc:
 
         version = args.version
         if version is None:
-            version = determine_next_version()
+            if args.issue:
+                issue_title = self.gh.get_issue_title(args.issue)
+                version_match = RELEASE_TITLE_RE.search(issue_title)
+                if version_match:
+                    version = version_match.group(1)
+                    print(
+                        f"Resolved version {version} from tracking issue"
+                        f" #{args.issue} title."
+                    )
+                else:
+                    print(
+                        f"Error: Could not parse version from issue title:"
+                        f" {issue_title}"
+                    )
+                    return 1
+            else:
+                version = determine_next_version()
 
         latest_rc = get_latest_rc_tag(version, remote=args.remote)
         if not latest_rc:
@@ -57,9 +76,56 @@ class PromoteRc:
         # Get commit SHA of the RC tag (which will be the same for the final tag)
         commit_sha = self.git.get_commit_sha(latest_rc)
 
-        # Verify issue is in the right format by trying to prepare the update
+        # Verify issue can be found and read it early
         print(f"Verifying tracking issue #{issue_num} format...")
         body = self.gh.get_issue_body(issue_num)
+
+        # Determine release branch name and verify it matches the RC tag commit
+        branch_version = ".".join(version.split(".")[:2])
+        branch_name = f"release/{branch_version}"
+        remote_branch = f"{args.remote}/{branch_name}"
+
+        print(f"Fetching remote branch {remote_branch}...")
+        self.git.fetch(args.remote, refspec=branch_name)
+        try:
+            branch_sha = self.git.get_commit_sha(remote_ref=remote_branch)
+        except Exception as e:
+            print(
+                f"Error: Could not get commit SHA for remote branch"
+                f" {remote_branch}: {e}"
+            )
+            return 1
+
+        if commit_sha != branch_sha:
+            print(
+                f"Error: The latest RC tag {latest_rc} ({commit_sha[:8]}) is not at"
+                f" the head of release branch {remote_branch} ({branch_sha[:8]})."
+            )
+            metadata = {
+                "status": "error-rc-tag-not-branch-head",
+                "rc": latest_rc,
+                "branch_commit": branch_sha[:8],
+                "tag_commit": commit_sha[:8],
+            }
+            try:
+                updated_body = update_task_in_body(
+                    body, "Tag Final", checked=False, metadata=metadata
+                )
+            except ValueError as e:
+                print(f"Error: Tracking issue #{issue_num} is malformed: {e}")
+                return 1
+
+            if not args.dry_run:
+                self.gh.update_issue_body(issue_num, updated_body)
+                print(f"Updated tracking issue #{issue_num} with error status.")
+            else:
+                print(
+                    f"[DRY RUN] Would update tracking issue #{issue_num} with"
+                    f" error status."
+                )
+            return 1
+
+        # Verify issue is in the right format by trying to prepare the update (for success case)
         metadata = {"status": "done", "tag": version, "commit": commit_sha[:8]}
         try:
             updated_body = update_task_in_body(

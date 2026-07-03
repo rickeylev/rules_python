@@ -5,15 +5,17 @@ import datetime
 from typing import Any
 
 from tools.private.release import changelog_news
-from tools.private.release.gh import GitHub
+from tools.private.release.gh import GH_REACTION_THUMBS_DOWN, GitHub
 from tools.private.release.git import Git
 from tools.private.release.release_issue import (
     RELEASE_TITLE_RE,
+    add_backports_to_body,
     parse_backports,
     update_task_in_body,
 )
 from tools.private.release.utils import (
     get_latest_rc_tag,
+    parse_pr_list,
     replace_version_next,
 )
 
@@ -178,7 +180,46 @@ class ProcessBackports:
     def run(self) -> int:
         """Executes the process-backports subcommand."""
         args = self.args
+        exit_code = 0
+        try:
+            exit_code = self._run_internal()
+        except Exception as e:
+            print(f"Unexpected error: {e}")
+            exit_code = 1
+
+        if exit_code != 0 and args.triggering_comment:
+            print(f"Reacting with thumbs-down to comment {args.triggering_comment}...")
+            try:
+                self.gh.add_comment_reaction(
+                    args.triggering_comment, GH_REACTION_THUMBS_DOWN
+                )
+            except Exception as e:
+                print(f"Failed to add reaction to comment: {e}")
+
+        return exit_code
+
+    def _run_internal(self) -> int:
+        """Internal implementation of process-backports."""
+        args = self.args
         body = self.gh.get_issue_body(args.issue)
+
+        if args.add:
+            print(f"Adding backports {args.add} to tracking issue #{args.issue}...")
+            try:
+                body = add_backports_to_body(body, args.add)
+            except ValueError as e:
+                print(f"Error: {e}")
+                return 1
+
+            if not args.dry_run:
+                self.gh.update_issue_body(args.issue, body)
+                print("Successfully updated tracking issue checklist.")
+            else:
+                print(
+                    "[DRY RUN] Would update tracking issue checklist with new"
+                    " backports."
+                )
+
         items = parse_backports(body)
 
         pending_items = [
@@ -294,6 +335,16 @@ class ProcessBackports:
             type=str,
             required=True,
             help="The git remote to push changes to (required).",
+        )
+        parser.add_argument(
+            "--add",
+            type=parse_pr_list,
+            help="PR numbers (comma or space separated) to add before processing.",
+        )
+        parser.add_argument(
+            "--triggering-comment",
+            type=int,
+            help="The ID of the comment that triggered this run (optional).",
         )
         parser.add_argument(
             "--dry-run",
