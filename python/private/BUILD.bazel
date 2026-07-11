@@ -170,7 +170,7 @@ bool_flag(
     name = "visible_for_testing",
     build_setting_default = False,
     # This is only because it is an implicit dependency by the toolchains.
-    visibility = ["//visibility:public"],
+    visibility = NOT_ACTUALLY_PUBLIC,
 )
 
 # Used for py_console_script_gen rule
@@ -204,7 +204,7 @@ current_interpreter_executable(
     name = "current_interpreter_executable",
     # Not actually public. Only public because it's an implicit dependency of
     # py_exec_tools_toolchain.
-    visibility = ["//visibility:public"],
+    visibility = NOT_ACTUALLY_PUBLIC,
 )
 
 py_library(
@@ -228,7 +228,7 @@ py_interpreter_program(
     main = "py_test_main_validator.py",
     # Not actually public. Only public because it's an implicit dependency of
     # the py_test rule.
-    visibility = ["//visibility:public"],
+    visibility = NOT_ACTUALLY_PUBLIC,
 )
 
 py_library(
