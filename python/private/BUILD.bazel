@@ -104,7 +104,7 @@ filegroup(
     srcs = ["stage1_bootstrap_template.sh"],
     # Not actually public. Only public because it's an implicit dependency of
     # py_runtime.
-    visibility = ["//visibility:public"],
+    visibility = NOT_ACTUALLY_PUBLIC,
 )
 
 filegroup(
@@ -112,7 +112,7 @@ filegroup(
     srcs = ["stage2_bootstrap_template.py"],
     # Not actually public. Only public because it's an implicit dependency of
     # py_runtime.
-    visibility = ["//visibility:public"],
+    visibility = NOT_ACTUALLY_PUBLIC,
 )
 
 filegroup(
@@ -120,7 +120,7 @@ filegroup(
     srcs = ["site_init_template.py"],
     # Not actually public. Only public because it's an implicit dependency of
     # py_runtime.
-    visibility = ["//visibility:public"],
+    visibility = NOT_ACTUALLY_PUBLIC,
 )
 
 # NOTE: Windows builds don't use this bootstrap. Instead, a native Windows
@@ -134,7 +134,7 @@ alias(
     }),
     # Not actually public. Only public because it's an implicit dependency of
     # py_runtime.
-    visibility = ["//visibility:public"],
+    visibility = NOT_ACTUALLY_PUBLIC,
 )
 
 # Used to determine the use of `--stamp` in Starlark rules
