@@ -34,7 +34,7 @@ async def main():
     # Register the review-pr skill from the local reviewbot folder.
     config = LocalAgentConfig(
         system_instructions=system_instructions,
-        skills_paths=["tools/private/reviewbot/skills/review-pr/SKILL.md"],
+        skills_paths=[str(Path(__file__).parent / "skills" / "review-pr" / "SKILL.md")],
         capabilities=CapabilitiesConfig(
             allow_filesystem_read=True,
             allow_filesystem_write=False,
