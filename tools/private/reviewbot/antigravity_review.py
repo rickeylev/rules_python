@@ -1,3 +1,10 @@
+# /// script
+# requires-python = ">=3.11"
+# dependencies = [
+#     "google-antigravity",
+#     "requests",
+# ]
+# ///
 import argparse
 import asyncio
 from pathlib import Path
