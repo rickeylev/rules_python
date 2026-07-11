@@ -436,7 +436,6 @@ bzl_library(
         "@rules_python//python:py_runtime_pair",
         "@rules_python//python/cc:py_cc_toolchain",
         "@rules_python//python/private:py_exec_tools_toolchain",
-        "@rules_python//python/private:visibility",
     ],
 )
 
@@ -844,7 +843,6 @@ bzl_library(
         ":config_settings",
         ":py_exec_tools_toolchain",
         ":toolchain_types",
-        ":visibility",
         "//python:py_runtime",
         "//python:py_runtime_pair",
         "//python/cc:py_cc_toolchain",

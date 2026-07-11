@@ -497,7 +497,6 @@ bzl_library(
         "//python:py_binary",
         "//python:py_library",
         "//python/private:normalize_name",
-        "//python/private:visibility",
         "@bazel_skylib//rules:copy_file",
     ],
 )

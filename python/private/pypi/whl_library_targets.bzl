@@ -18,7 +18,6 @@ load("@bazel_skylib//rules:copy_file.bzl", "copy_file")
 load("//python:py_binary.bzl", "py_binary")
 load("//python:py_library.bzl", "py_library")
 load("//python/private:normalize_name.bzl", "normalize_name")
-load("//python/private:visibility.bzl", "NOT_ACTUALLY_PUBLIC")
 load(":env_marker_setting.bzl", "env_marker_setting")
 load(
     ":labels.bzl",
@@ -234,7 +233,7 @@ def whl_library_targets(
         native.filegroup(
             name = filegroup_name,
             srcs = srcs,
-            visibility = NOT_ACTUALLY_PUBLIC,
+            visibility = ["//visibility:public"],
         )
 
     for src, dest in copy_files.items():
@@ -242,7 +241,7 @@ def whl_library_targets(
             name = dest + ".copy",
             src = src,
             out = dest,
-            visibility = NOT_ACTUALLY_PUBLIC,
+            visibility = ["//visibility:public"],
         )
         data.append(dest)
     for src, dest in copy_executables.items():
@@ -251,7 +250,7 @@ def whl_library_targets(
             src = src,
             out = dest,
             is_executable = True,
-            visibility = NOT_ACTUALLY_PUBLIC,
+            visibility = ["//visibility:public"],
         )
         data.append(dest)
 

@@ -59,19 +59,19 @@ def construct_config_settings(
     _python_version_flag(
         name = _PYTHON_VERSION_FLAG.name,
         build_setting_default = default_version,
-        visibility = NOT_ACTUALLY_PUBLIC,
+        visibility = ["//visibility:public"],
     )
 
     _python_version_major_minor_flag(
         name = _PYTHON_VERSION_MAJOR_MINOR_FLAG.name,
         build_setting_default = "",
-        visibility = NOT_ACTUALLY_PUBLIC,
+        visibility = ["//visibility:public"],
     )
 
     native.config_setting(
         name = "is_python_version_unset",
         flag_values = {_PYTHON_VERSION_FLAG: ""},
-        visibility = NOT_ACTUALLY_PUBLIC,
+        visibility = ["//visibility:public"],
     )
 
     _reverse_minor_mapping = {full: minor for minor, full in minor_mapping.items()}
@@ -81,7 +81,7 @@ def construct_config_settings(
             native.config_setting(
                 name = "is_python_{}".format(ver),
                 flag_values = {":python_version": ver},
-                visibility = NOT_ACTUALLY_PUBLIC,
+                visibility = ["//visibility:public"],
             )
             continue
 
@@ -124,7 +124,7 @@ def construct_config_settings(
         native.config_setting(
             name = "is_python_{}".format(minor),
             flag_values = {_PYTHON_VERSION_MAJOR_MINOR_FLAG: minor},
-            visibility = NOT_ACTUALLY_PUBLIC,
+            visibility = ["//visibility:public"],
         )
 
     # This is a compatibility layer to ensure that `select` statements don't break out right
@@ -134,7 +134,7 @@ def construct_config_settings(
         native.alias(
             name = "is_python_3.{}".format(minor),
             actual = "@platforms//:incompatible",
-            visibility = NOT_ACTUALLY_PUBLIC,
+            visibility = ["//visibility:public"],
         )
 
     _current_config(
