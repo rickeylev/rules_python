@@ -22,6 +22,7 @@ load(":py_interpreter_program.bzl", "py_interpreter_program")
 load(":sentinel_impl.bzl", "sentinel")
 load(":stamp_impl.bzl", "stamp_build_setting")
 load(":uncachable_version_file.bzl", "define_uncachable_version_file")
+load(":visibility.bzl", "NOT_ACTUALLY_PUBLIC")
 
 package(
     default_visibility = [
@@ -95,7 +96,7 @@ exports_files(
     ["python_bootstrap_template.txt"],
     # Not actually public. Only public because it's an implicit dependency of
     # py_runtime.
-    visibility = ["//visibility:public"],
+    visibility = NOT_ACTUALLY_PUBLIC,
 )
 
 filegroup(
@@ -330,6 +331,7 @@ bzl_library(
     deps = [
         ":text_util",
         ":version",
+        ":visibility",
         "@bazel_skylib//lib:selects",
         "@bazel_skylib//rules:common_settings",
     ],
@@ -434,6 +436,7 @@ bzl_library(
         "@rules_python//python:py_runtime_pair",
         "@rules_python//python/cc:py_cc_toolchain",
         "@rules_python//python/private:py_exec_tools_toolchain",
+        "@rules_python//python/private:visibility",
     ],
 )
 
@@ -841,6 +844,7 @@ bzl_library(
         ":config_settings",
         ":py_exec_tools_toolchain",
         ":toolchain_types",
+        ":visibility",
         "//python:py_runtime",
         "//python:py_runtime_pair",
         "//python/cc:py_cc_toolchain",
@@ -904,6 +908,12 @@ bzl_library(
         ":version",
         "@toml.bzl//:toml",
     ],
+)
+
+bzl_library(
+    name = "stamp_impl",
+    srcs = ["stamp_impl.bzl"],
+    deps = [":visibility"],
 )
 
 bzl_library(
@@ -984,11 +994,6 @@ bzl_library(
 bzl_library(
     name = "sentinel_impl",
     srcs = ["sentinel_impl.bzl"],
-)
-
-bzl_library(
-    name = "stamp_impl",
-    srcs = ["stamp_impl.bzl"],
 )
 
 bzl_library(

@@ -20,6 +20,7 @@ load("//python/cc:py_cc_toolchain.bzl", "py_cc_toolchain")
 load("//python/private:config_settings.bzl", "is_python_version_at_least")
 load(":py_exec_tools_toolchain.bzl", "py_exec_tools_toolchain")
 load(":toolchain_types.bzl", "EXEC_TOOLS_TOOLCHAIN_TYPE", "PY_CC_TOOLCHAIN_TYPE", "TARGET_TOOLCHAIN_TYPE")
+load(":visibility.bzl", "NOT_ACTUALLY_PUBLIC")
 
 _IS_EXEC_TOOLCHAIN_ENABLED = Label("//python/config_settings:is_exec_tools_toolchain_enabled")
 
@@ -76,7 +77,7 @@ def define_runtime_env_toolchain(name):
             "@platforms//os:windows": ":_magic_sentinel_runtime",
             "//conditions:default": ":_runtime_env_py3_runtime",
         }),
-        visibility = ["//visibility:public"],
+        visibility = NOT_ACTUALLY_PUBLIC,
         tags = ["manual"],
     )
 
@@ -84,7 +85,7 @@ def define_runtime_env_toolchain(name):
         name = name,
         toolchain = ":_runtime_env_py_runtime_pair",
         toolchain_type = TARGET_TOOLCHAIN_TYPE,
-        visibility = ["//visibility:public"],
+        visibility = NOT_ACTUALLY_PUBLIC,
     )
 
     py_exec_tools_toolchain(
@@ -98,7 +99,7 @@ def define_runtime_env_toolchain(name):
         toolchain = "_runtime_env_py_exec_tools_toolchain_impl",
         toolchain_type = EXEC_TOOLS_TOOLCHAIN_TYPE,
         target_settings = [_IS_EXEC_TOOLCHAIN_ENABLED],
-        visibility = ["//visibility:public"],
+        visibility = NOT_ACTUALLY_PUBLIC,
     )
     cc_library(
         name = "_empty_cc_lib",
@@ -117,7 +118,7 @@ def define_runtime_env_toolchain(name):
         name = base_name + "_py_cc_toolchain",
         toolchain = ":_runtime_env_py_cc_toolchain_impl",
         toolchain_type = PY_CC_TOOLCHAIN_TYPE,
-        visibility = ["//visibility:public"],
+        visibility = NOT_ACTUALLY_PUBLIC,
     )
     is_python_version_at_least(
         name = "_is_at_least_py3.11",

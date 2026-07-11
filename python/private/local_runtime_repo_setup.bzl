@@ -20,6 +20,7 @@ load("@rules_python//python:py_runtime.bzl", "py_runtime")
 load("@rules_python//python:py_runtime_pair.bzl", "py_runtime_pair")
 load("@rules_python//python/cc:py_cc_toolchain.bzl", "py_cc_toolchain")
 load("@rules_python//python/private:py_exec_tools_toolchain.bzl", "py_exec_tools_toolchain")
+load("@rules_python//python/private:visibility.bzl", "NOT_ACTUALLY_PUBLIC")
 
 _PYTHON_VERSION_FLAG = Label("@rules_python//python/config_settings:python_version")
 
@@ -172,12 +173,12 @@ def define_local_runtime_toolchain_impl(
         name = "python_runtimes",
         py2_runtime = None,
         py3_runtime = ":py3_runtime",
-        visibility = ["//visibility:public"],
+        visibility = NOT_ACTUALLY_PUBLIC,
     )
 
     py_exec_tools_toolchain(
         name = "py_exec_tools_toolchain",
-        visibility = ["//visibility:public"],
+        visibility = NOT_ACTUALLY_PUBLIC,
         precompiler = "@rules_python//tools/precompiler:precompiler",
     )
 
@@ -187,7 +188,7 @@ def define_local_runtime_toolchain_impl(
         headers_abi3 = ":python_headers_abi3",
         libs = ":libpython",
         python_version = major_minor_micro,
-        visibility = ["//visibility:public"],
+        visibility = NOT_ACTUALLY_PUBLIC,
     )
 
     native.alias(
@@ -197,7 +198,7 @@ def define_local_runtime_toolchain_impl(
         # the value is an `@platforms//foo` string, which @rules_python has
         # visibility to, but the calling repo may not.
         actual = Label(os),
-        visibility = ["//visibility:public"],
+        visibility = NOT_ACTUALLY_PUBLIC,
     )
 
     native.config_setting(
@@ -218,5 +219,5 @@ def define_local_runtime_toolchain_impl(
             ":_is_major_minor",
             ":_is_major_minor_micro",
         ],
-        visibility = ["//visibility:public"],
+        visibility = NOT_ACTUALLY_PUBLIC,
     )
