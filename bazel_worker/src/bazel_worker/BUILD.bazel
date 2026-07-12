@@ -1,0 +1,22 @@
+load("@com_google_protobuf//bazel:py_proto_library.bzl", "py_proto_library")
+load("@rules_python//python:py_library.bzl", "py_library")
+
+package(default_visibility = ["//:__subpackages__"])
+
+py_proto_library(
+    name = "worker_protocol_py_pb2",
+    deps = ["@bazel_tools//src/main/protobuf:worker_protocol_proto"],
+)
+
+py_library(
+    name = "bazel_worker",
+    srcs = [
+        "__init__.py",
+        "protocol.py",
+        "requirements.py",
+    ],
+    imports = [".."],
+    deps = [
+        ":worker_protocol_py_pb2",
+    ],
+)

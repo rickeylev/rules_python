@@ -1,0 +1,18 @@
+load("@rules_python//python:py_library.bzl", "py_library")
+
+package(default_visibility = ["//:__subpackages__"])
+
+py_library(
+    name = "bazel_worker_testing",
+    srcs = [
+        "__init__.py",
+        "sandbox.py",
+        "worker.py",
+    ],
+    imports = [".."],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//src/bazel_worker:bazel_worker",
+        "//src/bazel_worker:worker_protocol_py_pb2",
+    ],
+)

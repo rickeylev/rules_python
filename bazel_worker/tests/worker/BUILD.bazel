@@ -1,0 +1,30 @@
+load("@rules_python//python:py_test.bzl", "py_test")
+
+package(default_visibility = ["//visibility:public"])
+
+py_test(
+    name = "protocol_test",
+    srcs = ["protocol_test.py"],
+    deps = [
+        "//src/bazel_worker:bazel_worker",
+        "//src/bazel_worker_testing",
+    ],
+)
+
+py_test(
+    name = "sandbox_test",
+    srcs = ["sandbox_test.py"],
+    deps = [
+        "//src/bazel_worker:bazel_worker",
+        "//src/bazel_worker_testing",
+    ],
+)
+
+py_test(
+    name = "worker_test",
+    srcs = ["worker_test.py"],
+    deps = [
+        "//src/bazel_worker:bazel_worker",
+        "//src/bazel_worker_testing",
+    ],
+)
