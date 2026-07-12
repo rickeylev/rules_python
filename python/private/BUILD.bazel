@@ -22,6 +22,7 @@ load(":py_interpreter_program.bzl", "py_interpreter_program")
 load(":sentinel_impl.bzl", "sentinel")
 load(":stamp_impl.bzl", "stamp_build_setting")
 load(":uncachable_version_file.bzl", "define_uncachable_version_file")
+load(":visibility.bzl", "NOT_ACTUALLY_PUBLIC")
 
 package(
     default_visibility = [
@@ -95,7 +96,7 @@ exports_files(
     ["python_bootstrap_template.txt"],
     # Not actually public. Only public because it's an implicit dependency of
     # py_runtime.
-    visibility = ["//visibility:public"],
+    visibility = NOT_ACTUALLY_PUBLIC,
 )
 
 filegroup(
@@ -103,7 +104,7 @@ filegroup(
     srcs = ["stage1_bootstrap_template.sh"],
     # Not actually public. Only public because it's an implicit dependency of
     # py_runtime.
-    visibility = ["//visibility:public"],
+    visibility = NOT_ACTUALLY_PUBLIC,
 )
 
 filegroup(
@@ -111,7 +112,7 @@ filegroup(
     srcs = ["stage2_bootstrap_template.py"],
     # Not actually public. Only public because it's an implicit dependency of
     # py_runtime.
-    visibility = ["//visibility:public"],
+    visibility = NOT_ACTUALLY_PUBLIC,
 )
 
 filegroup(
@@ -119,7 +120,7 @@ filegroup(
     srcs = ["site_init_template.py"],
     # Not actually public. Only public because it's an implicit dependency of
     # py_runtime.
-    visibility = ["//visibility:public"],
+    visibility = NOT_ACTUALLY_PUBLIC,
 )
 
 # NOTE: Windows builds don't use this bootstrap. Instead, a native Windows
@@ -133,7 +134,7 @@ alias(
     }),
     # Not actually public. Only public because it's an implicit dependency of
     # py_runtime.
-    visibility = ["//visibility:public"],
+    visibility = NOT_ACTUALLY_PUBLIC,
 )
 
 # Used to determine the use of `--stamp` in Starlark rules
@@ -169,7 +170,7 @@ bool_flag(
     name = "visible_for_testing",
     build_setting_default = False,
     # This is only because it is an implicit dependency by the toolchains.
-    visibility = ["//visibility:public"],
+    visibility = NOT_ACTUALLY_PUBLIC,
 )
 
 # Used for py_console_script_gen rule
@@ -203,7 +204,7 @@ current_interpreter_executable(
     name = "current_interpreter_executable",
     # Not actually public. Only public because it's an implicit dependency of
     # py_exec_tools_toolchain.
-    visibility = ["//visibility:public"],
+    visibility = NOT_ACTUALLY_PUBLIC,
 )
 
 py_library(
@@ -227,7 +228,7 @@ py_interpreter_program(
     main = "py_test_main_validator.py",
     # Not actually public. Only public because it's an implicit dependency of
     # the py_test rule.
-    visibility = ["//visibility:public"],
+    visibility = NOT_ACTUALLY_PUBLIC,
 )
 
 py_library(
@@ -330,6 +331,7 @@ bzl_library(
     deps = [
         ":text_util",
         ":version",
+        ":visibility",
         "@bazel_skylib//lib:selects",
         "@bazel_skylib//rules:common_settings",
     ],
@@ -907,6 +909,12 @@ bzl_library(
 )
 
 bzl_library(
+    name = "stamp_impl",
+    srcs = ["stamp_impl.bzl"],
+    deps = [":visibility"],
+)
+
+bzl_library(
     name = "bzlmod_enabled",
     srcs = ["bzlmod_enabled.bzl"],
 )
@@ -984,11 +992,6 @@ bzl_library(
 bzl_library(
     name = "sentinel_impl",
     srcs = ["sentinel_impl.bzl"],
-)
-
-bzl_library(
-    name = "stamp_impl",
-    srcs = ["stamp_impl.bzl"],
 )
 
 bzl_library(
