@@ -492,7 +492,7 @@ def _create_whl_repos(
     platforms = self._platforms[python_version]
     requirements_by_platform = parse_requirements(
         module_ctx,
-        requirements_by_platform = requirements_files_by_platform(
+        requirements_by_platform = {} if pip_attr.uv_lock else requirements_files_by_platform(
             requirements_by_platform = pip_attr.requirements_by_platform,
             requirements_linux = pip_attr.requirements_linux,
             requirements_lock = pip_attr.requirements_lock,
