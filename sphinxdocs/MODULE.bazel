@@ -8,7 +8,16 @@ bazel_dep(name = "bazel_skylib", version = "1.8.2")
 bazel_dep(name = "stardoc", version = "0.7.2", repo_name = "io_bazel_stardoc")
 bazel_dep(name = "platforms", version = "0.0.11")
 bazel_dep(name = "protobuf", version = "29.0-rc2", repo_name = "com_google_protobuf")
-bazel_dep(name = "rules_python", version = "1.8.5")
+bazel_dep(name = "rules_python", version = "2.2.0")
+
+python = use_extension("@rules_python//python/extensions:python.bzl", "python", dev_dependency = True)
+python.toolchain(python_version = "3.9")
+python.toolchain(python_version = "3.11")
+
+uv = use_extension("@rules_python//python/uv:uv.bzl", "uv", dev_dependency = True)
+uv.configure(
+    version = "0.11.3",
+)
 
 dev_pip = use_extension(
     "@rules_python//python/extensions:pip.bzl",
@@ -18,7 +27,10 @@ dev_pip = use_extension(
 dev_pip.parse(
     hub_name = "dev_pip",
     python_version = "3.11",
-    requirements_lock = "@rules_python//docs:requirements.txt",
+    # Workaround: requirements_lock is required by rules_python 2.2.0 even when uv_lock is set.
+    # It is ignored at runtime, so we pass uv.lock to satisfy validation.
+    requirements_lock = "//dev:uv.lock",
+    uv_lock = "//dev:uv.lock",
 )
 use_repo(dev_pip, "dev_pip")
 

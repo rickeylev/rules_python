@@ -148,7 +148,7 @@ install_pypiserver()
 pip_parse(
     name = "dev_pip",
     python_interpreter_target = interpreter,
-    requirements_lock = "//docs:requirements.txt",
+    requirements_lock = "//dev:requirements.txt",
 )
 
 load("@dev_pip//:requirements.bzl", docs_install_deps = "install_deps")

@@ -1,0 +1,10 @@
+[project]
+name = "sphinxdocs"
+version = "0.0.0"
+
+dependencies = [
+    "sphinx",
+    "myst-parser",
+    "typing-extensions",
+    "absl-py",
+]

@@ -24,6 +24,9 @@ load(":toolchain_types.bzl", "UV_TOOLCHAIN_TYPE")
 
 visibility(["//..."])
 
+_INCOMPATIBLE_PLATFORM = Label("@platforms//:incompatible")
+_WINDOWS_PLATFORM = Label("@platforms//os:windows")
+
 _RunLockInfo = provider(
     doc = "",
     fields = {
@@ -607,11 +610,11 @@ def lock(
 
     tags = ["manual"] + kwargs.pop("tags", [])
     if not BZLMOD_ENABLED:
-        kwargs["target_compatible_with"] = ["@platforms//:incompatible"]
+        kwargs["target_compatible_with"] = [_INCOMPATIBLE_PLATFORM]
 
     uv_kwargs = {
         "is_windows": select({
-            "@platforms//os:windows": True,
+            _WINDOWS_PLATFORM: True,
             "//conditions:default": False,
         }),
         "output": out,

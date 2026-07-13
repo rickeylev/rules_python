@@ -1,0 +1,8 @@
+[project]
+name = "sphinxdocs-test"
+version = "0.0.0"
+
+dependencies = [
+    "sphinx",
+    "myst-parser",
+    ]
