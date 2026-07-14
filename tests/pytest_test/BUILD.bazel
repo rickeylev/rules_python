@@ -1,0 +1,12 @@
+load("//python:pytest_test.bzl", "pytest_test")
+
+pytest_test(
+    name = "mytest",
+    srcs = [
+        "mytest.py",
+    ],
+    config_settings = {
+        "@rules_python//python/config_settings:bootstrap_impl": "script",
+        "@rules_python//python/config_settings:venvs_site_packages": "yes",
+    },
+)

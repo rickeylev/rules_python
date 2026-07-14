@@ -1,0 +1,8 @@
+load("//python:py_library.bzl", "py_library")
+
+py_library(
+    name = "pytest_bazel",
+    srcs = glob(["*.py"]),
+    imports = [".."],
+    visibility = ["//visibility:public"],
+)
