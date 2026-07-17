@@ -4,6 +4,7 @@ py_library(
     name = "release_test_helper",
     srcs = ["release_test_helper.py"],
     deps = [
+        "//tools/private/release:mock_gh",
         "//tools/private/release:release_lib",
     ],
 )
@@ -97,8 +98,8 @@ py_test(
 )
 
 py_test(
-    name = "promote_rc_test",
-    srcs = ["promote_rc_test.py"],
+    name = "promote_test",
+    srcs = ["promote_test.py"],
     deps = [
         ":release_test_helper",
         "//tools/private/release:release_lib",
@@ -128,5 +129,23 @@ py_test(
         ":release_test_helper",
         "//tools/private/release:release_lib",
         "@dev_pip//packaging",
+    ],
+)
+
+py_test(
+    name = "backport_prepare_test",
+    srcs = ["backport_prepare_test.py"],
+    deps = [
+        ":release_test_helper",
+        "//tools/private/release:release_lib",
+    ],
+)
+
+py_test(
+    name = "backport_create_releases_test",
+    srcs = ["backport_create_releases_test.py"],
+    deps = [
+        ":release_test_helper",
+        "//tools/private/release:release_lib",
     ],
 )

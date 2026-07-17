@@ -8,6 +8,10 @@ import tempfile
 from tools.private.release.release_issue import BackportTask
 from tools.private.release.shell import run_cmd
 
+# GitHub label types
+RELEASE_LABEL = "type: release"
+BACKPORT_LABEL = "type: backport-pr"
+
 # GitHub reaction types
 # See: https://docs.github.com/en/rest/reactions/reactions?apiVersion=2022-11-28#about-reactions
 GH_REACTION_THUMBS_UP = "+1"
@@ -42,7 +46,6 @@ class GitHub:
             repo: The GitHub repository to operate on.
         """
         self.repo = repo
-        self.label = "type: release"
 
     def _run_gh(
         self, *args: str, check: bool = True, capture_output: bool = True
@@ -125,7 +128,7 @@ class GitHub:
         """
         search = f'"Release {version}" in:title' if version else None
         return self.list_issues(
-            label=self.label,
+            label=RELEASE_LABEL,
             state="open",
             search=search,
             fields="number,title,url",
@@ -158,13 +161,13 @@ class GitHub:
         if not exact_matches:
             raise NoTrackingIssueError(
                 f"No open tracking issue found matching 'Release {version}' "
-                f"in repo {self.repo} with label '{self.label}'"
+                f"in repo {self.repo} with label '{RELEASE_LABEL}'"
             )
         if len(exact_matches) > 1:
             urls = [issue["url"] for issue in exact_matches]
             raise MultipleTrackingIssuesError(
                 f"Multiple open tracking issues found for version {version} "
-                f"in repo {self.repo} with label '{self.label}':\n" + "\n".join(urls)
+                f"in repo {self.repo} with label '{RELEASE_LABEL}':\n" + "\n".join(urls)
             )
 
         return exact_matches[0]["number"]
@@ -188,16 +191,15 @@ class GitHub:
             if len(parts) >= 3:
                 issue_body = parts[2].strip()
 
-        # Write body to a secure temporary file to pass to the CLI
-        with tempfile.NamedTemporaryFile(mode="w", suffix=".md", delete=False) as f:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".md") as f:
             f.write(issue_body)
+            f.flush()
             temp_path = f.name
 
-        try:
             output = self._gh_issue(
                 "create",
                 f"--title=Release {version}",
-                f"--label={self.label}",
+                f"--label={RELEASE_LABEL}",
                 f"--body-file={temp_path}",
             )
             if not output:
@@ -205,9 +207,40 @@ class GitHub:
             issue_url = output.strip()
             issue_num = int(issue_url.split("/")[-1])
             return issue_num
-        finally:
-            if os.path.exists(temp_path):
-                os.unlink(temp_path)
+
+    def create_issue(
+        self, title: str, body: str, labels: list[str] | None = None
+    ) -> int:
+        """Creates a generic issue.
+
+        Args:
+            title: The title of the issue.
+            body: The body of the issue.
+            labels: Optional list of labels to add.
+
+        Returns:
+            The created issue number.
+        """
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".md") as f:
+            f.write(body)
+            f.flush()
+            temp_path = f.name
+
+            cmd = [
+                "create",
+                f"--title={title}",
+                f"--body-file={temp_path}",
+            ]
+            if labels:
+                for label in labels:
+                    cmd.append(f"--label={label}")
+
+            output = self._gh_issue(*cmd)
+            if not output:
+                raise RuntimeError("Failed to get issue URL from gh issue create")
+            issue_url = output.strip()
+            issue_num = int(issue_url.split("/")[-1])
+            return issue_num
 
     def get_issue_body(self, issue_num: int) -> str:
         """Fetches the body of a specific issue.

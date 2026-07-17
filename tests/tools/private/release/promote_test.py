@@ -7,10 +7,10 @@ from unittest.mock import call, patch
 
 from tests.tools.private.release.release_test_helper import _mock_git_and_gh
 from tools.private.release.gh import NoTrackingIssueError
-from tools.private.release.promote_rc import PromoteRc
+from tools.private.release.promote import Promote
 
 
-class CmdPromoteRcTest(unittest.TestCase):
+class CmdPromoteTest(unittest.TestCase):
     def setUp(self):
         _mock_git_and_gh(self)
         self.test_dir = tempfile.TemporaryDirectory()
@@ -28,7 +28,7 @@ class CmdPromoteRcTest(unittest.TestCase):
         self.mock_gh.get_issue_body.return_value = initial_body
 
         # Act
-        result = PromoteRc(args, self.mock_git, self.mock_gh).run()
+        result = Promote(args, self.mock_git, self.mock_gh).run()
 
         # Assert
         self.assertEqual(result, 0)
@@ -60,7 +60,7 @@ class CmdPromoteRcTest(unittest.TestCase):
             "- [Github Release 2.0.0](https://github.com/bazel-contrib/rules_python/releases/tag/2.0.0)\n"
             "- [BCR Entry 2.0.0](https://registry.bazel.build/modules/rules_python/2.0.0)\n"
             "- [BCR PRs](https://github.com/bazelbuild/bazel-central-registry/pulls?q=is%3Apr%20%28%22bazel-contrib/rules_python%22%20in%3Atitle%29%20%28%22%402.0.0%22%20in%3Atitle%29)\n"
-            "- [Release workflow status](https://github.com/bazel-contrib/rules_python/actions/workflows/release_promote_rc.yaml)"
+            "- [Release workflow status](https://github.com/bazel-contrib/rules_python/actions/workflows/release_promote.yaml)"
         )
         self.mock_gh.post_issue_comment.assert_called_once_with(123, expected_comment)
 
@@ -78,7 +78,7 @@ class CmdPromoteRcTest(unittest.TestCase):
 
         # Act
         with patch.dict("os.environ", {"GITHUB_OUTPUT": github_output_path}):
-            result = PromoteRc(args, self.mock_git, self.mock_gh).run()
+            result = Promote(args, self.mock_git, self.mock_gh).run()
 
         # Assert
         self.assertEqual(result, 0)
@@ -100,7 +100,7 @@ class CmdPromoteRcTest(unittest.TestCase):
         self.mock_gh.get_issue_body.return_value = initial_body
 
         # Act
-        result = PromoteRc(args, self.mock_git, self.mock_gh).run()
+        result = Promote(args, self.mock_git, self.mock_gh).run()
 
         # Assert
         self.assertEqual(result, 0)
@@ -130,24 +130,22 @@ class CmdPromoteRcTest(unittest.TestCase):
             "- [Github Release 2.0.0](https://github.com/bazel-contrib/rules_python/releases/tag/2.0.0)\n"
             "- [BCR Entry 2.0.0](https://registry.bazel.build/modules/rules_python/2.0.0)\n"
             "- [BCR PRs](https://github.com/bazelbuild/bazel-central-registry/pulls?q=is%3Apr%20%28%22bazel-contrib/rules_python%22%20in%3Atitle%29%20%28%22%402.0.0%22%20in%3Atitle%29)\n"
-            "- [Release workflow status](https://github.com/bazel-contrib/rules_python/actions/workflows/release_promote_rc.yaml)"
+            "- [Release workflow status](https://github.com/bazel-contrib/rules_python/actions/workflows/release_promote.yaml)"
         )
         self.mock_gh.post_issue_comment.assert_called_once_with(123, expected_comment)
 
-    def test_promote_rc_resolves_version_from_issue(self):
+    def test_promote_patch_success(self):
         # Arrange
         args = argparse.Namespace(
-            version=None, issue=123, dry_run=False, remote="my-remote"
+            version="2.0.1", issue=123, dry_run=False, remote="my-remote"
         )
-        self.mock_gh.get_issue_title.return_value = "Release 2.0.1"
-        self.mock_git.get_remote_tags.return_value = ["2.0.1-rc0"]
-        self.mock_git.get_commit_sha.return_value = "12345678"
         self.mock_git.tag_exists.return_value = False
+        self.mock_git.get_commit_sha.return_value = "12345678"
         initial_body = "- [ ] Tag Final"
         self.mock_gh.get_issue_body.return_value = initial_body
 
         # Act
-        result = PromoteRc(args, self.mock_git, self.mock_gh).run()
+        result = Promote(args, self.mock_git, self.mock_gh).run()
 
         # Assert
         self.assertEqual(result, 0)
@@ -159,12 +157,10 @@ class CmdPromoteRcTest(unittest.TestCase):
         )
         self.mock_git.get_current_branch.assert_not_called()
         self.mock_git.get_tags.assert_not_called()
-        self.mock_git.get_remote_tags.assert_called_once_with("my-remote")
+        self.mock_git.get_remote_tags.assert_not_called()
 
         self.mock_git.checkout.assert_not_called()
-        self.mock_git.get_commit_sha.assert_has_calls(
-            [call("2.0.1-rc0"), call("my-remote/release/2.0")]
-        )
+        self.mock_git.get_commit_sha.assert_called_once_with("my-remote/release/2.0")
         self.mock_git.tag.assert_called_once_with("2.0.1", "12345678")
         self.mock_git.push.assert_called_once_with("my-remote", "2.0.1")
 
@@ -180,7 +176,7 @@ class CmdPromoteRcTest(unittest.TestCase):
             "- [Github Release 2.0.1](https://github.com/bazel-contrib/rules_python/releases/tag/2.0.1)\n"
             "- [BCR Entry 2.0.1](https://registry.bazel.build/modules/rules_python/2.0.1)\n"
             "- [BCR PRs](https://github.com/bazelbuild/bazel-central-registry/pulls?q=is%3Apr%20%28%22bazel-contrib/rules_python%22%20in%3Atitle%29%20%28%22%402.0.1%22%20in%3Atitle%29)\n"
-            "- [Release workflow status](https://github.com/bazel-contrib/rules_python/actions/workflows/release_promote_rc.yaml)"
+            "- [Release workflow status](https://github.com/bazel-contrib/rules_python/actions/workflows/release_promote.yaml)"
         )
         self.mock_gh.post_issue_comment.assert_called_once_with(123, expected_comment)
 
@@ -197,7 +193,7 @@ class CmdPromoteRcTest(unittest.TestCase):
         self.mock_gh.get_issue_body.return_value = initial_body
 
         # Act
-        result = PromoteRc(args, self.mock_git, self.mock_gh).run()
+        result = Promote(args, self.mock_git, self.mock_gh).run()
 
         # Assert
         self.assertEqual(result, 0)
@@ -242,7 +238,7 @@ class CmdPromoteRcTest(unittest.TestCase):
         self.mock_git.tag_exists.return_value = True
 
         # Act
-        result = PromoteRc(args, self.mock_git, self.mock_gh).run()
+        result = Promote(args, self.mock_git, self.mock_gh).run()
 
         # Assert
         self.assertEqual(result, 1)
@@ -264,7 +260,7 @@ class CmdPromoteRcTest(unittest.TestCase):
         )
 
         # Act
-        result = PromoteRc(args, self.mock_git, self.mock_gh).run()
+        result = Promote(args, self.mock_git, self.mock_gh).run()
 
         # Assert
         self.assertEqual(result, 1)
@@ -286,7 +282,7 @@ class CmdPromoteRcTest(unittest.TestCase):
         self.mock_gh.get_issue_body.return_value = initial_body
 
         # Act
-        result = PromoteRc(args, self.mock_git, self.mock_gh).run()
+        result = Promote(args, self.mock_git, self.mock_gh).run()
 
         # Assert
         self.assertEqual(result, 1)
@@ -304,7 +300,7 @@ class CmdPromoteRcTest(unittest.TestCase):
         self.mock_git.get_remote_tags.return_value = []
 
         # Act
-        result = PromoteRc(args, self.mock_git, self.mock_gh).run()
+        result = Promote(args, self.mock_git, self.mock_gh).run()
 
         # Assert
         self.assertEqual(result, 1)
