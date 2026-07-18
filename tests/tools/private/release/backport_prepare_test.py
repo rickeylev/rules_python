@@ -156,6 +156,37 @@ class CmdBackportPrepareTest(ReleaseToolTestCase):
         self.assertIn("- [ ] Track Release 1.7.2", body)
         self.assertIn("- [ ] Track Release 1.8.1", body)
 
+    def test_prepare_manual_with_patch_versions(self):
+        # Arrange
+        args = argparse.Namespace(
+            issue=None,
+            pr="#456",
+            from_minor="1.7.0",
+            to_minor="1.8.0",
+            remote="my-remote",
+            dry_run=False,
+        )
+        self.gh.prs[456] = {
+            "state": "MERGED",
+            "mergeCommit": {"oid": "pr_merge_sha_12345"},
+        }
+        self.mock_git.get_remote_branches.return_value = [
+            "release/1.7",
+            "release/1.8",
+        ]
+        self.mock_git.get_current_branch.return_value = "work-branch"
+        self.mock_det.side_effect = ["1.7.2", "1.8.1"]
+
+        # Act
+        result = BackportPrepare(args, self.mock_git, self.gh).run()
+
+        # Assert
+        self.assertEqual(result, 0)
+        self.assertIn(1001, self.gh.issues)
+        body = self.gh.issues[1001]["body"]
+        self.assertIn("- [x] Verify apply 1.7 | status=success", body)
+        self.assertIn("- [x] Verify apply 1.8 | status=success", body)
+
     def test_prepare_verify_failed(self):
         # Arrange
         args = argparse.Namespace(

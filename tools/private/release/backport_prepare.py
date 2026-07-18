@@ -45,9 +45,9 @@ def get_target_branches(git, remote, from_minor, to_minor):
     branches = git.get_remote_branches(remote)
     target_branches = []
 
-    # Parse version strings to compare
-    from_v = [int(x) for x in from_minor.split(".")]
-    to_v = [int(x) for x in to_minor.split(".")]
+    # Parse version strings to compare (only major and minor)
+    from_v = [int(x) for x in from_minor.split(".")][:2]
+    to_v = [int(x) for x in to_minor.split(".")][:2]
 
     for branch in branches:
         match = re.match(r"^release/(\d+)\.(\d+)$", branch)
