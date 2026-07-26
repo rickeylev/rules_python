@@ -1,0 +1,47 @@
+load("@rules_python//python:py_test.bzl", "py_test")
+
+[
+    alias(
+        name = "{}_pkg".format(pkg),
+        actual = "@rules_python//python:none",
+    )
+    for pkg in [
+        "charset_normalizer",
+        "certifi",
+        "idna",
+        "urllib3",
+    ]
+]
+
+# Extract all deps
+genquery(
+    name = "whl_target_deps",
+    expression = "deps(@whl_archive//:pkg)",
+    scope = ["@whl_archive//:pkg"],
+)
+
+# Extract all deps
+genquery(
+    name = "whl_deps_target_deps",
+    expression = "deps(@whl_deps_library//:pkg)",
+    scope = ["@whl_deps_library//:pkg"],
+)
+
+py_test(
+    name = "test_contents",
+    srcs = ["test_contents.py"],
+    data = [
+        ":whl_deps_target_deps",
+        ":whl_target_deps",
+        "@pip_archive//:srcs",
+        "@pip_sdist_archive//:srcs",
+        "@whl_archive//:srcs",
+    ],
+    env = {
+        "SDIST_SRC_FILES": "$(locations @pip_sdist_archive//:srcs)",
+        "SRC_FILES": "$(locations @pip_archive//:srcs)",
+        "WHL_DEPS": "$(location :whl_target_deps)",
+        "WHL_FILES": "$(locations @whl_archive//:srcs)",
+        "WHL_TARGET_DEPS": "$(location :whl_deps_target_deps)",
+    },
+)

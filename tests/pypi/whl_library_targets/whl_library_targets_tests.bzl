@@ -17,8 +17,8 @@
 load("@rules_testing//lib:test_suite.bzl", "test_suite")
 load(
     "//python/private/pypi:whl_library_targets.bzl",
+    "whl_library_deps_targets",
     "whl_library_srcs",
-    "whl_library_targets_from_requires",
 )  # buildifier: disable=bzl-visibility
 load("//tests/support/mocks:mocks.bzl", "mocks")
 
@@ -118,10 +118,9 @@ def _test_whl_and_library_deps_from_requires(env):
     m_glob.results.append(["site-packages/foo/DATA.txt"])  # data
     m_glob.results.append(["site-packages/foo/PYI.pyi"])  # pyi
 
-    whl_library_targets_from_requires(
+    whl_library_deps_targets(
         name = "foo-0-py3-none-any.whl",
         metadata_name = "Foo",
-        metadata_version = "0",
         dep_template = "@pypi//{name}:{target}",
         requires_dist = [
             "foo",  # this self-edge will be ignored
@@ -130,11 +129,13 @@ def _test_whl_and_library_deps_from_requires(env):
             "booo",  # this is effectively excluded due to the list below
         ],
         include = ["foo", "bar", "bar_baz"],
-        data_exclude = [],
         # Overrides for testing
-        filegroups = {},
+        repo = None,
+        aliases = None,
+        extras = [],
         native = struct(
             filegroup = lambda **kwargs: filegroup_calls.append(kwargs),
+            alias = lambda **kwargs: None,
             config_setting = lambda **_: None,
             glob = m_glob.glob,
         ),
