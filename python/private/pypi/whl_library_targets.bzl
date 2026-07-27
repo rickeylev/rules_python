@@ -115,8 +115,8 @@ def whl_library_targets(
         namespace_package_files = namespace_package_files,
         # If there are no dependencies, then let's create the targets with public labels.
         # Note, we are not supporting grouping the packages in this case, but that is fine.
-        whl_name = WHEEL_FILE if create_extra_targets else WHEEL_FILE_PUBLIC_LABEL,
-        pkg_name = PY_SRCS_LABEL if create_extra_targets else PY_LIBRARY_PUBLIC_LABEL,
+        whl_name = WHEEL_FILE if (create_extra_targets and dep_template) else WHEEL_FILE_PUBLIC_LABEL,
+        pkg_name = PY_SRCS_LABEL if (create_extra_targets and dep_template) else PY_LIBRARY_PUBLIC_LABEL,
         **kwargs
     )
 
@@ -435,19 +435,18 @@ def whl_library_deps_targets(
 
         py_library_label = PY_LIBRARY_IMPL_LABEL
         whl_file_label = WHEEL_FILE_IMPL_LABEL
-    elif group_name:
-        py_library_label = PY_LIBRARY_IMPL_LABEL
-        whl_file_label = WHEEL_FILE_IMPL_LABEL
-        impl_vis = [dep_template.format(name = "", target = "__subpackages__")]
     else:
         py_library_label = PY_LIBRARY_PUBLIC_LABEL
         whl_file_label = WHEEL_FILE_PUBLIC_LABEL
-        impl_vis = visibility
+        if group_name:
+            impl_vis = [dep_template.format(name = "", target = "__subpackages__")]
+        else:
+            impl_vis = visibility
 
     if not requires_dist:
         # If the package is in a group but has no deps, we will correctly alias the right
         # thing.
-        aliases = {
+        aliases = aliases | {
             py_library_label: repo_label(PY_LIBRARY_PUBLIC_LABEL),
             whl_file_label: repo_label(WHEEL_FILE_PUBLIC_LABEL),
         }
