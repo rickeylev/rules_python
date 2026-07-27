@@ -129,7 +129,7 @@ rules_python_integration_test(
 )
 
 rules_python_integration_test(
-    name = "pip_archive_sdist_test",
+    name = "whl_library_test",
 )
 
 py_library(
