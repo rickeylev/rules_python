@@ -34,11 +34,13 @@ _RENDER = {
 # NOTE @aignas 2024-10-25: We have to keep this so that files in
 # this repository can be publicly visible without the need for
 # export_files
-_TEMPLATE = """\
+_TEMPLATE_START = """\
 {loads}
 
 package(default_visibility = ["//visibility:public"])
+"""
 
+_TEMPLATE_END = """\
 {fn}(
 {kwargs}
 )
@@ -116,16 +118,17 @@ def generate_whl_library_build_bazel(
 
     contents = "\n".join(
         [
-            _TEMPLATE.format(
+            _TEMPLATE_START.format(
                 loads = "\n".join(loads),
+            ),
+            _PURL.format(purl = repr(purl)),
+            _TEMPLATE_END.format(
                 fn = fn,
                 kwargs = render.indent("\n".join([
                     "{} = {},".format(k, _RENDER.get(k, repr)(v))
                     for k, v in sorted(kwargs.items())
                 ])),
             ),
-        ] + [
-            _PURL.format(purl = repr(purl)) if purl else "",
         ] + additional_content,
     )
 

@@ -67,6 +67,11 @@ whl_library_targets(
     ],
 )
 
+package_metadata(
+    name = "package_metadata",
+    purl = None,
+    visibility = ["//:__subpackages__"],
+)
 
 # SOMETHING SPECIAL AT THE END
 """
@@ -141,6 +146,11 @@ whl_library_targets(
     ],
 )
 
+package_metadata(
+    name = "package_metadata",
+    purl = None,
+    visibility = ["//:__subpackages__"],
+)
 
 # SOMETHING SPECIAL AT THE END
 """
@@ -215,6 +225,11 @@ whl_library_targets(
     ],
 )
 
+package_metadata(
+    name = "package_metadata",
+    purl = None,
+    visibility = ["//:__subpackages__"],
+)
 
 # SOMETHING SPECIAL AT THE END
 """
