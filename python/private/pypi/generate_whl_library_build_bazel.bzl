@@ -128,7 +128,7 @@ def generate_whl_library_build_bazel(
                     for k, v in sorted(kwargs.items())
                 ])),
             ),
-        ] + additional_content + ([_PURL.format(purl = repr(purl))] if purl else []),
+        ] + ([_PURL.format(purl = repr(purl))] if purl else []) + additional_content,
     )
 
     # NOTE: Ensure that we terminate with a new line

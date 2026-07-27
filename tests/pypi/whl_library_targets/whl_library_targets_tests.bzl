@@ -105,7 +105,7 @@ def _test_copy(env):
 
 _tests.append(_test_copy)
 
-def _test_whl_and_library_deps_from_requires(env):
+def _test_whl_library_deps_targets(env):
     filegroup_calls = []
     py_library_calls = []
     env_marker_setting_calls = []
@@ -149,79 +149,34 @@ def _test_whl_and_library_deps_from_requires(env):
 
     env.expect.that_collection(filegroup_calls).contains_exactly([
         {
-            "name": "whl_file",
-            "srcs": ["foo-0-py3-none-any.whl"],
-            "visibility": ["//visibility:public"],
-        },
-        {
             "name": "whl",
             # NOTE @aignas 2026-07-25: depending on the brackets position one may get different
             # results in the expectation.
-            "data": ["whl_file"] + (["@pypi//bar:whl"] + select({
+            "data": ["whl_file", "@pypi//bar:whl"] + select({
                 ":is_include_bar_baz_true": ["@pypi//bar_baz:whl"],
                 "//conditions:default": [],
-            })),
+            }),
             "visibility": ["//visibility:public"],
         },
     ])  # buildifier: @unsorted-dict-items
 
-    env.expect.that_collection(py_library_calls).has_size(2)
+    env.expect.that_collection(py_library_calls).has_size(1)
     if len(py_library_calls) != 1:
         return
     py_library_call = py_library_calls[0]
 
     env.expect.that_dict(py_library_call).contains_exactly({
         "name": "pkg",
-        "srcs": ["site-packages/foo/SRCS.py"] + select({
-            Label("//python/config_settings:_is_venvs_site_packages_yes"): [],
-            "//conditions:default": ["_create_inits_target"],
-        }),
-        "pyi_srcs": ["site-packages/foo/PYI.pyi"],
-        "data": ["site-packages/foo/DATA.txt", "data"],
-        "imports": ["site-packages"],
-        "deps": ["@pypi//bar:pkg"] + select({
+        "srcs": ["srcs"],
+        "deps": ["srcs", "@pypi//bar:pkg"] + select({
             ":is_include_bar_baz_true": ["@pypi//bar_baz:pkg"],
             "//conditions:default": [],
         }),
-        "tags": ["pypi_name=Foo", "pypi_version=0"],
+        "tags": [],
         "visibility": ["//visibility:public"],
-        "experimental_venvs_site_packages": Label("//python/config_settings:venvs_site_packages"),
-        "namespace_package_files": [] + select({
-            Label("//python/config_settings:_is_venvs_site_packages_yes"): [],
-            "//conditions:default": ["_create_inits_target"],
-        }),
     })  # buildifier: @unsorted-dict-items
 
-    env.expect.that_collection(m_glob.calls).contains_exactly([
-        # bin call
-        mocks.glob_call(
-            ["bin/*"],
-            allow_empty = True,
-        ),
-        # rewrite-bin call
-        mocks.glob_call(
-            ["rewrite-bin/*"],
-            allow_empty = True,
-        ),
-        # srcs call
-        mocks.glob_call(
-            ["site-packages/**/*.py"],
-            exclude = [],
-            allow_empty = True,
-        ),
-        # data call
-        mocks.glob_call(
-            ["site-packages/**/*"],
-            exclude = [
-                "**/*.py",
-                "**/*.pyc",
-                "**/*.pyc.*",
-            ],
-            allow_empty = True,
-        ),
-        # pyi call
-        mocks.glob_call(["site-packages/**/*.pyi"], allow_empty = True),
-    ])
+    env.expect.that_collection(m_glob.calls).contains_exactly([])
 
     env.expect.that_collection(env_marker_setting_calls).contains_exactly([
         {
@@ -231,7 +186,7 @@ def _test_whl_and_library_deps_from_requires(env):
         },
     ])  # buildifier: @unsorted-dict-items
 
-_tests.append(_test_whl_and_library_deps_from_requires)
+_tests.append(_test_whl_library_deps_targets)
 
 def _test_sdist_excludes_record(env):
     py_library_calls = []

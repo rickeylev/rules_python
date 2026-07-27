@@ -27,12 +27,6 @@ load("@rules_python//python/private/pypi:whl_library_targets.bzl", "whl_library_
 
 package(default_visibility = ["//visibility:public"])
 
-package_metadata(
-    name = "package_metadata",
-    purl = None,
-    visibility = ["//:__subpackages__"],
-)
-
 whl_library_targets(
     copy_executables = {
         "exec_src": "exec_dest",
@@ -69,7 +63,7 @@ whl_library_targets(
 
 package_metadata(
     name = "package_metadata",
-    purl = None,
+    purl = "foo",
     visibility = ["//:__subpackages__"],
 )
 
@@ -93,6 +87,7 @@ package_metadata(
         config_load = "@pypi//:config.bzl",
         group_name = "qux",
         group_deps = ["foo", "fox", "qux"],
+        purl = "foo",
     )
     env.expect.that_str(actual.replace("@@", "@")).equals(want)
 
@@ -105,12 +100,6 @@ load("@pypi//:config.bzl", "packages")
 load("@rules_python//python/private/pypi:whl_library_targets.bzl", "whl_library_targets")
 
 package(default_visibility = ["//visibility:public"])
-
-package_metadata(
-    name = "package_metadata",
-    purl = None,
-    visibility = ["//:__subpackages__"],
-)
 
 whl_library_targets(
     copy_executables = {
@@ -148,7 +137,7 @@ whl_library_targets(
 
 package_metadata(
     name = "package_metadata",
-    purl = None,
+    purl = "foo",
     visibility = ["//:__subpackages__"],
 )
 
@@ -171,6 +160,7 @@ package_metadata(
         ),
         config_load = "@pypi//:config.bzl",
         group_name = "qux",
+        purl = "foo",
         group_deps = ["foo", "fox", "qux"],
     )
     env.expect.that_str(actual.replace("@@", "@")).equals(want)
@@ -185,12 +175,6 @@ load("@rules_python//python/private/pypi:whl_library_targets.bzl", "whl_library_
 
 package(default_visibility = ["//visibility:public"])
 
-package_metadata(
-    name = "package_metadata",
-    purl = None,
-    visibility = ["//:__subpackages__"],
-)
-
 whl_library_targets(
     copy_executables = {
         "exec_src": "exec_dest",
@@ -227,7 +211,7 @@ whl_library_targets(
 
 package_metadata(
     name = "package_metadata",
-    purl = None,
+    purl = "foo",
     visibility = ["//:__subpackages__"],
 )
 
@@ -251,6 +235,7 @@ package_metadata(
         group_name = "qux",
         config_load = "@pypi//:config.bzl",
         group_deps = ["foo", "fox", "qux"],
+        purl = "foo",
     )
     env.expect.that_str(actual.replace("@@", "@")).equals(want)
 
