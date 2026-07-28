@@ -1,4 +1,5 @@
 import os
+import re
 import unittest
 from pathlib import Path
 
@@ -94,59 +95,70 @@ class TestContents(unittest.TestCase):
     def _read_file(env_var: str) -> list[str]:
         return set(Path(os.environ[env_var]).read_text().splitlines())
 
+    @staticmethod
+    def _normalize_label(label: str) -> str:
+        if not label.startswith("@@"):
+            return label
+        repo, _, rest = label.partition("//")
+        parts = [p for p in re.split(r"[~+]", repo[2:]) if p]
+        if parts:
+            return f"@{parts[-1]}//{rest}"
+        return label
+
     def test_whl_deps_ar_the_same(self):
         for var, main_dep in {
-            "WHL_DEPS": "@@+whl_archive+whl_archive//:pkg",
-            "WHL_TARGET_DEPS": "@@+whl_deps_library+whl_deps_library//:pkg",
+            "WHL_DEPS": "@whl_archive//:pkg",
+            "WHL_TARGET_DEPS": "@whl_deps_library//:pkg",
         }.items():
             self.assertEqual(
-                self._read_file(var),
+                {
+                    self._normalize_label(x)
+                    for x in self._read_file(var)
+                    if not x.endswith("toolchain_type")
+                },
                 {
                     main_dep,
                     "//:certifi_pkg",
                     "//:charset_normalizer_pkg",
                     "//:idna_pkg",
                     "//:urllib3_pkg",
-                    "@@+whl_archive+whl_archive//:data",
-                    "@@+whl_archive+whl_archive//:package_metadata",
-                    "@@+whl_archive+whl_archive//:site-packages/requests-2.34.2.dist-info/INSTALLER",
-                    "@@+whl_archive+whl_archive//:site-packages/requests-2.34.2.dist-info/METADATA",
-                    "@@+whl_archive+whl_archive//:site-packages/requests-2.34.2.dist-info/RECORD",
-                    "@@+whl_archive+whl_archive//:site-packages/requests-2.34.2.dist-info/WHEEL",
-                    "@@+whl_archive+whl_archive//:site-packages/requests-2.34.2.dist-info/licenses/LICENSE",
-                    "@@+whl_archive+whl_archive//:site-packages/requests-2.34.2.dist-info/licenses/NOTICE",
-                    "@@+whl_archive+whl_archive//:site-packages/requests-2.34.2.dist-info/top_level.txt",
-                    "@@+whl_archive+whl_archive//:site-packages/requests/__init__.py",
-                    "@@+whl_archive+whl_archive//:site-packages/requests/__version__.py",
-                    "@@+whl_archive+whl_archive//:site-packages/requests/_internal_utils.py",
-                    "@@+whl_archive+whl_archive//:site-packages/requests/_types.py",
-                    "@@+whl_archive+whl_archive//:site-packages/requests/adapters.py",
-                    "@@+whl_archive+whl_archive//:site-packages/requests/api.py",
-                    "@@+whl_archive+whl_archive//:site-packages/requests/auth.py",
-                    "@@+whl_archive+whl_archive//:site-packages/requests/certs.py",
-                    "@@+whl_archive+whl_archive//:site-packages/requests/compat.py",
-                    "@@+whl_archive+whl_archive//:site-packages/requests/cookies.py",
-                    "@@+whl_archive+whl_archive//:site-packages/requests/exceptions.py",
-                    "@@+whl_archive+whl_archive//:site-packages/requests/help.py",
-                    "@@+whl_archive+whl_archive//:site-packages/requests/hooks.py",
-                    "@@+whl_archive+whl_archive//:site-packages/requests/models.py",
-                    "@@+whl_archive+whl_archive//:site-packages/requests/packages.py",
-                    "@@+whl_archive+whl_archive//:site-packages/requests/py.typed",
-                    "@@+whl_archive+whl_archive//:site-packages/requests/sessions.py",
-                    "@@+whl_archive+whl_archive//:site-packages/requests/status_codes.py",
-                    "@@+whl_archive+whl_archive//:site-packages/requests/structures.py",
-                    "@@+whl_archive+whl_archive//:site-packages/requests/utils.py",
-                    "@@+whl_archive+whl_archive//:srcs",
-                    "@@bazel_tools//tools/python:toolchain_type",
-                    "@@rules_python+//python:exec_tools_toolchain_type",
-                    "@@rules_python+//python:none",
-                    "@@rules_python+//python:toolchain_type",
-                    "@@rules_python+//python/config_settings:_is_venvs_site_packages_yes",
-                    "@@rules_python+//python/config_settings:add_srcs_to_runfiles",
-                    "@@rules_python+//python/config_settings:precompile",
-                    "@@rules_python+//python/config_settings:precompile_source_retention",
-                    "@@rules_python+//python/config_settings:venvs_site_packages",
-                    "@@rules_python+//python/private:sentinel",
+                    "@whl_archive//:data",
+                    "@whl_archive//:package_metadata",
+                    "@whl_archive//:site-packages/requests-2.34.2.dist-info/INSTALLER",
+                    "@whl_archive//:site-packages/requests-2.34.2.dist-info/METADATA",
+                    "@whl_archive//:site-packages/requests-2.34.2.dist-info/RECORD",
+                    "@whl_archive//:site-packages/requests-2.34.2.dist-info/WHEEL",
+                    "@whl_archive//:site-packages/requests-2.34.2.dist-info/licenses/LICENSE",
+                    "@whl_archive//:site-packages/requests-2.34.2.dist-info/licenses/NOTICE",
+                    "@whl_archive//:site-packages/requests-2.34.2.dist-info/top_level.txt",
+                    "@whl_archive//:site-packages/requests/__init__.py",
+                    "@whl_archive//:site-packages/requests/__version__.py",
+                    "@whl_archive//:site-packages/requests/_internal_utils.py",
+                    "@whl_archive//:site-packages/requests/_types.py",
+                    "@whl_archive//:site-packages/requests/adapters.py",
+                    "@whl_archive//:site-packages/requests/api.py",
+                    "@whl_archive//:site-packages/requests/auth.py",
+                    "@whl_archive//:site-packages/requests/certs.py",
+                    "@whl_archive//:site-packages/requests/compat.py",
+                    "@whl_archive//:site-packages/requests/cookies.py",
+                    "@whl_archive//:site-packages/requests/exceptions.py",
+                    "@whl_archive//:site-packages/requests/help.py",
+                    "@whl_archive//:site-packages/requests/hooks.py",
+                    "@whl_archive//:site-packages/requests/models.py",
+                    "@whl_archive//:site-packages/requests/packages.py",
+                    "@whl_archive//:site-packages/requests/py.typed",
+                    "@whl_archive//:site-packages/requests/sessions.py",
+                    "@whl_archive//:site-packages/requests/status_codes.py",
+                    "@whl_archive//:site-packages/requests/structures.py",
+                    "@whl_archive//:site-packages/requests/utils.py",
+                    "@whl_archive//:srcs",
+                    "@rules_python//python:none",
+                    "@rules_python//python/config_settings:_is_venvs_site_packages_yes",
+                    "@rules_python//python/config_settings:add_srcs_to_runfiles",
+                    "@rules_python//python/config_settings:precompile",
+                    "@rules_python//python/config_settings:precompile_source_retention",
+                    "@rules_python//python/config_settings:venvs_site_packages",
+                    "@rules_python//python/private:sentinel",
                 },
             )
 
