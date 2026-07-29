@@ -1,3 +1,4 @@
+load("@rules_python//python:packaging.bzl", "py_package", "py_wheel")
 load("@rules_python//python:py_library.bzl", "py_library")
 
 package(
@@ -11,4 +12,27 @@ py_library(
     imports = [".."],
     # Allow depending on it in sphinx_binary targets
     visibility = ["//visibility:public"],
+)
+
+py_package(
+    name = "sphinxdocs_pkg",
+    packages = ["sphinxdocs.src.sphinx_bzl"],
+    deps = [
+        ":sphinx_bzl",
+    ],
+)
+
+py_wheel(
+    name = "wheel",
+    distribution = "sphinx-bazel",
+    homepage = "https://github.com/bazel-contrib/rules_python",
+    license = "Apache-2.0",
+    requires = [
+        "sphinx",
+        "typing-extensions",
+    ],
+    strip_path_prefixes = ["sphinxdocs/src"],
+    version = "0.0.0",
+    visibility = ["//visibility:public"],
+    deps = [":sphinxdocs_pkg"],
 )
