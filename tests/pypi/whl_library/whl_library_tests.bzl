@@ -253,6 +253,44 @@ def _test_config_load_excluded_from_extract_args(env):
 
 _tests.append(_test_config_load_excluded_from_extract_args)
 
+def _test_wheel_reuse_across_different_extras(env):
+    calls = []
+    whl_library(
+        name = "pkg_foo_repo",
+        rules = _mock_rules(calls),
+        whl_file = None,
+        urls = ["https://example.com/pkg-1.0-py3-none-any.whl"],
+        filename = "pkg-1.0-py3-none-any.whl",
+        requirement = "pkg[foo]==1.0",
+    )
+    whl_library(
+        name = "pkg_bar_repo",
+        rules = _mock_rules(calls),
+        whl_file = None,
+        urls = ["https://example.com/pkg-1.0-py3-none-any.whl"],
+        filename = "pkg-1.0-py3-none-any.whl",
+        requirement = "pkg[bar]==1.0",
+    )
+    whl_archive_calls = _calls_for(calls, "whl_archive")
+    env.expect.that_int(len(whl_archive_calls)).equals(2)
+    env.expect.that_str(whl_archive_calls[0].kwargs["name"]).equals("w_pkg_1_0_py3_none_any")
+    env.expect.that_str(whl_archive_calls[1].kwargs["name"]).equals("w_pkg_1_0_py3_none_any")
+
+    deps_calls = _calls_for(calls, "whl_deps_library")
+    env.expect.that_int(len(deps_calls)).equals(2)
+    env.expect.that_dict(deps_calls[0].kwargs).contains_exactly({
+        "extras": ["foo"],
+        "metadata_file": "@w_pkg_1_0_py3_none_any//:metadata.json",
+        "name": "pkg_foo_repo",
+    })
+    env.expect.that_dict(deps_calls[1].kwargs).contains_exactly({
+        "extras": ["bar"],
+        "metadata_file": "@w_pkg_1_0_py3_none_any//:metadata.json",
+        "name": "pkg_bar_repo",
+    })
+
+_tests.append(_test_wheel_reuse_across_different_extras)
+
 def whl_library_test_suite(name):
     test_suite(
         name = name,
