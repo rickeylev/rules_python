@@ -34,7 +34,8 @@ def whl_repo_name(filename, digest, *target_platforms):
 
     # Strip the `<algo>:` prefix so that the name only contains the hex digest
     # and stays the same as it has always been for bare sha256 values.
-    digest = digest.rpartition(":")[2]
+    if digest:
+        digest = digest.rpartition(":")[2]
 
     parts = []
 

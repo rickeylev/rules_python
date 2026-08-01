@@ -868,6 +868,7 @@ def whl_library(
                 "dep_template",
                 "group_deps",
                 "group_name",
+                "repo_prefix",
             ]
             if kwargs.get(k) != None
         } | {
