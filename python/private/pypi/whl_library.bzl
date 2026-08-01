@@ -420,10 +420,11 @@ def _whl_archive_impl(rctx):
             url = urls,
             output = filename,
             sha256 = rctx.attr.sha256,
+            integrity = rctx.attr.integrity if not rctx.attr.sha256 else "",
             auth = get_auth(rctx, urls),
         )
-        if not rctx.attr.sha256:
-            # this is only seen when there is a direct URL reference without sha256
+        if not rctx.attr.sha256 and not rctx.attr.integrity:
+            # this is only seen when there is a direct URL reference without a hash
             logger.warn("Please update the requirement line to include the hash:\n{} \\\n    --hash=sha256:{}".format(
                 rctx.attr.requirement,
                 result.sha256,
@@ -463,10 +464,11 @@ def _pip_archive_impl(rctx):
             url = urls,
             output = filename,
             sha256 = rctx.attr.sha256,
+            integrity = rctx.attr.integrity if not rctx.attr.sha256 else "",
             auth = get_auth(rctx, urls),
         )
-        if not rctx.attr.sha256:
-            # this is only seen when there is a direct URL reference without sha256
+        if not rctx.attr.sha256 and not rctx.attr.integrity:
+            # this is only seen when there is a direct URL reference without a hash
             logger.warn("Please update the requirement line to include the hash:\n{} \\\n    --hash=sha256:{}".format(
                 rctx.attr.requirement,
                 result.sha256,
@@ -580,6 +582,19 @@ For example if your whl depends on `numpy` and your Python package repo is named
     "index_url": attr.string(
         doc = "The index_url that the package will be downloaded from.",
     ),
+    "integrity": attr.string(
+        doc = """\
+The expected checksum of the downloaded whl in Subresource Integrity format
+(e.g. `sha256-...` or `sha512-...`). Only used when `urls` is passed. If
+`sha256` is also set, it takes precedence over this attribute.
+
+:::{versionadded} VERSION_NEXT_FEATURE
+:::
+""",
+    ),
+    "repo": attr.string(
+        doc = "Pointer to parent repo name. Used to make these rules rerun if the parent repo changes.",
+    ),
     "repo_prefix": attr.string(
         doc = """
 Prefix for the generated packages will be of the form `@<prefix><sanitized-package-name>//...`
@@ -682,6 +697,7 @@ whl_archive = repository_rule(
             "group_deps",
             "group_name",
             "index_url",
+            "integrity",
             "repo_prefix",
             "requirement",
             "sha256",
