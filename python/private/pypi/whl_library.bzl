@@ -812,7 +812,7 @@ def whl_library(
         filename = filename or Label(whl_file).name
         if "annotation" in kwargs or "whl_patches" in kwargs:
             # No reuse of the whl_library because there is an annotation here
-            whl_archive(name = name, **kwargs)
+            rules.whl_archive(name = name, **kwargs)
             return
 
         extract_args = {
