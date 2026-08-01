@@ -14,7 +14,6 @@
 
 ""
 
-load("@bazel_tools//tools/build_defs/repo:utils.bzl", "maybe")
 load("//python/private:auth.bzl", "AUTH_ATTRS", "get_auth")
 load("//python/private:envsubst.bzl", "envsubst")
 load("//python/private:is_standalone_interpreter.bzl", "is_standalone_interpreter")
@@ -776,7 +775,19 @@ Does not depend on any python.
     environ = [REPO_DEBUG_ENV_VAR],
 )
 
-def whl_library(name, repo = None, maybe = maybe, **kwargs):
+# TODO @aignas 2026-08-01: add unit tests which would ensure that the right repos are created with
+# the right params for each branch. Store the unit tests in
+# //tests/pypi/whl_library/whl_library_tests.bzl and follow conventions.
+def whl_library(
+        name,
+        repo = None,
+        maybe = lambda fn, **kwargs: fn(**kwargs),
+        rules = struct(
+            whl_deps_library = whl_deps_library,
+            pip_archive = pip_archive,
+            whl_archive = whl_archive,
+        ),
+        **kwargs):
     """Create a whl_library.
 
     This proxies to one of the underlying implementations:
@@ -789,6 +800,7 @@ def whl_library(name, repo = None, maybe = maybe, **kwargs):
         maybe: This is the repo rule that is used in WORKSPACE mode and in the extension eval to
             dedupe some of the invocations. This has to be overridden on bzlmod using
             {obj}`repo_utils.bzlmod_maybe`.
+        rules: Used in tests for mocking.
         **kwargs: The args passed to the underlying implementation.
 
     Returns:
@@ -827,7 +839,7 @@ def whl_library(name, repo = None, maybe = maybe, **kwargs):
         )
 
         maybe(
-            whl_archive,
+            rules.whl_archive,
             name = extract_repo_name,
             **extract_args
         )
@@ -848,7 +860,7 @@ def whl_library(name, repo = None, maybe = maybe, **kwargs):
             "extras": req.extras,
             "metadata_file": "@{}//:metadata.json".format(extract_repo_name),
         }
-        whl_deps_library(
+        rules.whl_deps_library(
             name = name,
             **deps_args
         )
@@ -856,7 +868,7 @@ def whl_library(name, repo = None, maybe = maybe, **kwargs):
         # No reuse of the whl_library because we have args that force the extraction of the whl
         # in the hub context. If we have whl-only pipstar extraction, then we can reuse the
         # extracted sources.
-        pip_archive(name = name, **kwargs)
+        rules.pip_archive(name = name, **kwargs)
 
 def _without_extras(requirement_line):
     """Remove the extras from a requirement line.
