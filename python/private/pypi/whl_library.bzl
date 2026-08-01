@@ -775,9 +775,6 @@ Does not depend on any python.
     environ = [REPO_DEBUG_ENV_VAR],
 )
 
-# TODO @aignas 2026-08-01: add unit tests which would ensure that the right repos are created with
-# the right params for each branch. Store the unit tests in
-# //tests/pypi/whl_library/whl_library_tests.bzl and follow conventions.
 def whl_library(
         name,
         repo = None,
@@ -822,13 +819,15 @@ def whl_library(
             k: v
             for k, v in kwargs.items()
             if k not in {
-                # TODO @aignas 2026-08-01: what about python_interpreter and python_interpreter_target
+                # These attributes are specific to pip_archive and are not
+                # accepted by whl_archive.
                 "config_load": None,
                 "dep_template": None,
+                "python_interpreter": None,
+                "python_interpreter_target": None,
             }
         }
         if "index_url" in extract_args:
-            # TODO @aignas 2026-08-01: figure out where we should do the fix here.
             extract_args["index_url"] = extract_args["index_url"].strip("/")
 
         # The extras do not affect the extraction, so normalize the requirement
@@ -856,10 +855,10 @@ def whl_library(
             ]
             if kwargs.get(k) != None
         } | {
-            # TODO @aignas 2026-08-01: add extras only if the list is non-empty
-            "extras": req.extras,
             "metadata_file": "@{}//:metadata.json".format(extract_repo_name),
         }
+        if req.extras:
+            deps_args["extras"] = req.extras
         rules.whl_deps_library(
             name = name,
             **deps_args
