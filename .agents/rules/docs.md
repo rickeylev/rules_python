@@ -1,7 +1,7 @@
 ---
 trigger: glob
 description: Documentation formatting, Sphinx MyST style rules, and documentation build correctness
-globs: "*.md"
+globs: docs/*.md
 ---
 
 # Documentation Rules
