@@ -107,6 +107,13 @@ def rules_python_internal_deps():
         ],
     )
 
+    http_archive(
+        name = "rules_pyrefly",
+        sha256 = "91c35f8b2c7be120ad58bc365346a6b94849d635990b2477ebbe4638295772c2",
+        strip_prefix = "rules_pyrefly-0.1.0",
+        url = "https://github.com/facebook/rules_pyrefly/releases/download/v0.1.0/rules_pyrefly-0.1.0.tar.gz",
+    )
+
     # The below two deps are required for the integration test with bazel
     # gazelle. Maybe the test should be moved to the `gazelle` workspace?
     http_archive(
