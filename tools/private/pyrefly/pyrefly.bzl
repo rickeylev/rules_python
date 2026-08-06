@@ -1,5 +1,6 @@
-"""Aspect and rule definitions for Pyrefly static type checking."""
+"""Aspect, rule, and macro definitions for Pyrefly static type checking."""
 
+load("@bazel_skylib//rules:build_test.bzl", "build_test")
 load("@rules_pyrefly//pyrefly:pyrefly.bzl", "pyrefly")
 
 pyrefly_aspect = pyrefly()
@@ -22,3 +23,26 @@ pyrefly_check = rule(
         ),
     },
 )
+
+def pyrefly_check_test(name, targets, tags = None, **kwargs):
+    """Macro that runs Pyrefly type checking on targets and tests it via build_test.
+
+    Args:
+        name: The name of the test target.
+        targets: The list of targets to type check.
+        tags: Optional tags to apply to the test target.
+        **kwargs: Additional arguments forwarded to build_test.
+    """
+    tags = tags or []
+    check_name = "_" + name
+    pyrefly_check(
+        name = check_name,
+        targets = targets,
+        tags = ["manual"],
+    )
+    build_test(
+        name = name,
+        targets = [":" + check_name],
+        tags = tags,
+        **kwargs
+    )
