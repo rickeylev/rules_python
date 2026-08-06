@@ -42,10 +42,6 @@ build --enable_runfiles
 # Make Bazel 7 use bzlmod by default
 common --enable_bzlmod
 
-# Type checking with rules_pyrefly
-build:pyrefly --aspects=//tools/private/pyrefly:pyrefly.bzl%pyrefly_aspect
-build:pyrefly --output_groups=pyrefly
-
 # Local disk cache greatly speeds up builds if the regular cache is lost
 common --disk_cache=~/.cache/bazel/bazel-disk-cache
 # Drop `experimental_` prefix once Bazel 7 is no longer supported
