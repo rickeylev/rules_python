@@ -1,6 +1,13 @@
 load("@bazel_skylib//rules:build_test.bzl", "build_test")
 load("@rules_python//python:py_test.bzl", "py_test")
 load("@rules_python//python/private:bzlmod_enabled.bzl", "BZLMOD_ENABLED")  # buildifier: disable=bzl-visibility
+load("//tests/support/pyrefly:pyrefly.bzl", "pyrefly_check_test")
+
+if BZLMOD_ENABLED:
+    pyrefly_check_test(
+        name = "runfiles_check",
+        targets = ["//python/runfiles:runfiles"],
+    )
 
 py_test(
     name = "runfiles_test",
