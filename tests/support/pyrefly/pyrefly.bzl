@@ -36,6 +36,8 @@ def pyrefly_check_test(name, targets, tags = None, **kwargs):
         tags: Optional tags to apply to the test target.
         **kwargs: Additional arguments forwarded to build_test.
     """
+
+    # Pyrefly doesn't support WORKSPACE mode, so exit early. It is tested under Bzlmod.
     if not BZLMOD_ENABLED:
         return
     tags = tags or []
