@@ -16,3 +16,9 @@ bzl_library(
     srcs = ["publish_deps.bzl"],
     deps = ["//python/uv/private:lock"],
 )
+
+bzl_library(
+    name = "pyrefly",
+    srcs = ["pyrefly.bzl"],
+    deps = ["@rules_pyrefly//pyrefly"],
+)

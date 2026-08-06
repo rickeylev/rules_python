@@ -41,6 +41,5 @@ filegroup(
 
 bzl_library(
     name = "pyrefly",
-    srcs = ["pyrefly.bzl"],
     deps = ["@rules_pyrefly//pyrefly"],
 )

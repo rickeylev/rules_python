@@ -43,7 +43,7 @@ build --enable_runfiles
 common --enable_bzlmod
 
 # Type checking with rules_pyrefly
-build:pyrefly --aspects=//tools:pyrefly.bzl%pyrefly_aspect
+build:pyrefly --aspects=//tools/private:pyrefly.bzl%pyrefly_aspect
 build:pyrefly --output_groups=pyrefly
 
 # Local disk cache greatly speeds up builds if the regular cache is lost
