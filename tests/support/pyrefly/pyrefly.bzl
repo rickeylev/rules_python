@@ -2,6 +2,7 @@
 
 load("@bazel_skylib//rules:build_test.bzl", "build_test")
 load("@rules_pyrefly//pyrefly:pyrefly.bzl", "pyrefly")
+load("@rules_python//python/private:bzlmod_enabled.bzl", "BZLMOD_ENABLED")  # buildifier: disable=bzl-visibility
 
 pyrefly_aspect = pyrefly(
     opt_in_tags = ["pyrefly"],
@@ -27,6 +28,16 @@ pyrefly_check = rule(
 )
 
 def pyrefly_check_test(name, targets, tags = None, **kwargs):
+    """Macro that runs Pyrefly type checking on targets and tests it via build_test.
+
+    Args:
+        name: The name of the test target.
+        targets: The list of targets to type check.
+        tags: Optional tags to apply to the test target.
+        **kwargs: Additional arguments forwarded to build_test.
+    """
+    if not BZLMOD_ENABLED:
+        return
     tags = tags or []
     check_name = "_" + name
     pyrefly_check(
