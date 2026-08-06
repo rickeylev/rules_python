@@ -100,11 +100,18 @@ bazel_dep(name = "gazelle", version = "0.40.0", dev_dependency = True, repo_name
 bazel_dep(name = "bazel_skylib_gazelle_plugin", version = "1.8.2", dev_dependency = True)
 bazel_dep(name = "rules_pyrefly", version = "0.1.0", dev_dependency = True)
 
-pyrefly = use_extension("@rules_pyrefly//pyrefly:extensions.bzl", "pyrefly")
+pyrefly = use_extension(
+    "@rules_pyrefly//pyrefly:extensions.bzl",
+    "pyrefly",
+    dev_dependency = True,
+)
 pyrefly.toolchain(version = "1.2.0")
 use_repo(pyrefly, "pyrefly_toolchains")
 
-register_toolchains("@pyrefly_toolchains//:all")
+register_toolchains(
+    "@pyrefly_toolchains//:all",
+    dev_dependency = True,
+)
 
 internal_dev_deps = use_extension(
     "//python/private:internal_dev_deps.bzl",
