@@ -40,3 +40,18 @@ use_repo(
     "bazel_binaries_bazelisk",
     "build_bazel_bazel_self",
 )
+
+bazel_dep(name = "rules_pyrefly", version = "0.1.0", dev_dependency = True)
+
+pyrefly = use_extension(
+    "@rules_pyrefly//pyrefly:extensions.bzl",
+    "pyrefly",
+    dev_dependency = True,
+)
+pyrefly.toolchain(version = "1.2.0")
+use_repo(pyrefly, "pyrefly_toolchains")
+
+register_toolchains(
+    "@pyrefly_toolchains//:all",
+    dev_dependency = True,
+)
