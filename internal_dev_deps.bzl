@@ -107,11 +107,11 @@ def rules_python_internal_deps():
         ],
     )
 
-    http_archive(
+    # Stub repository for rules_pyrefly in WORKSPACE mode so that load()
+    # statements for @rules_pyrefly resolve without requiring full Pyrefly.
+    local_repository(
         name = "rules_pyrefly",
-        sha256 = "91c35f8b2c7be120ad58bc365346a6b94849d635990b2477ebbe4638295772c2",
-        strip_prefix = "rules_pyrefly-0.1.0",
-        url = "https://github.com/facebook/rules_pyrefly/releases/download/v0.1.0/rules_pyrefly-0.1.0.tar.gz",
+        path = "tests/modules/rules_pyrefly_stub",
     )
 
     # The below two deps are required for the integration test with bazel
