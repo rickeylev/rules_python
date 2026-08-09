@@ -9,37 +9,45 @@ version update findings in `rules_python`.
 
 This skill automates the separation of **Easy (Internal/Dev/Examples/Docs)**
 findings from **Hard (Public API/Core Behavior)** findings, produces a
-categorized mapping report for every Dependabot ID, batch-fixes safe internal
-updates, and synthesizes impact analysis for complex public alerts.
+categorized bullet-point mapping report for every Dependabot ID in a gitignored
+scratch directory, notifies the parent agent upon completion, batch-fixes safe
+internal updates, and synthesizes impact analysis for complex public alerts.
 
 ---
 
 ### Phase 1: Automated Triage & ID-to-Category Report
 
-Run the triage engine to ingest open alerts via `gh` CLI and classify them:
+Run the triage engine to ingest open alerts via `gh` CLI across all pages and
+classify them:
 
 ```bash
-./.agents/skills/dependabot-triage/scripts/triage_dependabot.py
+./.agents/skills/dependabot-triage/scripts/triage_dependabot.py \
+  [--notify-conversation-id <parent_conversation_id>]
 ```
 
-This generates `dependabot_triage_report.md` containing a master summary table
-mapping every **Dependabot Alert ID** to its package, severity, fix version, and
-assigned category:
+This generates `scratch/dependabot_triage_report.md` containing a master
+bullet-point list mapping every **Dependabot Alert ID** to its package,
+severity, fix version, and assigned category:
 
 1. **Category 1: `EASY_INTERNAL` (Auto-Fix Candidates)**:
-   * Packages referenced only in `examples/`, `tests/`, `docs/`, or `tools/`
-     (e.g., `examples/bzlmod/...`).
+   * Packages referenced only in `examples/`, `tests/`, `docs/`, `dev/`, or
+     `tools/` (e.g., `examples/bzlmod/...`, `gazelle/examples/...`).
    * **Crucial Classification Rule**: Even if an alert (such as alert #471) is
      flagged as Critical severity or reports "breaking changes", if the
      package is only used in examples or test requirements, it is
      `EASY_INTERNAL`. The breaking change label applies to the upstream
      library, not our public API.
 2. **Category 2: `HARD_PUBLIC_API` (Requires Review)**:
-   * Packages referenced in `python/`, `gazelle/`, `sphinxdocs/`, or root
-     public macro/module dependencies.
+   * Packages referenced in `python/`, `gazelle/`, or root public macro/module
+     dependencies.
    * Requires careful impact assessment before updating.
 3. **Category 3: `UNREFERENCED_TRANSITIVE`**:
-   * Packages pulled in indirectly via locked requirements compilation.
+   * Packages without explicit manifests, pulled in indirectly via parent
+     dependency resolution.
+
+When `--notify-conversation-id` is specified (or `PARENT_CONVERSATION_ID` is
+set), `triage_dependabot.py` automatically dispatches a completion message to
+the parent agent via `agentapi send-message`.
 
 ---
 
