@@ -61,6 +61,30 @@ def whl_extract(rctx, *, whl_path, logger):
                 logger.debug(lambda: "Renaming: {} -> {}".format(src, dest))
                 repo_utils.rename(rctx, src, dest)
 
+        record_file = dist_info_dir.get_child("RECORD")
+        if record_file.exists:
+            record_content = rctx.read(record_file)
+            prefix_purelib = data_dir.basename + "/purelib/"
+            prefix_platlib = data_dir.basename + "/platlib/"
+            prefix_data = data_dir.basename + "/data/"
+            prefix_scripts = data_dir.basename + "/scripts/"
+            prefix_headers = data_dir.basename + "/headers/"
+
+            lines = []
+            for line in record_content.splitlines():
+                if line.startswith(prefix_purelib):
+                    line = line[len(prefix_purelib):]
+                elif line.startswith(prefix_platlib):
+                    line = line[len(prefix_platlib):]
+                elif line.startswith(prefix_data):
+                    line = "../data/" + line[len(prefix_data):]
+                elif line.startswith(prefix_scripts):
+                    line = "../bin/" + line[len(prefix_scripts):]
+                elif line.startswith(prefix_headers):
+                    line = "../include/" + line[len(prefix_headers):]
+                lines.append(line)
+            rctx.file(record_file, "\n".join(lines) + "\n")
+
         # Ensure that there is no data dir left
         rctx.delete(data_dir)
 
