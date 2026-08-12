@@ -41,6 +41,8 @@ globs: "*.bzl,BUILD,BUILD.bazel,*.bazel"
   `while` loops; iterate over fixed-size ranges or explicit collections.
 
 ## Code Style & Conventions
+* **Dict union (`|`)**: Use `|` instead of `dicts.add(...)` from
+  `@bazel_skylib//lib:dicts.bzl` when merging dictionaries.
 * **Docstring Formatting Invariants**: Use triple-quoted strings for multi-line
   docstrings without trailing backslashes (`\`) for line continuation.
 * **No Bazel Copyright Headers**: Do not add Bazel copyright headers to new or
