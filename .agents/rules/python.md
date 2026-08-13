@@ -14,6 +14,8 @@
   link to its definition in the docstring.
 
 ## Type Checking & Annotations
+* **`importlib.metadata` `PackagePath`**: `f.locate()` is typed as `PathLike`.
+  Wrap with `pathlib.Path(f.locate())` to call `.exists()`, `.is_file()`, etc.
 * **In-file disables vs target skipping**: Prefer `# pyrefly: ignore[<error-code>]`
   (e.g. `[missing-import]`) over `tags = ["no-pyrefly"]`.
 * **No blanket ignores**: NEVER use bare `# type: ignore` or literal
