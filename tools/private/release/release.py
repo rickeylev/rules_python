@@ -17,6 +17,7 @@ from tools.private.release.determine_next_version import DetermineNextVersion
 from tools.private.release.on_pr_merged import OnPrMerged
 from tools.private.release.prepare import Prepare
 from tools.private.release.process_backports import ProcessBackports
+from tools.private.release.process_news import ProcessNews
 from tools.private.release.promote import Promote
 from tools.private.release.utils import format_exception
 
@@ -29,6 +30,7 @@ cmds = [
     CreateReleaseBranch,
     AddBackports,
     ProcessBackports,
+    ProcessNews,
     OnPrMerged,
     CreateRc,
     Promote,
