@@ -19,6 +19,7 @@ from tools.private.release.prepare import Prepare
 from tools.private.release.process_backports import ProcessBackports
 from tools.private.release.process_news import ProcessNews
 from tools.private.release.promote import Promote
+from tools.private.release.sync_changelog import SyncChangelog
 from tools.private.release.utils import format_exception
 
 cmds = [
@@ -31,6 +32,7 @@ cmds = [
     AddBackports,
     ProcessBackports,
     ProcessNews,
+    SyncChangelog,
     OnPrMerged,
     CreateRc,
     Promote,
@@ -55,12 +57,32 @@ def create_parser():
     return parser
 
 
+class GitHubActionsLogHandler(logging.Handler):
+    """Outputs GitHub Actions workflow command annotations for log records."""
+
+    def emit(self, record: logging.LogRecord) -> None:
+        if record.levelno >= logging.ERROR:
+            prefix = "::error::"
+        elif record.levelno >= logging.WARNING:
+            prefix = "::warning::"
+        elif record.levelno >= logging.INFO:
+            prefix = "::notice::"
+        else:
+            return
+        try:
+            msg = record.getMessage()
+            print(f"{prefix}{msg}", file=sys.stdout, flush=True)
+        except Exception:
+            self.handleError(record)
+
+
 def main():
     logging.basicConfig(
         format="%(levelname)s:%(filename)s:%(lineno)d: %(message)s",
         level=logging.INFO,
         stream=sys.stderr,
     )
+    logging.getLogger().addHandler(GitHubActionsLogHandler())
     print(f"sys.argv: {sys.argv}")
     if "BUILD_WORKSPACE_DIRECTORY" in os.environ:
         os.chdir(os.environ["BUILD_WORKSPACE_DIRECTORY"])
