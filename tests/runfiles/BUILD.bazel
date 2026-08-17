@@ -1,8 +1,9 @@
 load("@bazel_skylib//rules:build_test.bzl", "build_test")
 load("@rules_python//python:py_test.bzl", "py_test")
 load("@rules_python//python/private:bzlmod_enabled.bzl", "BZLMOD_ENABLED")  # buildifier: disable=bzl-visibility
+load("//tests/support/pytest_test:pytest_test.bzl", "pytest_test")
 
-py_test(
+pytest_test(
     name = "runfiles_test",
     srcs = ["runfiles_test.py"],
     data = [
@@ -28,7 +29,7 @@ py_test(
     deps = ["//python/runfiles"],
 )
 
-py_test(
+pytest_test(
     name = "pathlib_test",
     srcs = ["pathlib_test.py"],
     deps = ["//python/runfiles"],
