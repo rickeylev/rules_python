@@ -529,6 +529,53 @@ def _test_precompile_enabled_succeeds(name):
 
 _tests.append(_test_precompile_enabled_succeeds)
 
+def _directory_impl(ctx):
+    out = ctx.actions.declare_directory(ctx.label.name)
+    ctx.actions.run_shell(
+        outputs = [out],
+        command = "mkdir -p \"$1\"",
+        arguments = [out.path],
+        mnemonic = "TestDirectory",
+    )
+    return [DefaultInfo(files = depset([out]))]
+
+_directory = rule(implementation = _directory_impl)
+
+def _test_directory_input(name):
+    rt_util.helper_target(
+        _directory,
+        name = name + "_dir.py",
+    )
+    rt_util.helper_target(
+        py_library,
+        name = name + "_subject",
+        srcs = ["lib.py", name + "_dir.py"],
+        precompile = "enabled",
+    )
+    analysis_test(
+        name = name,
+        impl = _test_directory_input_impl,
+        target = name + "_subject",
+        config_settings = _COMMON_CONFIG_SETTINGS,
+    )
+
+def _test_directory_input_impl(env, target):
+    target = env.expect.that_target(target)
+    target.default_outputs().contains_at_least_predicates([
+        matching.file_path_matches("__pycache__/lib.fakepy-45.pyc"),
+        matching.file_path_matches("/lib.py"),
+        matching.file_path_matches("/" + env.ctx.label.name + "_dir.py"),
+    ])
+    py_info = target.provider(PyInfo, factory = py_info_subject)
+    py_info.direct_pyc_files().contains_exactly([
+        "{package}/__pycache__/lib.fakepy-45.pyc",
+    ])
+    py_info.transitive_pyc_files().contains_exactly([
+        "{package}/__pycache__/lib.fakepy-45.pyc",
+    ])
+
+_tests.append(_test_directory_input)
+
 def runfiles_contains_at_least_predicates(runfiles, predicates):
     for predicate in predicates:
         runfiles.contains_predicate(predicate)
