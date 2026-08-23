@@ -35,4 +35,4 @@ manifest:
     werkzeug: werkzeug
   pip_repository:
     name: pip
-integrity: d775f39a5dd4a17ddda29d6f216e29a14fbfdfaa3ec1d7a213fda9e4bcafb350
+integrity: b50a3e8b0d0fd2c648b1ae93e081c2c32a5f289d2df5a12aa1679ee4b6fd809c

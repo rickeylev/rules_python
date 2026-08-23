@@ -19,7 +19,7 @@ licenses(["notice"])  # Apache 2.0
 
 lock(
     name = "bzlmod_requirements_3_12",
-    srcs = ["bzlmod/requirements.in"],
+    srcs = ["bzlmod/pyproject.toml"],
     out = "bzlmod/requirements_lock_3_12.txt",
     args = [
         "--emit-index-url",
@@ -31,7 +31,7 @@ lock(
 
 lock(
     name = "bzlmod_requirements_3_12_windows",
-    srcs = ["bzlmod/requirements.in"],
+    srcs = ["bzlmod/pyproject.toml"],
     out = "bzlmod/requirements_windows_3_12.txt",
     args = [
         "--emit-index-url",
@@ -44,7 +44,7 @@ lock(
 
 lock(
     name = "bzlmod_requirements_3_13",
-    srcs = ["bzlmod/requirements.in"],
+    srcs = ["bzlmod/pyproject.toml"],
     out = "bzlmod/requirements_lock_3_13.txt",
     args = [
         "--emit-index-url",
@@ -56,7 +56,7 @@ lock(
 
 lock(
     name = "bzlmod_requirements_3_13_windows",
-    srcs = ["bzlmod/requirements.in"],
+    srcs = ["bzlmod/pyproject.toml"],
     out = "bzlmod/requirements_windows_3_13.txt",
     args = [
         "--emit-index-url",
@@ -69,7 +69,7 @@ lock(
 
 lock(
     name = "bzlmod_requirements_3_14",
-    srcs = ["bzlmod/requirements.in"],
+    srcs = ["bzlmod/pyproject.toml"],
     out = "bzlmod/requirements_lock_3_14.txt",
     args = [
         "--emit-index-url",
@@ -81,7 +81,7 @@ lock(
 
 lock(
     name = "bzlmod_requirements_3_14_windows",
-    srcs = ["bzlmod/requirements.in"],
+    srcs = ["bzlmod/pyproject.toml"],
     out = "bzlmod/requirements_windows_3_14.txt",
     args = [
         "--emit-index-url",
