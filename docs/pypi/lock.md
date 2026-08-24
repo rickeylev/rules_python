@@ -11,16 +11,27 @@ Currently `rules_python` only supports `requirements.txt` format.
 
 ## requirements.txt
 
-### pip compile
+### uv pip compile (bzlmod)
 
-Generally, when working on a Python project, you'll have some dependencies that themselves have
-other dependencies. You might also specify dependency bounds instead of specific versions.
-So you'll need to generate a full list of all transitive dependencies and pinned versions
-for every dependency.
+When working on a Python project, you will have dependencies that themselves
+have transitive dependencies. You can generate a full list of transitive
+dependencies and pinned versions in `requirements_lock.txt` using the
+{obj}`lock` rule with `uv`:
 
-Typically, you'd have your project dependencies specified in `pyproject.toml` or `requirements.in`
-and generate the full pinned list of dependencies in `requirements_lock.txt`, which you can
-manage with {obj}`compile_pip_requirements`:
+```starlark
+load("@rules_python//python/uv:lock.bzl", "lock")
+
+lock(
+    name = "requirements",
+    srcs = ["pyproject.toml", "requirements.in"],
+    out = "requirements_lock.txt",
+)
+```
+
+### pip compile (WORKSPACE)
+
+For WORKSPACE projects or when using `pip-compile`, you can manage pinned
+dependencies with {obj}`compile_pip_requirements`:
 
 ```starlark
 load("@rules_python//python:pip.bzl", "compile_pip_requirements")
@@ -63,24 +74,6 @@ In the meantime, support can be emulated by passing multiple files to `srcs`:
 compile_pip_requirements(
     srcs = ["pyproject.toml", "requirements-dev.in"]
     ...
-)
-```
-
-### uv pip compile (bzlmod only)
-
-We also have an experimental setup for the `uv pip compile` way of generating lock files.
-This is well tested with the public PyPI index, but you may hit some rough edges with private
-mirrors.
-
-#### Example usage
-
-```starlark
-load("@rules_python//python/uv:lock.bzl", "lock")
-
-lock(
-    name = "requirements",
-    srcs = ["pyproject.toml", "requirements.in"],
-    out = "requirements_lock.txt",
 )
 ```
 
