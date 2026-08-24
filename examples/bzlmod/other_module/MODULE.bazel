@@ -41,7 +41,7 @@ pip.parse(
 )
 use_repo(pip, "other_module_pip")
 
-# DO NOT SUBMIT: consider making uv auto-used before switching
+# DO NOT MERGE: consider making uv auto-used before switching
 # everything over to it.
 uv = use_extension(
     "@rules_python//python/uv:uv.bzl",
