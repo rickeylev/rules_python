@@ -533,7 +533,11 @@ def _directory_impl(ctx):
     out = ctx.actions.declare_directory(ctx.label.name)
     ctx.actions.run_shell(
         outputs = [out],
-        command = "mkdir -p \"$1\"",
+        command = """\
+mkdir -p "$1"
+echo "x = 1" > "$1/foo.py"
+echo "y = 2" > "$1/bar.py"
+""",
         arguments = [out.path],
         mnemonic = "TestDirectory",
     )
@@ -575,6 +579,32 @@ def _test_directory_input_impl(env, target):
     ])
 
 _tests.append(_test_directory_input)
+
+# buildifier: disable=function-docstring-header
+def _test_directory_input_succeeds(name):
+    """Verify that a `py_test` target with a directory input in srcs builds
+    and runs when precompiling is enabled.
+    """
+    _directory(
+        name = name + "_dir.py",
+    )
+    write_file(
+        name = name + "_main",
+        out = name + "_main.py",
+        content = [
+            "print('Hello from directory input test')",
+            "",
+        ],
+    )
+    py_test(
+        name = name,
+        srcs = [name + "_main.py", name + "_dir.py"],
+        main = name + "_main.py",
+        precompile = "enabled",
+        tags = ["no-pyrefly"],
+    )
+
+_tests.append(_test_directory_input_succeeds)
 
 def runfiles_contains_at_least_predicates(runfiles, predicates):
     for predicate in predicates:
