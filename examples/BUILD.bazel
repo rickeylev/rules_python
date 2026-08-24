@@ -34,8 +34,7 @@ lock(
     out = "bzlmod/requirements_windows_3_12.txt",
     args = [
         "--emit-index-url",
-        "--python-platform",
-        "windows",
+        "--python-platform=windows",
         "--python-version=3.12",
     ],
     python_version = "3.12",
@@ -59,8 +58,7 @@ lock(
     out = "bzlmod/requirements_windows_3_13.txt",
     args = [
         "--emit-index-url",
-        "--python-platform",
-        "windows",
+        "--python-platform=windows",
         "--python-version=3.13",
     ],
     python_version = "3.13",
@@ -84,8 +82,7 @@ lock(
     out = "bzlmod/requirements_windows_3_14.txt",
     args = [
         "--emit-index-url",
-        "--python-platform",
-        "windows",
+        "--python-platform=windows",
         "--python-version=3.14",
     ],
     python_version = "3.14",

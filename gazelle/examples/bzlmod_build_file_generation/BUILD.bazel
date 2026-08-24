@@ -32,8 +32,7 @@ lock(
     out = "requirements_windows.txt",
     args = [
         "--emit-index-url",
-        "--python-platform",
-        "windows",
+        "--python-platform=windows",
     ],
 )
 
