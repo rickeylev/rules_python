@@ -329,7 +329,10 @@ def _test_uv_lock_only(env):
 _tests.append(_test_uv_lock_only)
 
 def _test_prerelease_python_version(env):
-    """Test that prerelease python_version (e.g. 3.13.0rc1) prefixes platform names with cp313.0_."""
+    """Test that prerelease python_version prefixes platform names.
+
+    For example, 3.13.0rc1 prefixes platform names with cp313.0_.
+    """
     got = requirements_files_by_platform(
         requirements_lock = "requirements_lock",
         python_version = "3.13.0rc1",
@@ -350,7 +353,10 @@ def _test_prerelease_python_version(env):
 _tests.append(_test_prerelease_python_version)
 
 def _test_requirements_by_platform_exact_platform(env):
-    """Test requirements_by_platform with exact platform names without trailing wildcard."""
+    """Test requirements_by_platform with exact platform names.
+
+    Verifies behavior without trailing wildcard.
+    """
     got = requirements_files_by_platform(
         requirements_by_platform = {
             "req_linux": "linux_x86_64",

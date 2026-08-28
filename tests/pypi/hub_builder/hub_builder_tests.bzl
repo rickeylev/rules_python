@@ -1609,7 +1609,10 @@ Attempting to create a duplicate library pypi_315_foo for foo with different arg
 _tests.append(_test_err_duplicate_repos)
 
 def _test_platforms_without_none_or_any_tags(env):
-    """Verify hub_builder adds 'none' in whl_abi_tags and 'any' in whl_platform_tags."""
+    """Verify hub_builder behavior when tags are missing.
+
+    Ensures 'none' is added to whl_abi_tags and 'any' to whl_platform_tags.
+    """
 
     def mockread_simpleapi(*_, parse_index, **__):
         if parse_index:

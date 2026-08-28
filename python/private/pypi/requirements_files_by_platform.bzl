@@ -65,7 +65,12 @@ def _platform(platform_string, python_version = None):
 
     py_ver = version.parse(python_version) if "." in python_version else None
     if py_ver and len(py_ver.release) >= 3:
-        return "cp{}{}.{}_{}".format(py_ver.release[0], py_ver.release[1], py_ver.release[2], platform_string)
+        return "cp{}{}.{}_{}".format(
+            py_ver.release[0],
+            py_ver.release[1],
+            py_ver.release[2],
+            platform_string,
+        )
 
     major, _, tail = python_version.partition(".")
 
@@ -164,7 +169,10 @@ def requirements_files_by_platform(
             file: [
                 platform
                 for filter_or_platform in specifier.split(",")
-                for platform in _default_platforms(filter = filter_or_platform, platforms = platforms)
+                for platform in _default_platforms(
+                    filter = filter_or_platform,
+                    platforms = platforms,
+                )
             ]
             for file, specifier in requirements_by_platform.items()
         }.items()
