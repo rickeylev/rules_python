@@ -1,0 +1,23 @@
+load("@rules_rust//rust:defs.bzl", "rust_binary", "rust_library")
+
+package(default_visibility = ["//:__subpackages__"])
+
+licenses(["notice"])
+
+rust_library(
+    name = "uv_lock_lib",
+    srcs = ["src/lib.rs"],
+    edition = "2021",
+)
+
+rust_binary(
+    name = "uv_lock",
+    srcs = ["src/main.rs"],
+    edition = "2021",
+    deps = [":uv_lock_lib"],
+)
+
+filegroup(
+    name = "distribution",
+    srcs = glob(["**"]),
+)

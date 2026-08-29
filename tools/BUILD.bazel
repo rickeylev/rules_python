@@ -29,6 +29,7 @@ filegroup(
     srcs = [
         "BUILD.bazel",
         "wheelmaker.py",
+        "//tools/embed_args:distribution",
         "//tools/launcher:distribution",
         "//tools/precompiler:distribution",
         "//tools/private:distribution",

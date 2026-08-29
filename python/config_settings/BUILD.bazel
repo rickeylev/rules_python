@@ -230,3 +230,19 @@ string_flag(
     scope = "universal",
     visibility = ["//visibility:public"],
 )
+
+bool_flag(
+    name = "_use_rust_uv_lock",
+    build_setting_default = False,
+    help = "Internal flag: Use the Rust-based uv_lock binary with embedded arguments instead of shell/batch templates",
+    scope = "universal",
+    visibility = NOT_ACTUALLY_PUBLIC,
+)
+
+config_setting(
+    name = "_is_use_rust_uv_lock_enabled",
+    flag_values = {
+        ":_use_rust_uv_lock": "true",
+    },
+    visibility = NOT_ACTUALLY_PUBLIC,
+)

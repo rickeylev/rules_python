@@ -61,3 +61,7 @@ MODULE.bazel.lock
 # Agent scratch directories
 .agents/**/scratch
 
+# Rust/Cargo artifacts
+Cargo.lock
+**/target/
+

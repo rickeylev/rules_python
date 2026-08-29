@@ -1,0 +1,13 @@
+package(default_visibility = ["//:__subpackages__"])
+
+licenses(["notice"])
+
+filegroup(
+    name = "embed_args",
+    srcs = ["embed_args.sh"],
+)
+
+filegroup(
+    name = "distribution",
+    srcs = glob(["**"]),
+)

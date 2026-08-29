@@ -1,0 +1,16 @@
+load("@rules_rust//rust:defs.bzl", "rust_test")
+
+package(default_visibility = ["//:__subpackages__"])
+
+licenses(["notice"])
+
+rust_test(
+    name = "uv_lock_test",
+    srcs = ["uv_lock_test.rs"],
+    data = [
+        "//tools/embed_args",
+    ],
+    deps = [
+        "//crates/uv_lock:uv_lock_lib",
+    ],
+)
