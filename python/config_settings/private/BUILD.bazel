@@ -1,5 +1,7 @@
-filegroup(
+load("//python/private:distribution_filegroup.bzl", "distribution_filegroup")
+
+package(default_visibility = ["//:__subpackages__"])
+
+distribution_filegroup(
     name = "distribution",
-    srcs = glob(["**"]),
-    visibility = ["//python/config_settings:__pkg__"],
 )

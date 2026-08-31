@@ -1,6 +1,6 @@
-load("@rules_multirun//:defs.bzl", "multirun")
-
 # This file has various targets that are using dev-only dependencies that our users should not ideally see.
+
+load("@rules_multirun//:defs.bzl", "multirun")
 
 multirun(
     name = "requirements.update",
