@@ -11,6 +11,12 @@ bzl_library(
     deps = ["//python/uv:lock"],
 )
 
+filegroup(
+    name = "distribution",
+    srcs = glob(["**"]),
+    visibility = ["//:__pkg__"],
+)
+
 # Run bazel run //dev:requirements.update
 lock(
     name = "requirements",
