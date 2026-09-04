@@ -67,7 +67,7 @@ alias(
 
 exports_files(
     srcs = ["deps.bzl"],
-    visibility = ["//tools/private/update_deps:__pkg__"],
+    visibility = ["//:__subpackages__"],
 )
 
 filegroup(
@@ -86,16 +86,13 @@ filegroup(
 filegroup(
     name = "bzl",
     srcs = glob(["**/*.bzl"]),
-    visibility = [
-        "//python/private:__pkg__",
-        "//tools/private:__pkg__",
-    ],
+    visibility = ["//:__subpackages__"],
 )
 
 filegroup(
     name = "requirements_txt",
     srcs = ["requirements.txt"],
-    visibility = ["//tools/private/update_deps:__pkg__"],
+    visibility = ["//:__subpackages__"],
 )
 
 bzl_library(

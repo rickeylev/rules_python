@@ -1,5 +1,5 @@
+load("//dev:publish_deps.bzl", "publish_deps")
 load("//python/entry_points:py_console_script_binary.bzl", "py_console_script_binary")
-load("//tools/private:publish_deps.bzl", "publish_deps")
 
 py_console_script_binary(
     name = "twine",

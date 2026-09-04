@@ -95,7 +95,7 @@ integration test.
 
 1. Modify the `./python/private/pypi/requirements.txt` file and run:
    ```
-   bazel run //tools/private/update_deps:update_pip_deps
+   bazel run //dev/update_deps:update_pip_deps
    ```
 1. Run the following target to update `twine` dependencies:
    ```
@@ -103,9 +103,9 @@ integration test.
    ```
 1. Bump the coverage dependencies using the script using:
    ```
-   bazel run //tools/private/update_deps:update_coverage_deps <VERSION>
+   bazel run //dev/update_deps:update_coverage_deps <VERSION>
    # for example:
-   # bazel run //tools/private/update_deps:update_coverage_deps 7.10.7
+   # bazel run //dev/update_deps:update_coverage_deps 7.10.7
    ```
 
 ## Updating tool dependencies

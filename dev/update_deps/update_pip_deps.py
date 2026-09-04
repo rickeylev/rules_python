@@ -29,8 +29,8 @@ from dataclasses import dataclass
 
 from pip._internal.cli.main import main as pip_main  # pyrefly: ignore[missing-import]
 
-from tools.private.update_deps.args import path_from_runfiles
-from tools.private.update_deps.update_file import update_file
+from dev.update_deps.args import path_from_runfiles
+from dev.update_deps.update_file import update_file
 
 
 @dataclass
@@ -111,13 +111,13 @@ def main():
     parser.add_argument(
         "--start",
         type=str,
-        default="# START: maintained by 'bazel run //tools/private/update_deps:update_pip_deps'",
+        default="# START: maintained by 'bazel run //dev/update_deps:update_pip_deps'",
         help="The text to match in a file when updating them.",
     )
     parser.add_argument(
         "--end",
         type=str,
-        default="# END: maintained by 'bazel run //tools/private/update_deps:update_pip_deps'",
+        default="# END: maintained by 'bazel run //dev/update_deps:update_pip_deps'",
         help="The text to match in a file when updating them.",
     )
     parser.add_argument(

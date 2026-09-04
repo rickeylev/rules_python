@@ -63,8 +63,7 @@ bzl_library(
     name = "lock",
     srcs = ["lock.bzl"],
     visibility = [
-        "//python/uv:__subpackages__",
-        "//tools/private:__subpackages__",
+        "//:__subpackages__",
     ],
     deps = [
         ":toolchain_types",
