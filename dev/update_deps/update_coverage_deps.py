@@ -28,8 +28,8 @@ from dataclasses import dataclass
 from typing import Any
 from urllib import request
 
-from tools.private.update_deps.args import path_from_runfiles
-from tools.private.update_deps.update_file import update_file
+from dev.update_deps.args import path_from_runfiles
+from dev.update_deps.update_file import update_file
 
 # This should be kept in sync with //python:versions.bzl
 _supported_platforms = {
@@ -208,8 +208,8 @@ def main():
                 "",
             ]
         ),
-        start_marker="# START: maintained by 'bazel run //tools/private/update_deps:update_coverage_deps <version>'",
-        end_marker="# END: maintained by 'bazel run //tools/private/update_deps:update_coverage_deps <version>'",
+        start_marker="# START: maintained by 'bazel run //dev/update_deps:update_coverage_deps <version>'",
+        end_marker="# END: maintained by 'bazel run //dev/update_deps:update_coverage_deps <version>'",
         dry_run=args.dry_run,
     )
 

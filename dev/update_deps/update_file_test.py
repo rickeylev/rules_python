@@ -14,7 +14,7 @@
 
 import pytest
 
-from tools.private.update_deps.update_file import replace_snippet, unified_diff
+from dev.update_deps.update_file import replace_snippet, unified_diff
 
 
 def test_replace_simple():

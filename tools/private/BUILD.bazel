@@ -12,5 +12,5 @@ filegroup(
 bzl_library(
     name = "publish_deps",
     srcs = ["publish_deps.bzl"],
-    deps = ["//python/uv/private:lock"],
+    deps = ["//python/uv:lock"],
 )

@@ -101,9 +101,7 @@ def update_file(
         _writelines(path, out)
         return
 
-    relative = path.relative_to(
-        pathlib.Path(__file__).resolve().parent.parent.parent.parent
-    )
+    relative = path.relative_to(pathlib.Path(__file__).resolve().parent.parent.parent)
     name = f"{relative}"
     diff = unified_diff(name, current, out)
     if diff:

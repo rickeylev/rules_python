@@ -7,7 +7,7 @@ from pathlib import Path
 
 
 def main():
-    repo_root = Path(__file__).resolve().parent.parent.parent
+    repo_root = Path(__file__).resolve().parent.parent
     canonical = repo_root / "downloader_config.cfg"
 
     subworkspaces = [

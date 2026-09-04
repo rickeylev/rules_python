@@ -21,14 +21,14 @@ licenses(["notice"])
 py_library(
     name = "args",
     srcs = ["args.py"],
-    imports = ["../../.."],
+    imports = ["../.."],
     deps = ["//python/runfiles"],
 )
 
 py_library(
     name = "update_file",
     srcs = ["update_file.py"],
-    imports = ["../../.."],
+    imports = ["../.."],
 )
 
 py_binary(
@@ -40,7 +40,7 @@ py_binary(
     env = {
         "UPDATE_FILE": "$(rlocationpath //python/private:coverage_deps_filegroup)",
     },
-    imports = ["../../.."],
+    imports = ["../.."],
     deps = [
         ":args",
         ":update_file",
@@ -58,7 +58,7 @@ py_binary(
         "DEPS_BZL": "$(rlocationpath //python/private/pypi:deps.bzl)",
         "REQUIREMENTS_TXT": "$(rlocationpath //python/private/pypi:requirements_txt)",
     },
-    imports = ["../../.."],
+    imports = ["../.."],
     visibility = ["//:__subpackages__"],
     deps = [
         ":args",
@@ -69,7 +69,7 @@ py_binary(
 pytest_test(
     name = "update_file_test",
     srcs = ["update_file_test.py"],
-    imports = ["../../.."],
+    imports = ["../.."],
     target_compatible_with = SUPPORTS_BZLMOD,
     deps = [
         ":update_file",
