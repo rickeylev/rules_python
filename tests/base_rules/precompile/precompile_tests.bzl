@@ -534,9 +534,14 @@ def _directory_impl(ctx):
     ctx.actions.run_shell(
         outputs = [out],
         command = """\
-mkdir -p "$1"
+mkdir -p "$1/__pycache__"
 echo "x = 1" > "$1/foo.py"
 echo "y = 2" > "$1/bar.py"
+echo "z = 3" > "$1/existing.py"
+touch "$1/existing.pyc"
+echo "w = 4" > "$1/existing_cached.py"
+touch "$1/__pycache__/existing_cached.fakepy-45.pyc"
+ln -s foo.py "$1/symlink_rel.py"
 """,
         arguments = [out.path],
         mnemonic = "TestDirectory",
@@ -567,15 +572,18 @@ def _test_directory_input_impl(env, target):
     target = env.expect.that_target(target)
     target.default_outputs().contains_at_least_predicates([
         matching.file_path_matches("__pycache__/lib.fakepy-45.pyc"),
+        matching.file_path_matches("__pycache__/" + env.ctx.label.name + "_dir.fakepy-45.pyc"),
         matching.file_path_matches("/lib.py"),
         matching.file_path_matches("/" + env.ctx.label.name + "_dir.py"),
     ])
     py_info = target.provider(PyInfo, factory = py_info_subject)
     py_info.direct_pyc_files().contains_exactly([
         "{package}/__pycache__/lib.fakepy-45.pyc",
+        "{package}/__pycache__/" + env.ctx.label.name + "_dir.fakepy-45.pyc",
     ])
     py_info.transitive_pyc_files().contains_exactly([
         "{package}/__pycache__/lib.fakepy-45.pyc",
+        "{package}/__pycache__/" + env.ctx.label.name + "_dir.fakepy-45.pyc",
     ])
 
 _tests.append(_test_directory_input)
@@ -592,8 +600,33 @@ def _test_directory_input_succeeds(name):
         name = name + "_main",
         out = name + "_main.py",
         content = [
-            "print('Hello from directory input test')",
+            "import os",
+            "import sys",
             "",
+            "# Test directory input handling",
+            "test_dir = None",
+            "for root, dirs, _ in os.walk(os.path.dirname(__file__)):",
+            "    for d in dirs:",
+            "        if d.endswith('_dir.py'):",
+            "            test_dir = os.path.join(root, d)",
+            "            break",
+            "    if test_dir:",
+            "        break",
+            "",
+            "if test_dir:",
+            "    symlink_path = os.path.join(test_dir, 'symlink_rel.py')",
+            "    if os.path.islink(symlink_path):",
+            "        actual = os.readlink(symlink_path)",
+            "        if os.path.isabs(actual) and os.path.islink(actual):",
+            "            target = os.readlink(actual)",
+            "        else:",
+            "            target = actual",
+            "        assert not os.path.isabs(target), f'Expected relative symlink, got {target}'",
+            "        assert target == 'foo.py', f'Expected foo.py, got {target}'",
+            "    assert os.path.exists(os.path.join(test_dir, 'existing.pyc'))",
+            "    assert os.path.exists(os.path.join(test_dir, '__pycache__', 'existing_cached.fakepy-45.pyc'))",
+            "",
+            "print('Hello from directory input test')",
         ],
     )
     py_test(

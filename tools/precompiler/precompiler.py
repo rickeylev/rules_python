@@ -18,8 +18,21 @@
 # when a persistent worker is used. Avoiding the unnecessary imports
 # saves significant startup time for non-worker invocations.
 import argparse
+import os
 import py_compile
+import shutil
 import sys
+
+
+def _parse_bool(val: "str | bool") -> bool:
+    if isinstance(val, bool):
+        return val
+    val = str(val).lower()
+    if val in ("true", "1", "yes"):
+        return True
+    if val in ("false", "0", "no"):
+        return False
+    raise argparse.ArgumentTypeError(f"Invalid boolean value: {val}")
 
 
 def _create_parser() -> "argparse.Namespace":
@@ -29,8 +42,17 @@ def _create_parser() -> "argparse.Namespace":
     parser.add_argument("--python_version")
 
     parser.add_argument("--src", action="append", dest="srcs")
-    parser.add_argument("--src_name", action="append", dest="src_names")
+    parser.add_argument("--src_name", "--src-name", action="append", dest="src_names")
     parser.add_argument("--pyc", action="append", dest="pycs")
+
+    parser.add_argument("--src_dir", "--src-dir", action="append", dest="src_dirs")
+    parser.add_argument("--out_dir", "--out-dir", action="append", dest="out_dirs")
+    parser.add_argument("--pyc_tag", "--pyc-tag", dest="pyc_tag")
+    parser.add_argument(
+        "--pycache",
+        type=_parse_bool,
+        default=True,
+    )
 
     parser.add_argument("--persistent_worker", action="store_true")
     parser.add_argument("--log_level", default="ERROR")
@@ -40,6 +62,130 @@ def _create_parser() -> "argparse.Namespace":
         "--worker_impl", default="serial" if sys.platform == "win32" else "async"
     )
     return parser
+
+
+def _pyc_exists(root: str, rel_path: str, pyc_tag: "str | None") -> bool:
+    dir_name, file_name = os.path.split(rel_path)
+    stem, _ = os.path.splitext(file_name)
+    if os.path.exists(os.path.join(root, dir_name, f"{stem}.pyc")):
+        return True
+    if pyc_tag and os.path.exists(
+        os.path.join(root, dir_name, "__pycache__", f"{stem}.{pyc_tag}.pyc")
+    ):
+        return True
+    return False
+
+
+def _copy_dir(src_dir: str, out_dir: str) -> None:
+    os.makedirs(out_dir, exist_ok=True)
+    try:
+        os.chmod(out_dir, os.stat(out_dir).st_mode | 0o700)
+    except OSError:
+        pass
+
+    for root, dirs, files in os.walk(src_dir, followlinks=False):
+        rel_root = os.path.relpath(root, src_dir)
+        dst_root = os.path.join(out_dir, rel_root) if rel_root != "." else out_dir
+
+        for d in list(dirs):
+            src_path = os.path.join(root, d)
+            dst_path = os.path.join(dst_root, d)
+            if os.path.islink(src_path):
+                dirs.remove(d)
+                target = os.readlink(src_path)
+                if not os.path.isabs(target):
+                    if os.path.lexists(dst_path):
+                        try:
+                            os.remove(dst_path)
+                        except OSError:
+                            pass
+                    try:
+                        os.symlink(target, dst_path)
+                    except OSError:
+                        _copy_dir(src_path, dst_path)
+                else:
+                    _copy_dir(src_path, dst_path)
+            else:
+                os.makedirs(dst_path, exist_ok=True)
+                try:
+                    os.chmod(dst_path, os.stat(dst_path).st_mode | 0o700)
+                except OSError:
+                    pass
+
+        for f in files:
+            src_path = os.path.join(root, f)
+            dst_path = os.path.join(dst_root, f)
+            if os.path.lexists(dst_path):
+                try:
+                    os.remove(dst_path)
+                except OSError:
+                    pass
+
+            if os.path.islink(src_path):
+                target = os.readlink(src_path)
+                if not os.path.isabs(target):
+                    try:
+                        os.symlink(target, dst_path)
+                    except OSError:
+                        shutil.copy2(src_path, dst_path)
+                        try:
+                            os.chmod(dst_path, os.stat(dst_path).st_mode | 0o600)
+                        except OSError:
+                            pass
+                else:
+                    shutil.copy2(src_path, dst_path)
+                    try:
+                        os.chmod(dst_path, os.stat(dst_path).st_mode | 0o600)
+                    except OSError:
+                        pass
+            else:
+                shutil.copy2(src_path, dst_path)
+                try:
+                    os.chmod(dst_path, os.stat(dst_path).st_mode | 0o600)
+                except OSError:
+                    pass
+
+
+def _compile_dir(
+    src_dir: str,
+    src_name: str,
+    out_dir: str,
+    pyc_tag: "str | None",
+    pycache: bool,
+    optimize: int,
+    invalidation_mode: py_compile.PycInvalidationMode,
+) -> None:
+    _copy_dir(src_dir, out_dir)
+    for root, _, files in sorted(os.walk(src_dir)):
+        for file in sorted(files):
+            if not file.endswith(".py"):
+                continue
+            file_path = os.path.join(root, file)
+            if not os.path.isfile(file_path):
+                continue
+            rel_path = os.path.relpath(file_path, src_dir)
+            if _pyc_exists(out_dir, rel_path, pyc_tag):
+                continue
+            dir_name, file_name = os.path.split(rel_path)
+            stem, _ = os.path.splitext(file_name)
+            if pycache:
+                if not pyc_tag:
+                    continue
+                target_pyc = os.path.join(
+                    out_dir, dir_name, "__pycache__", f"{stem}.{pyc_tag}.pyc"
+                )
+            else:
+                target_pyc = os.path.join(out_dir, dir_name, f"{stem}.pyc")
+            os.makedirs(os.path.dirname(target_pyc), exist_ok=True)
+            dfile = os.path.join(src_name, rel_path) if src_name else rel_path
+            py_compile.compile(
+                file_path,
+                target_pyc,
+                doraise=True,
+                dfile=dfile,
+                optimize=optimize,
+                invalidation_mode=invalidation_mode,
+            )
 
 
 def _compile(options: "argparse.Namespace") -> None:
@@ -52,20 +198,38 @@ def _compile(options: "argparse.Namespace") -> None:
             f"Unknown PycInvalidationMode: {options.invalidation_mode}"
         ) from e
 
-    if not (len(options.srcs) == len(options.src_names) == len(options.pycs)):
-        raise AssertionError(
-            "Mismatched number of --src, --src_name, and/or --pyc args"
-        )
+    if options.srcs:
+        if not (len(options.srcs) == len(options.src_names) == len(options.pycs)):
+            raise AssertionError(
+                "Mismatched number of --src, --src_name, and/or --pyc args"
+            )
 
-    for src, src_name, pyc in zip(options.srcs, options.src_names, options.pycs):
-        py_compile.compile(
-            src,
-            pyc,
-            doraise=True,
-            dfile=src_name,
-            optimize=options.optimize,
-            invalidation_mode=invalidation_mode,
-        )
+        for src, src_name, pyc in zip(options.srcs, options.src_names, options.pycs):
+            py_compile.compile(
+                src,
+                pyc,
+                doraise=True,
+                dfile=src_name,
+                optimize=options.optimize,
+                invalidation_mode=invalidation_mode,
+            )
+
+    if options.src_dirs:
+        out_dirs = options.out_dirs or []
+        src_names = options.src_names or ["" for _ in options.src_dirs]
+        if len(options.src_dirs) != len(out_dirs):
+            raise AssertionError("Mismatched number of --src-dir and --out-dir args")
+        for src_dir, src_name, out_dir in zip(options.src_dirs, src_names, out_dirs):
+            _compile_dir(
+                src_dir=src_dir,
+                src_name=src_name,
+                out_dir=out_dir,
+                pyc_tag=options.pyc_tag,
+                pycache=options.pycache,
+                optimize=options.optimize,
+                invalidation_mode=invalidation_mode,
+            )
+
     return 0
 
 

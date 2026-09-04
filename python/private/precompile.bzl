@@ -106,9 +106,6 @@ def _precompile(ctx, src, *, use_pycache):
     if ctx.label.package != src.owner.package:
         return None
 
-    if src.is_directory:
-        return None
-
     exec_tools_info = ctx.toolchains[EXEC_TOOLS_TOOLCHAIN_TYPE].exec_tools
     target_toolchain = ctx.toolchains[TARGET_TOOLCHAIN_TYPE].py3_runtime
 
@@ -119,7 +116,10 @@ def _precompile(ctx, src, *, use_pycache):
             precompiler,
         ))
 
-    stem = src.basename[:-(len(src.extension) + 1)]
+    if src.extension:
+        stem = src.basename[:-(len(src.extension) + 1)]
+    else:
+        stem = src.basename
     if use_pycache:
         if not hasattr(target_toolchain, "pyc_tag") or not target_toolchain.pyc_tag:
             # This is likely one of two situations:
@@ -137,7 +137,10 @@ def _precompile(ctx, src, *, use_pycache):
     else:
         pyc_path = "{}.pyc".format(stem)
 
-    pyc = ctx.actions.declare_file(pyc_path, sibling = src)
+    if src.is_directory:
+        pyc = ctx.actions.declare_directory(pyc_path, sibling = src)
+    else:
+        pyc = ctx.actions.declare_file(pyc_path, sibling = src)
 
     invalidation_mode = ctx.attr.precompile_invalidation_mode
     if invalidation_mode == PrecompileInvalidationModeAttr.AUTO:
@@ -155,14 +158,27 @@ def _precompile(ctx, src, *, use_pycache):
     precompile_request_args.set_param_file_format("multiline")
 
     precompile_request_args.add("--invalidation_mode", invalidation_mode)
-    precompile_request_args.add("--src", src)
+    if src.is_directory:
+        precompile_request_args.add(src.path, format = "--src-dir=%s")
+        precompile_request_args.add(pyc.path, format = "--out-dir=%s")
+        precompile_request_args.add(src.short_path, format = "--src-name=%s")
+        precompile_request_args.add(
+            "true" if use_pycache else "false",
+            format = "--pycache=%s",
+        )
+        if use_pycache:
+            precompile_request_args.add(target_toolchain.pyc_tag, format = "--pyc-tag=%s")
 
-    # NOTE: src.short_path is used because src.path contains the platform and
-    # build-specific hash portions of the path, which we don't want in the
-    # pyc data. Note, however, for remote-remote files, short_path will
-    # have the repo name, which is likely to contain extraneous info.
-    precompile_request_args.add("--src_name", src.short_path)
-    precompile_request_args.add("--pyc", pyc)
+    else:
+        precompile_request_args.add(src, format = "--src=%s")
+
+        # NOTE: src.short_path is used because src.path contains the platform and
+        # build-specific hash portions of the path, which we don't want in the
+        # pyc data. Note, however, for remote-remote files, short_path will
+        # have the repo name, which is likely to contain extraneous info.
+        precompile_request_args.add(src.short_path, format = "--src_name=%s")
+        precompile_request_args.add(pyc, format = "--pyc=%s")
+
     precompile_request_args.add("--optimize", str(ctx.attr.precompile_optimize_level))
 
     version_info = target_toolchain.interpreter_version_info
