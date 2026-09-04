@@ -167,7 +167,10 @@ def _precompile(ctx, src, *, use_pycache):
             format = "--pycache=%s",
         )
         if use_pycache:
-            precompile_request_args.add(target_toolchain.pyc_tag, format = "--pyc-tag=%s")
+            precompile_request_args.add(
+                target_toolchain.pyc_tag,
+                format = "--pyc-tag=%s",
+            )
 
     else:
         precompile_request_args.add(src, format = "--src=%s")

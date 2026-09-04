@@ -35,8 +35,9 @@ def _parse_bool(val: "str | bool") -> bool:
     raise argparse.ArgumentTypeError(f"Invalid boolean value: {val}")
 
 
-def _create_parser() -> "argparse.Namespace":
+def _create_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(fromfile_prefix_chars="@")
+
     parser.add_argument("--invalidation_mode", default="CHECKED_HASH")
     parser.add_argument("--optimize", type=int, default=-1)
     parser.add_argument("--python_version")
@@ -230,8 +231,6 @@ def _compile(options: "argparse.Namespace") -> None:
                 invalidation_mode=invalidation_mode,
             )
 
-    return 0
-
 
 # A stub type alias for readability.
 # See the Bazel WorkRequest object definition:
@@ -304,8 +303,14 @@ class _SerialPersistentWorker:
         options = self._parser.parse_args(request["arguments"])
         if request.get("sandboxDir"):
             prefix = request["sandboxDir"]
-            options.srcs = [os.path.join(prefix, v) for v in options.srcs]
-            options.pycs = [os.path.join(prefix, v) for v in options.pycs]
+            if options.srcs:
+                options.srcs = [os.path.join(prefix, v) for v in options.srcs]
+            if options.pycs:
+                options.pycs = [os.path.join(prefix, v) for v in options.pycs]
+            if options.src_dirs:
+                options.src_dirs = [os.path.join(prefix, v) for v in options.src_dirs]
+            if options.out_dirs:
+                options.out_dirs = [os.path.join(prefix, v) for v in options.out_dirs]
         return options
 
     def _send_response(self, response: "JsonWorkResponse") -> None:
@@ -422,8 +427,14 @@ class _AsyncPersistentWorker:
         options = self._parser.parse_args(request["arguments"])
         if request.get("sandboxDir"):
             prefix = request["sandboxDir"]
-            options.srcs = [os.path.join(prefix, v) for v in options.srcs]
-            options.pycs = [os.path.join(prefix, v) for v in options.pycs]
+            if options.srcs:
+                options.srcs = [os.path.join(prefix, v) for v in options.srcs]
+            if options.pycs:
+                options.pycs = [os.path.join(prefix, v) for v in options.pycs]
+            if options.src_dirs:
+                options.src_dirs = [os.path.join(prefix, v) for v in options.src_dirs]
+            if options.out_dirs:
+                options.out_dirs = [os.path.join(prefix, v) for v in options.out_dirs]
         return options
 
     def _send_response(self, response: "JsonWorkResponse") -> None:

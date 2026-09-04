@@ -572,7 +572,9 @@ def _test_directory_input_impl(env, target):
     target = env.expect.that_target(target)
     target.default_outputs().contains_at_least_predicates([
         matching.file_path_matches("__pycache__/lib.fakepy-45.pyc"),
-        matching.file_path_matches("__pycache__/" + env.ctx.label.name + "_dir.fakepy-45.pyc"),
+        matching.file_path_matches(
+            "__pycache__/" + env.ctx.label.name + "_dir.fakepy-45.pyc",
+        ),
         matching.file_path_matches("/lib.py"),
         matching.file_path_matches("/" + env.ctx.label.name + "_dir.py"),
     ])
@@ -588,13 +590,11 @@ def _test_directory_input_impl(env, target):
 
 _tests.append(_test_directory_input)
 
-# buildifier: disable=function-docstring-header
 def _test_directory_input_succeeds(name):
-    """Verify that a `py_test` target with a directory input in srcs builds
-    and runs when precompiling is enabled.
-    """
+    """Verify that a `py_test` with directory srcs runs when precompiled."""
     _directory(
         name = name + "_dir.py",
+        tags = ["manual"],
     )
     write_file(
         name = name + "_main",
@@ -621,10 +621,19 @@ def _test_directory_input_succeeds(name):
             "            target = os.readlink(actual)",
             "        else:",
             "            target = actual",
-            "        assert not os.path.isabs(target), f'Expected relative symlink, got {target}'",
-            "        assert target == 'foo.py', f'Expected foo.py, got {target}'",
+            "        assert not os.path.isabs(target), (",
+            "            f'Expected relative symlink, got {target}'",
+            "        )",
+            "        assert target == 'foo.py', (",
+            "            f'Expected foo.py, got {target}'",
+            "        )",
             "    assert os.path.exists(os.path.join(test_dir, 'existing.pyc'))",
-            "    assert os.path.exists(os.path.join(test_dir, '__pycache__', 'existing_cached.fakepy-45.pyc'))",
+            "    cached_pyc = os.path.join(",
+            "        test_dir,",
+            "        '__pycache__',",
+            "        'existing_cached.fakepy-45.pyc',",
+            "    )",
+            "    assert os.path.exists(cached_pyc)",
             "",
             "print('Hello from directory input test')",
         ],
@@ -634,6 +643,7 @@ def _test_directory_input_succeeds(name):
         srcs = [name + "_main.py", name + "_dir.py"],
         main = name + "_main.py",
         precompile = "enabled",
+        # Directory artifacts in srcs cannot be analyzed by pyrefly aspect.
         tags = ["no-pyrefly"],
     )
 
