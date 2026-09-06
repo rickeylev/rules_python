@@ -33,6 +33,8 @@ package(
 licenses(["notice"])
 
 exports_files([
+    "interpreter_tmpl.bat",
+    "interpreter_tmpl.sh",
     "runtime_env_toolchain_interpreter.sh",
     "runtimes_manifest.txt",
     "runtimes_manifest_workspace.bzl",
@@ -541,6 +543,7 @@ bzl_library(
     name = "py_exec_tools_toolchain",
     srcs = ["py_exec_tools_toolchain.bzl"],
     deps = [
+        ":common",
         ":common_labels",
         ":py_exec_tools_info",
         ":sentinel_impl",
