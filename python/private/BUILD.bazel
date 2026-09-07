@@ -33,8 +33,6 @@ package(
 licenses(["notice"])
 
 exports_files([
-    "interpreter_tmpl.bat",
-    "interpreter_tmpl.sh",
     "runtime_env_toolchain_interpreter.sh",
     "runtimes_manifest.txt",
     "runtimes_manifest_workspace.bzl",
@@ -212,8 +210,8 @@ py_library(
 filegroup(
     name = "exec_interpreter_template",
     srcs = select({
-        "@platforms//os:windows": ["interpreter_tmpl.bat"],
-        "//conditions:default": ["interpreter_tmpl.sh"],
+        "@platforms//os:windows": [":interpreter_template.bat"],
+        "//conditions:default": [":interpreter_template.sh"],
     }),
 )
 

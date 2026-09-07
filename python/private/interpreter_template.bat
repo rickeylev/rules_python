@@ -63,6 +63,9 @@ if not exist "!MAIN_BIN!" (
 )
 
 rem Determine PYTHONHOME (installation prefix containing Lib).
+rem We must set PYTHONHOME to point to the runfiles directory because runfiles
+rem provides the unified merge of source files and generated files needed by
+rem the standard library and runtime.
 rem In Windows layouts, Lib is typically sibling to python.exe (%%~dpdLib).
 rem In hierarchical layouts, Lib may be in the parent directory (%%~dpd..\Lib).
 for %%d in ("!MAIN_BIN!") do (

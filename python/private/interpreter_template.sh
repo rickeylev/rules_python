@@ -28,6 +28,9 @@ if [ -z "${MAIN_BIN:-}" ] || [ ! -e "${MAIN_BIN}" ]; then
 fi
 
 # Determine PYTHONHOME (installation prefix containing lib/pythonX.Y).
+# We must set PYTHONHOME to point to the runfiles directory because runfiles
+# provides the unified merge of source files and generated files needed by
+# the standard library and runtime.
 # In standard POSIX layouts, MAIN_BIN is at <prefix>/bin/python3, so the prefix
 # is $(dirname $(dirname "$MAIN_BIN")). In flat toolchain layouts where the
 # binary is a sibling to lib, the prefix is $(dirname "$MAIN_BIN").

@@ -78,7 +78,7 @@ interpreter_binary = rule(
             default = "@bazel_tools//tools/bash/runfiles",
         ),
         "_template": attr.label(
-            default = "//python/private:interpreter_tmpl.sh",
+            default = "//python/private:exec_interpreter_template",
             allow_single_file = True,
         ),
     },
