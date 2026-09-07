@@ -46,7 +46,10 @@ def _interpreter_binary_impl(ctx):
             template = ctx.file._template,
             output = executable,
             substitutions = {
-                "%target_file%": runfiles_root_path(ctx, runtime.interpreter.short_path),
+                "%python_exe_runfiles_path%": runfiles_root_path(
+                    ctx,
+                    runtime.interpreter.short_path,
+                ),
             },
             is_executable = True,
         )

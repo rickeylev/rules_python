@@ -33,6 +33,8 @@ package(
 licenses(["notice"])
 
 exports_files([
+    "interpreter_tmpl.bat",
+    "interpreter_tmpl.sh",
     "runtime_env_toolchain_interpreter.sh",
     "runtimes_manifest.txt",
     "runtimes_manifest_workspace.bzl",
@@ -205,6 +207,14 @@ py_library(
     visibility = [
         "//tests/entry_points:__pkg__",
     ],
+)
+
+filegroup(
+    name = "exec_interpreter_template",
+    srcs = select({
+        "@platforms//os:windows": ["interpreter_tmpl.bat"],
+        "//conditions:default": ["interpreter_tmpl.sh"],
+    }),
 )
 
 # The current toolchain's interpreter as an excutable, usable with
@@ -537,6 +547,7 @@ bzl_library(
     name = "py_exec_tools_toolchain",
     srcs = ["py_exec_tools_toolchain.bzl"],
     deps = [
+        ":common",
         ":common_labels",
         ":py_exec_tools_info",
         ":sentinel_impl",

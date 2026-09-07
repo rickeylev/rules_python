@@ -1,23 +1,45 @@
-#!/usr/bin/env bash
+#!/bin/sh
+set -eu
 
-# --- begin runfiles.bash initialization v3 ---
-# Copy-pasted from the Bazel Bash runfiles library v3.
-set -uo pipefail; set +e; f=bazel_tools/tools/bash/runfiles/runfiles.bash
-# shellcheck disable=SC1090
-source "${RUNFILES_DIR:-/dev/null}/$f" 2>/dev/null || \
-  source "$(grep -sm1 "^$f " "${RUNFILES_MANIFEST_FILE:-/dev/null}" | cut -f2- -d' ')" 2>/dev/null || \
-  source "$0.runfiles/$f" 2>/dev/null || \
-  source "$(grep -sm1 "^$f " "$0.runfiles_manifest" | cut -f2- -d' ')" 2>/dev/null || \
-  source "$(grep -sm1 "^$f " "$0.exe.runfiles_manifest" | cut -f2- -d' ')" 2>/dev/null || \
-  { echo>&2 "ERROR: cannot find $f"; exit 1; }; f=; set -e
-# --- end runfiles.bash initialization v3 ---
+PYTHON_EXE_RUNFILES_PATH="%python_exe_runfiles_path%"
+MAIN_BIN=""
 
-set +e # allow us to check for errors more easily
-readonly TARGET_FILE="%target_file%"
-MAIN_BIN=$(rlocation "$TARGET_FILE")
+if [ -n "${RUNFILES_DIR:-}" ] && \
+   [ -e "${RUNFILES_DIR}/${PYTHON_EXE_RUNFILES_PATH}" ]; then
+  MAIN_BIN="${RUNFILES_DIR}/${PYTHON_EXE_RUNFILES_PATH}"
+elif [ -n "${RUNFILES_MANIFEST_FILE:-}" ] && \
+     [ -f "${RUNFILES_MANIFEST_FILE}" ]; then
+  MAIN_BIN="$(grep -F -m1 "${PYTHON_EXE_RUNFILES_PATH} " \
+    "${RUNFILES_MANIFEST_FILE}" 2>/dev/null | cut -f2- -d' ' || true)"
+elif [ -e "$0.runfiles/${PYTHON_EXE_RUNFILES_PATH}" ]; then
+  MAIN_BIN="$0.runfiles/${PYTHON_EXE_RUNFILES_PATH}"
+elif [ -f "$0.runfiles_manifest" ]; then
+  MAIN_BIN="$(grep -F -m1 "${PYTHON_EXE_RUNFILES_PATH} " \
+    "$0.runfiles_manifest" 2>/dev/null | cut -f2- -d' ' || true)"
+elif [ -f "$0.exe.runfiles_manifest" ]; then
+  MAIN_BIN="$(grep -F -m1 "${PYTHON_EXE_RUNFILES_PATH} " \
+    "$0.exe.runfiles_manifest" 2>/dev/null | cut -f2- -d' ' || true)"
+fi
 
-if [[ -z "$MAIN_BIN" || ! -e "$MAIN_BIN" ]]; then
-  echo "ERROR: interpreter executable not found: $MAIN_BIN (from $TARGET_FILE)"
+if [ -z "${MAIN_BIN:-}" ] || [ ! -e "${MAIN_BIN}" ]; then
+  echo "ERROR: interpreter executable not found: ${MAIN_BIN:-<empty>}" \
+    "(from ${PYTHON_EXE_RUNFILES_PATH})" >&2
   exit 1
 fi
+
+# Determine PYTHONHOME (installation prefix containing lib/pythonX.Y).
+# In standard POSIX layouts, MAIN_BIN is at <prefix>/bin/python3, so the prefix
+# is $(dirname $(dirname "$MAIN_BIN")). In flat toolchain layouts where the
+# binary is a sibling to lib, the prefix is $(dirname "$MAIN_BIN").
+if [ -d "$(dirname "$MAIN_BIN")/lib" ]; then
+  PYTHONHOME="$(dirname "$MAIN_BIN")"
+else
+  PYTHONHOME="$(dirname "$(dirname "$MAIN_BIN")")"
+fi
+if [ -d "$PYTHONHOME" ]; then
+  PYTHONHOME="$(cd "$PYTHONHOME" && pwd)"
+fi
+export PYTHONHOME
+
 exec "${MAIN_BIN}" "$@"
+
