@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/usr/bin/env sh
 set -eu
 
 PYTHON_EXE_RUNFILES_PATH="%python_exe_runfiles_path%"
