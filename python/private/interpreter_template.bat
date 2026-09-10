@@ -51,14 +51,14 @@ if not defined MAIN_BIN if defined MF (
 :found_bin
 
 if not defined MAIN_BIN (
-  echo>&2 ERROR: interpreter executable not found: !PYTHON_EXE_RUNFILES_PATH!
+  echo ERROR: interpreter executable not found: !PYTHON_EXE_RUNFILES_PATH! 1>&2
   exit /b 1
 )
 
 set "MAIN_BIN=!MAIN_BIN:/=\!"
 if not exist "!MAIN_BIN!" (
-  echo>&2 ERROR: interpreter executable not found: !MAIN_BIN!
-  echo>&2 (from !PYTHON_EXE_RUNFILES_PATH!)
+  echo ERROR: interpreter executable not found: !MAIN_BIN! 1>&2
+  echo [from !PYTHON_EXE_RUNFILES_PATH!] 1>&2
   exit /b 1
 )
 
