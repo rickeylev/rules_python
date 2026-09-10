@@ -47,7 +47,6 @@ data = {
     "stdlib_is_in_runfiles": stdlib_is_in_runfiles,
     "sys_executable_is_in_runfiles": is_in_runfiles,
 }
-Path(sys.argv[1]).write_text(
-    json.dumps(data, indent=2, sort_keys=True) + "\n",
-    encoding="utf-8",
+Path(sys.argv[1]).write_bytes(
+    (json.dumps(data, indent=2, sort_keys=True) + "\n").encode("utf-8"),
 )

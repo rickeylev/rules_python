@@ -23,17 +23,25 @@ if not defined MF (
   )
 )
 
+if defined RUNFILES_DIR (
+  set "RUNFILES_DIR=%RUNFILES_DIR:/=\%"
+  if "!RUNFILES_DIR:~-1!"=="\" set "RUNFILES_DIR=!RUNFILES_DIR:~0,-1!"
+)
+
 if "%RUNFILES_MANIFEST_ONLY%" neq "1" (
   if defined RUNFILES_DIR (
     if exist "%RUNFILES_DIR%\!TF_WIN!" (
-      set "MAIN_BIN=%RUNFILES_DIR%\!TF_WIN!"
+      set "CANDIDATE=%RUNFILES_DIR%\!TF_WIN!"
+      if "!CANDIDATE:~250,1!"=="" set "MAIN_BIN=!CANDIDATE!"
     )
   )
   if not defined MAIN_BIN (
     if exist "%~f0.runfiles\!TF_WIN!" (
-      set "MAIN_BIN=%~f0.runfiles\!TF_WIN!"
+      set "CANDIDATE=%~f0.runfiles\!TF_WIN!"
+      if "!CANDIDATE:~250,1!"=="" set "MAIN_BIN=!CANDIDATE!"
     ) else if exist "%~dpn0.runfiles\!TF_WIN!" (
-      set "MAIN_BIN=%~dpn0.runfiles\!TF_WIN!"
+      set "CANDIDATE=%~dpn0.runfiles\!TF_WIN!"
+      if "!CANDIDATE:~250,1!"=="" set "MAIN_BIN=!CANDIDATE!"
     )
   )
 )
@@ -56,6 +64,9 @@ if not defined MAIN_BIN (
 )
 
 set "MAIN_BIN=!MAIN_BIN:/=\!"
+if not exist "!MAIN_BIN!" if exist "%CD%\!MAIN_BIN!" (
+  set "MAIN_BIN=%CD%\!MAIN_BIN!"
+)
 if not exist "!MAIN_BIN!" (
   echo ERROR: interpreter executable not found: !MAIN_BIN! 1>&2
   echo [from !PYTHON_EXE_RUNFILES_PATH!] 1>&2
