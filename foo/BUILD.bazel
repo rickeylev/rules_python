@@ -1,0 +1,6 @@
+load("//python:py_test.bzl", "py_test")
+
+py_test(
+    name = "bar",
+    srcs = ["bar.py"],
+)

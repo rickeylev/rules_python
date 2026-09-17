@@ -1,0 +1,9 @@
+load("@rules_shell//shell:sh_binary.bzl", "sh_binary")
+
+sh_binary(
+    name = "runner",
+    srcs = ["runner.sh"],
+    data = ["runner.txt"],
+    visibility = ["//visibility:public"],
+    deps = ["@rules_shell//shell/runfiles"],
+)
