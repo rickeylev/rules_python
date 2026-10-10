@@ -38,7 +38,8 @@ trigger: <trigger-condition>
 *   **Line Wrapping:** Always wrap all text in the rule file (including the
     title and description) to **80 columns** to ensure readability and
     compatibility.
-*   **Clarity:** Write clear, actionable directives.
+*   **Conciseness (Strunk & White):** Omit needless words. Write brief, direct,
+    actionable directives without filler prose.
 
 ### Example
 
