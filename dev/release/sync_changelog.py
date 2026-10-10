@@ -172,105 +172,108 @@ class SyncChangelog:
         sync_branch = f"sync-changelog-{version}-{prs_hash}"
 
         self.git.fetch(args.remote, refspec=main_branch)
-        self.git.checkout(main_branch, track_remote=args.remote)
-
-        try:
+        with self.git.checkout(main_branch, track_remote=args.remote):
             if self.git.branch_exists(sync_branch):
-                self.git.checkout(sync_branch)
-                self.git.reset_hard(reset_to=main_branch)
+                checkout_cm = self.git.checkout(sync_branch)
+                should_reset = True
             else:
-                self.git.checkout(sync_branch, create_branch=True)
+                checkout_cm = self.git.checkout(sync_branch, create_branch=True)
+                should_reset = False
 
-            # Run ProcessNews to process news files and version markers
-            process_news_args = argparse.Namespace(
-                version=version,
-                targets=[str(pr) for pr in sorted_prs],
-                release_date=args.release_date,
-            )
-            process_news_runner = ProcessNews(process_news_args, gh=self.gh)
-            ret = process_news_runner.run()
-            if ret != 0:
-                err = f"ProcessNews failed for targets: {sorted_prs}"
-                logger.error(err)
-                self._post_failure_comment(issue_num)
-                return 1
+            with checkout_cm:
+                if should_reset:
+                    self.git.reset_hard(reset_to=main_branch)
 
-            if not self.git.status():
-                logger.info("No changes to sync after running process-news.")
-                return 0
-
-            self.git.add_modified_and_deleted()
-            self.git.commit(f"chore(release): sync changelog for v{version} backports")
-            self.git.push(args.remote, sync_branch, set_upstream=True, force=True)
-
-            pr_title = f"chore(release): sync changelog for v{version} backports"
-            pr_body_lines = [
-                "Updates CHANGELOG.md and removes news files for backports:",
-            ]
-            for pr_num in sorted_prs:
-                pr_body_lines.append(f"- #{pr_num}")
-
-            pr_body_lines.append("")
-            pr_body_lines.append(f"Work towards #{issue_num}")
-            pr_body_lines.append(f"Release-Tracking-Issue: #{issue_num}")
-            pr_body = "\n".join(pr_body_lines)
-
-            logger.info("Creating PR to %s...", main_branch)
-            pr_url = self.gh.create_pr(
-                title=pr_title,
-                body=pr_body,
-                base=main_branch,
-                labels=[SYNC_CHANGELOG_LABEL],
-            )
-            logger.info("Created PR: %s", pr_url)
-
-            pr_num = int(pr_url.split("/")[-1])
-            try:
-                logger.info("Enabling auto-merge for PR #%s...", pr_num)
-                self.gh.enable_auto_merge(pr_num)
-            except Exception as e:
-                logger.warning(
-                    "Failed to enable auto-merge on PR #%s: %s",
-                    pr_num,
-                    format_exception(e),
+                # Run ProcessNews to process news files and version markers
+                process_news_args = argparse.Namespace(
+                    version=version,
+                    targets=[str(pr) for pr in sorted_prs],
+                    release_date=args.release_date,
                 )
+                process_news_runner = ProcessNews(process_news_args, gh=self.gh)
+                ret = process_news_runner.run()
+                if ret != 0:
+                    err = f"ProcessNews failed for targets: {sorted_prs}"
+                    logger.error(err)
+                    self._post_failure_comment(issue_num)
+                    return 1
 
-            try:
-                logger.info(
-                    "Updating tracking issue #%s checklist with"
-                    " Sync Changelog tasks...",
-                    issue_num,
+                if not self.git.status():
+                    logger.info("No changes to sync after running process-news.")
+                    return 0
+
+                self.git.add_modified_and_deleted()
+                self.git.commit(
+                    f"chore(release): sync changelog for v{version} backports"
                 )
-                issue_body = self.gh.get_issue_body(issue_num)
-                for pr in sorted_prs:
-                    task_name = f"Sync Changelog #{pr}"
-                    metadata = {"status": "pending", "pr": f"#{pr_num}"}
-                    issue_body = update_task_in_body(
-                        issue_body,
-                        task_name,
-                        checked=False,
-                        metadata=metadata,
+                self.git.push(args.remote, sync_branch, set_upstream=True, force=True)
+
+                pr_title = f"chore(release): sync changelog for v{version} backports"
+                pr_body_lines = [
+                    "Updates CHANGELOG.md and removes news files for backports:",
+                ]
+                for pr_num in sorted_prs:
+                    pr_body_lines.append(f"- #{pr_num}")
+
+                pr_body_lines.append("")
+                pr_body_lines.append(f"Work towards #{issue_num}")
+                pr_body_lines.append(f"Release-Tracking-Issue: #{issue_num}")
+                pr_body = "\n".join(pr_body_lines)
+
+                logger.info("Creating PR to %s...", main_branch)
+                pr_url = self.gh.create_pr(
+                    title=pr_title,
+                    body=pr_body,
+                    base=main_branch,
+                    labels=[SYNC_CHANGELOG_LABEL],
+                )
+                logger.info("Created PR: %s", pr_url)
+
+                pr_num = int(pr_url.split("/")[-1])
+                try:
+                    logger.info("Enabling auto-merge for PR #%s...", pr_num)
+                    self.gh.enable_auto_merge(pr_num)
+                except Exception as e:
+                    logger.warning(
+                        "Failed to enable auto-merge on PR #%s: %s",
+                        pr_num,
+                        format_exception(e),
                     )
-                self.gh.update_issue_body(issue_num, issue_body)
-            except Exception as e:
-                logger.warning(
-                    "Failed to update tracking issue checklist: %s",
-                    format_exception(e),
-                )
 
-            try:
-                success_body = SYNC_CHANGELOG_SUCCESS_COMMENT_TEMPLATE.format(
-                    pr_url=pr_url,
-                )
-                self.gh.post_issue_comment(issue_num, success_body)
-            except Exception as e:
-                logger.warning(
-                    "Failed to post success comment to issue #%s: %s",
-                    issue_num,
-                    format_exception(e),
-                )
-        finally:
-            self.git.checkout(main_branch)
+                try:
+                    logger.info(
+                        "Updating tracking issue #%s checklist with"
+                        " Sync Changelog tasks...",
+                        issue_num,
+                    )
+                    issue_body = self.gh.get_issue_body(issue_num)
+                    for pr in sorted_prs:
+                        task_name = f"Sync Changelog #{pr}"
+                        metadata = {"status": "pending", "pr": f"#{pr_num}"}
+                        issue_body = update_task_in_body(
+                            issue_body,
+                            task_name,
+                            checked=False,
+                            metadata=metadata,
+                        )
+                    self.gh.update_issue_body(issue_num, issue_body)
+                except Exception as e:
+                    logger.warning(
+                        "Failed to update tracking issue checklist: %s",
+                        format_exception(e),
+                    )
+
+                try:
+                    success_body = SYNC_CHANGELOG_SUCCESS_COMMENT_TEMPLATE.format(
+                        pr_url=pr_url,
+                    )
+                    self.gh.post_issue_comment(issue_num, success_body)
+                except Exception as e:
+                    logger.warning(
+                        "Failed to post success comment to issue #%s: %s",
+                        issue_num,
+                        format_exception(e),
+                    )
 
         return 0
 

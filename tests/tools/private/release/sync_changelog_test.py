@@ -68,8 +68,11 @@ def test_sync_changelog_success(mocker, mock_git, mock_gh):
     mock_git.checkout.assert_has_calls(
         [
             call("main", track_remote="origin"),
+            call().__enter__(),
             call("sync-changelog-2.0.0-6affdae", create_branch=True),
-            call("main"),
+            call().__enter__(),
+            call().__exit__(None, None, None),
+            call().__exit__(None, None, None),
         ]
     )
     mock_process_news_class.assert_called_once()
@@ -160,8 +163,11 @@ def test_sync_changelog_branch_exists(mocker, mock_git, mock_gh):
     mock_git.checkout.assert_has_calls(
         [
             call("main", track_remote="origin"),
+            call().__enter__(),
             call("sync-changelog-2.0.0-6affdae"),
-            call("main"),
+            call().__enter__(),
+            call().__exit__(None, None, None),
+            call().__exit__(None, None, None),
         ]
     )
     mock_git.reset_hard.assert_called_once_with(reset_to="main")
