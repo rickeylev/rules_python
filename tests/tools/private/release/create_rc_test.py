@@ -48,7 +48,13 @@ def test_create_rc_success_first_rc(mocker, mock_git, mock_gh):
     mock_git.fetch.assert_has_calls(
         [call("my-remote"), call("my-remote", tags=True, force=True)]
     )
-    mock_git.checkout.assert_called_once_with("my-remote/release/2.0")
+    mock_git.checkout.assert_has_calls(
+        [
+            call("my-remote/release/2.0"),
+            call().__enter__(),
+            call().__exit__(None, None, None),
+        ]
+    )
     mock_git.tag.assert_called_once_with("2.0.0-rc0", "my-remote/release/2.0")
     mock_git.push.assert_called_once_with("my-remote", "2.0.0-rc0")
     mock_git.get_commit_sha.assert_called_once_with("my-remote/release/2.0")
@@ -452,7 +458,13 @@ def test_create_rc_fails_on_version_markers(tmp_path, mock_git, mock_gh):
 
     # Assert
     assert result == 1
-    mock_git.checkout.assert_called_once_with("my-remote/release/2.0")
+    mock_git.checkout.assert_has_calls(
+        [
+            call("my-remote/release/2.0"),
+            call().__enter__(),
+            call().__exit__(None, None, None),
+        ]
+    )
     mock_git.tag.assert_not_called()
     mock_git.push.assert_not_called()
     assert mock_gh.get_issue_body(123) == initial_body

@@ -125,18 +125,17 @@ class CreateRc:
 
         target_ref = f"{args.remote}/{branch_name}"
         commit_sha = self.git.get_commit_sha(target_ref)
-        self.git.checkout(target_ref)
-
-        print("Checking for leftover VERSION_NEXT_ markers...")
-        markers = find_version_markers()
-        if markers:
-            for marker in markers:
-                print(marker)
-            print(
-                "Error: Found VERSION_NEXT markers indicating version needs to"
-                " be specified."
-            )
-            return 1
+        with self.git.checkout(target_ref):
+            print("Checking for leftover VERSION_NEXT_ markers...")
+            markers = find_version_markers()
+            if markers:
+                for marker in markers:
+                    print(marker)
+                print(
+                    "Error: Found VERSION_NEXT markers indicating version needs to"
+                    " be specified."
+                )
+                return 1
 
         # Precheck: next RC number must exist and be unchecked in the checklist
         rc_tags = state.get("rc_tags", {})
