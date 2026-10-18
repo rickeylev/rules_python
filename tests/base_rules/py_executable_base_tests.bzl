@@ -109,6 +109,123 @@ def _test_basic_zip_impl(env, target):
 
 _tests.append(_test_basic_zip)
 
+def _test_bootstrap_native(name, config):
+    rt_util.helper_target(
+        config.rule,
+        name = name + "_subject",
+        srcs = ["main.py"],
+        main = "main.py",
+        interpreter_args = ["-Xutf8"],
+    )
+    analysis_test(
+        name = name,
+        impl = _test_bootstrap_native_impl,
+        target = name + "_subject",
+        config_settings = {
+            labels.BOOTSTRAP_IMPL: "native",
+            labels.BUILD_PYTHON_ZIP: False,
+            "//command_line_option:extra_execution_platforms": [
+                "@bazel_tools//tools:host_platform",
+                platform_targets.LINUX_X86_64,
+            ],
+            "//command_line_option:platforms": [platform_targets.LINUX_X86_64],
+        } | maybe_builtin_build_python_zip("false"),
+    )
+
+def _test_bootstrap_native_impl(env, target):
+    subject = env.expect.that_target(target)
+    subject.default_outputs().contains("{package}/{test_name}_subject")
+    subject.runfiles().contains_predicate(matching.str_endswith(
+        "_{}_subject_stage2_bootstrap.py".format(env.ctx.attr.name),
+    ))
+    embed_action = subject.action_generating("{package}/{test_name}_subject")
+    embed_action.mnemonic().equals("PyEmbedNativeBootstrap")
+    embed_action.argv().contains_at_least([
+        "--is_zipfile",
+        "0",
+        "--interpreter_arg",
+        "-Xutf8",
+    ])
+
+_tests.append(_test_bootstrap_native)
+
+def _test_bootstrap_native_custom_template(name, config):
+    custom_tpl = rt_util.empty_file(name + "_prebuilt_bootstrap.bin")
+    rt_util.helper_target(
+        config.rule,
+        name = name + "_subject",
+        srcs = ["main.py"],
+        main = "main.py",
+    )
+    analysis_test(
+        name = name,
+        impl = _test_bootstrap_native_custom_template_impl,
+        target = name + "_subject",
+        config_settings = {
+            labels.BOOTSTRAP_IMPL: "native",
+            labels.BUILD_PYTHON_ZIP: False,
+            # config_settings requires a canonicalized label when evaluated inside
+            # rules_testing's transition.
+            labels.NATIVE_BOOTSTRAP_TEMPLATE: str(Label("//{}:{}".format(
+                native.package_name(),
+                custom_tpl,
+            ))),
+            "//command_line_option:extra_execution_platforms": [
+                "@bazel_tools//tools:host_platform",
+                platform_targets.LINUX_X86_64,
+            ],
+            "//command_line_option:platforms": [platform_targets.LINUX_X86_64],
+        } | maybe_builtin_build_python_zip("false"),
+    )
+
+def _test_bootstrap_native_custom_template_impl(env, target):
+    subject = env.expect.that_target(target)
+    embed_action = subject.action_generating("{package}/{test_name}_subject")
+    embed_action.mnemonic().equals("PyEmbedNativeBootstrap")
+    embed_action.inputs().contains(
+        "{package}/{test_name}_prebuilt_bootstrap.bin",
+    )
+
+_tests.append(_test_bootstrap_native_custom_template)
+
+def _test_bootstrap_native_zip(name, config):
+    rt_util.helper_target(
+        config.rule,
+        name = name + "_subject",
+        srcs = ["main.py"],
+        main = "main.py",
+    )
+    analysis_test(
+        name = name,
+        impl = _test_bootstrap_native_zip_impl,
+        target = name + "_subject",
+        config_settings = {
+            labels.BOOTSTRAP_IMPL: "native",
+            labels.BUILD_PYTHON_ZIP: True,
+            "//command_line_option:cpu": "linux_x86_64",
+            "//command_line_option:crosstool_top": CROSSTOOL_TOP,
+            "//command_line_option:extra_execution_platforms": [
+                "@bazel_tools//tools:host_platform",
+                platform_targets.LINUX_X86_64,
+            ],
+            "//command_line_option:extra_toolchains": [CC_TOOLCHAIN],
+            "//command_line_option:platforms": [platform_targets.LINUX_X86_64],
+        } | maybe_builtin_build_python_zip("true"),
+    )
+
+def _test_bootstrap_native_zip_impl(env, target):
+    subject = env.expect.that_target(target)
+    prelude_action = subject.action_generating(
+        "{package}/{test_name}_subject_zip_prelude.sh",
+    )
+    prelude_action.mnemonic().equals("PyEmbedNativeBootstrap")
+    prelude_action.argv().contains_at_least([
+        "--is_zipfile",
+        "1",
+    ])
+
+_tests.append(_test_bootstrap_native_zip)
+
 def _test_config_settings_extra_toolchains(name, config):
     rt_util.helper_target(
         config.rule,
@@ -447,6 +564,33 @@ def _test_name_cannot_end_in_py_impl(env, target):
     env.expect.that_target(target).failures().contains_predicate(
         matching.str_matches("name must not end in*.py"),
     )
+
+def _test_main_module_bootstrap_native(name, config):
+    rt_util.helper_target(
+        config.rule,
+        name = name + "_subject",
+        main_module = "dummy",
+    )
+    analysis_test(
+        name = name,
+        impl = _test_main_module_bootstrap_native_impl,
+        target = name + "_subject",
+        config_settings = {
+            labels.BOOTSTRAP_IMPL: "native",
+            "//command_line_option:extra_execution_platforms": [
+                "@bazel_tools//tools:host_platform",
+                platform_targets.LINUX_X86_64,
+            ],
+            "//command_line_option:platforms": [platform_targets.LINUX_X86_64],
+        },
+    )
+
+def _test_main_module_bootstrap_native_impl(env, target):
+    env.expect.that_target(target).default_outputs().contains(
+        "{package}/{test_name}_subject",
+    )
+
+_tests.append(_test_main_module_bootstrap_native)
 
 def _test_main_module_bootstrap_system_python(name, config):
     rt_util.helper_target(

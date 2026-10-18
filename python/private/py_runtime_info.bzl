@@ -164,7 +164,8 @@ The runtime's ABI flags, i.e. `sys.abiflags`.
         "bootstrap_template": """
 :type: File
 
-A template of code responsible for the initial startup of a program.
+A template of code or prebuilt binary responsible for the initial startup of a
+program.
 
 This code is responsible for:
 
@@ -175,14 +176,17 @@ This code is responsible for:
   that performs additional setup prior to running a program's actual entry point.
 
 The {obj}`--bootstrap_impl` flag affects how this stage 1 bootstrap
-is expected to behave and the substutitions performed.
+is expected to behave and the substitutions or binary embedding performed.
 
 * `--bootstrap_impl=system_python` substitutions: `%is_zipfile%`, `%python_binary%`,
   `%target%`, `%workspace_name`, `%coverage_tool%`, `%import_all%`, `%imports%`,
   `%main%`, `%shebang%`
-* `--bootstrap_impl=script` substititions: `%is_zipfile%`, `%python_binary%`,
+* `--bootstrap_impl=script` substitutions: `%is_zipfile%`, `%python_binary%`,
   `%python_binary_actual%`, `%target%`, `%workspace_name`,
   `%shebang%`, `%stage2_bootstrap%`
+* `--bootstrap_impl=native`: copies this binary template and embeds the stage 1
+  bootstrap configuration into the binary's reserved configuration section
+  without compiling native code per target.
 
 Substitution definitions:
 
@@ -195,8 +199,8 @@ Substitution definitions:
   * A runfiles-relative path to an interpreter (e.g. `somerepo/bin/python3`)
   * A program to search for on PATH, i.e. a word without spaces, e.g. `python3`.
 
-  When `--bootstrap_impl=script` is used, this is always a runfiles-relative
-  path to a venv-based interpreter executable.
+  When `--bootstrap_impl=script` or `--bootstrap_impl=native` is used, this is
+  always a runfiles-relative path to a venv-based interpreter executable.
 
 * `%python_binary_actual%`: The path to the interpreter that
   `%python_binary%` invokes. There are three types of paths:
@@ -204,8 +208,8 @@ Substitution definitions:
   * A runfiles-relative path to an interpreter (e.g. `somerepo/bin/python3`)
   * A program to search for on PATH, i.e. a word without spaces, e.g. `python3`.
 
-  Only set for zip builds with `--bootstrap_impl=script`; other builds will use
-  an empty string.
+  Only set for zip builds with `--bootstrap_impl=script` or
+  `--bootstrap_impl=native`; other builds will use an empty string.
 
 * `%workspace_name%`: The name of the workspace the target belongs to.
 * `%is_zipfile%`: The string `1` if this template is prepended to a zipfile to
@@ -216,6 +220,10 @@ docs.
 
 :::{versionchanged} 0.33.0
 The set of substitutions depends on {obj}`--bootstrap_impl`
+:::
+:::{versionchanged} VERSION_NEXT_FEATURE
+Added support for prebuilt native binary templates with
+`--bootstrap_impl=native`.
 :::
 """,
         "coverage_files": """

@@ -278,13 +278,17 @@ If not set, then it will be set based on flags.
                 allow_single_file = True,
                 default = Label("//python/private:bootstrap_template"),
                 doc = """
-The bootstrap script template file to use. Should have %python_binary%,
-%workspace_name%, %main%, and %imports%.
+The bootstrap script or binary template file to use. Should have
+%python_binary%, %workspace_name%, %main%, and %imports%.
 
-This template, after expansion, becomes the executable file used to start the
-process, so it is responsible for initial bootstrapping actions such as finding
-the Python interpreter, runfiles, and constructing an environment to run the
-intended Python application.
+This template, after expansion or binary configuration embedding, becomes the
+executable file used to start the process, so it is responsible for initial
+bootstrapping actions such as finding the Python interpreter, runfiles, and
+constructing an environment to run the intended Python application.
+
+When {obj}`--bootstrap_impl=native` is used, this may point to a prebuilt
+native stage-1 bootstrap binary containing the native bootstrap configuration
+section instead of a text template.
 
 While this attribute is currently optional, it will become required when the
 Python rules are moved out of Bazel itself.
@@ -294,6 +298,11 @@ The API will become more stable when the Python rules are moved out of Bazel
 itself.
 
 See @bazel_tools//tools/python:python_bootstrap_template.txt for more variables.
+
+:::{versionchanged} VERSION_NEXT_FEATURE
+Prebuilt native binary templates are supported when
+{obj}`--bootstrap_impl=native` is used.
+:::
 """,
             ),
             "coverage_tool": attr.label(

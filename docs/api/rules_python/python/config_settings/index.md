@@ -382,19 +382,24 @@ Values:
 Determine how programs implement their startup process.
 
 Values:
-* `system_python`: (default) Use a bootstrap that requires a system Python available
-  in order to start programs. This requires
+* `system_python`: (default) Use a bootstrap that requires a system Python
+  available in order to start programs. This requires
   {obj}`PyRuntimeInfo.bootstrap_template` to be a Python program.
 * `script`: Use a bootstrap that uses an arbitrary executable script (usually a
   shell script) instead of requiring it be a Python program.
+* `native`: Use a native binary bootstrap executable instead of a shell or
+  Python script. At target build time, a copy of the native bootstrap template
+  binary (from {obj}`PyRuntimeInfo.bootstrap_template`) is modified to embed
+  target-specific bootstrap configuration without compiling native code per
+  target.
 
 :::{note}
-The `script` bootstrap requires the toolchain to provide the `PyRuntimeInfo`
-provider from `rules_python`. This loosely translates to using Bazel 7+ with a
-toolchain created by rules_python. Most notably, WORKSPACE builds default to
-using a legacy toolchain built into Bazel itself which doesn't support the
-script bootstrap. If not available, the `system_python` bootstrap will be used
-instead.
+The `script` and `native` bootstraps require the toolchain to provide the
+`PyRuntimeInfo` provider from `rules_python`. This loosely translates to using
+Bazel 7+ with a toolchain created by rules_python. Most notably, WORKSPACE
+builds default to using a legacy toolchain built into Bazel itself which
+doesn't support the `script` or `native` bootstrap. If not available, the
+`system_python` bootstrap will be used instead.
 :::
 
 :::{seealso}
@@ -403,6 +408,9 @@ instead.
 :::
 
 :::{versionadded} 0.33.0
+:::
+:::{versionchanged} VERSION_NEXT_FEATURE
+Added the `native` value.
 :::
 
 ::::

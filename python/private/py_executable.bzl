@@ -106,7 +106,8 @@ The args an interpreter supports are specific to the interpreter. For
 CPython, see <https://docs.python.org/3/using/cmdline.html>.
 
 :::{note}
-Only supported for {obj}`--bootstrap_impl=script`. Ignored otherwise.
+Only supported for {obj}`--bootstrap_impl=script` and
+{obj}`--bootstrap_impl=native`. Ignored otherwise.
 :::
 
 :::{seealso}
@@ -114,6 +115,9 @@ The {any}`RULES_PYTHON_ADDITIONAL_INTERPRETER_ARGS` environment variable
 :::
 
 :::{versionadded} 1.3.0
+:::
+:::{versionchanged} VERSION_NEXT_FEATURE
+Also supported for {obj}`--bootstrap_impl=native`.
 :::
 """,
         ),
@@ -236,6 +240,14 @@ accepting arbitrary Python versions.
             # can't have executable=True because the backing target is an
             # empty target for other platforms.
             default = "//tools/launcher:launcher",
+        ),
+        "_native_bootstrap_embedder": lambda: attrb.Label(
+            # Uses allow_files = True instead of executable = True because in
+            # WORKSPACE mode @rules_rust is a stub that expands rust_binary to
+            # a non-executable filegroup.
+            allow_files = True,
+            cfg = "exec",
+            default = "//python/private:stage1_native_bootstrap_embedder",
         ),
         "_python_version_flag": lambda: attrb.Label(
             default = labels.PYTHON_VERSION,
@@ -658,7 +670,10 @@ def _create_venv(ctx, output_prefix, imports, runtime_details, add_runfiles_root
 
 def _create_venv_unixy(ctx, *, venv_ctx_rel_root, runtime, interpreter_actual_path):
     interpreter_runfiles = builders.RunfilesBuilder()
-    is_bootstrap_script = BootstrapImplFlag.get_value(ctx) == BootstrapImplFlag.SCRIPT
+    is_bootstrap_script = BootstrapImplFlag.get_value(ctx) in (
+        BootstrapImplFlag.SCRIPT,
+        BootstrapImplFlag.NATIVE,
+    )
     create_full_venv = True
 
     # The legacy build_python_zip codepath (enabled by default on windows) isn't
@@ -973,6 +988,7 @@ def _create_stage1_bootstrap(
         "%workspace_name%": ctx.workspace_name,
     }
     computed_subs = ctx.actions.template_dict()
+    runtime_venv_symlinks = None
     if venv:
         runtime_venv_symlinks = depset(
             transitive = [venv.interpreter_symlinks, venv.lib_symlinks],
@@ -988,6 +1004,49 @@ def _create_stage1_bootstrap(
         subs["%stage2_bootstrap%"] = runfiles_root_path(ctx, stage2_bootstrap.short_path)
         template = runtime.bootstrap_template
         subs["%shebang%"] = runtime.stub_shebang
+        if BootstrapImplFlag.get_value(ctx) == BootstrapImplFlag.NATIVE:
+            args = ctx.actions.args()
+            args.add("--template", template)
+            args.add("--output", output)
+            args.add("--shebang", runtime.stub_shebang)
+            args.add("--stage2_bootstrap", subs["%stage2_bootstrap%"])
+            args.add("--python_binary", python_binary_path)
+            args.add("--python_binary_actual", python_binary_actual)
+            args.add("--is_zipfile", subs["%is_zipfile%"])
+            args.add(
+                "--recreate_venv_at_runtime",
+                subs["%recreate_venv_at_runtime%"],
+            )
+            args.add(
+                "--resolve_python_binary_at_runtime",
+                resolve_python_binary_at_runtime,
+            )
+            args.add(
+                "--venv_rel_site_packages",
+                subs["%venv_rel_site_packages%"],
+            )
+            args.add("--workspace_name", ctx.workspace_name)
+            args.add("--target", str(ctx.label))
+            args.add_all(
+                ctx.attr.interpreter_args,
+                before_each = "--interpreter_arg",
+            )
+            if runtime_venv_symlinks:
+                args.add_all(
+                    runtime_venv_symlinks,
+                    map_each = _map_runtime_venv_symlink,
+                    before_each = "--runtime_venv_symlink",
+                )
+            ctx.actions.run(
+                executable = ctx.attr._native_bootstrap_embedder[DefaultInfo].files_to_run,
+                arguments = [args],
+                inputs = [template],
+                outputs = [output],
+                mnemonic = "PyEmbedNativeBootstrap",
+                progress_message = "Embedding native bootstrap config for %{label}",
+                toolchain = None,
+            )
+            return
     elif not ctx.files.srcs:
         fail("mandatory 'srcs' files have not been provided")
     else:

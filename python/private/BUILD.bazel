@@ -105,6 +105,28 @@ filegroup(
     visibility = NOT_ACTUALLY_PUBLIC,
 )
 
+alias(
+    name = "stage1_native_bootstrap_template",
+    actual = "//crates/stage1_native_bootstrap:stage1_native_bootstrap_template",
+    # Not actually public. Only public because it's an implicit dependency of
+    # py_runtime.
+    visibility = NOT_ACTUALLY_PUBLIC,
+)
+
+alias(
+    name = "stage1_native_bootstrap_embedder",
+    actual = "//crates/stage1_native_bootstrap:stage1_native_bootstrap_embedder",
+    # Not actually public. Only public because it's an implicit dependency of
+    # rules built via py_binary_rule_builder() / py_test_rule_builder().
+    visibility = ["//visibility:public"],
+)
+
+label_flag(
+    name = "native_bootstrap_template",
+    build_setting_default = ":stage1_native_bootstrap_template",
+    visibility = ["//visibility:public"],
+)
+
 filegroup(
     name = "stage2_bootstrap_template",
     srcs = ["stage2_bootstrap_template.py"],
@@ -127,6 +149,7 @@ filegroup(
 alias(
     name = "bootstrap_template",
     actual = select({
+        ":is_native_bootstrap_enabled": ":native_bootstrap_template",
         ":is_script_bootstrap_enabled": "stage1_bootstrap_template.sh",
         "//conditions:default": "python_bootstrap_template.txt",
     }),
@@ -137,6 +160,13 @@ alias(
 
 # Used to determine the use of `--stamp` in Starlark rules
 stamp_build_setting(name = "stamp")
+
+config_setting(
+    name = "is_native_bootstrap_enabled",
+    flag_values = {
+        "//python/config_settings:bootstrap_impl": "native",
+    },
+)
 
 config_setting(
     name = "is_script_bootstrap_enabled",

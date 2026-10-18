@@ -13,6 +13,7 @@ _BASE_TRANSITION_LABELS = [
     labels.DEBUGGER,
     labels.EXEC_TOOLS_TOOLCHAIN,
     "//command_line_option:extra_toolchains",
+    labels.NATIVE_BOOTSTRAP_TEMPLATE,
     labels.PIP_ENV_MARKER_CONFIG,
     labels.PIP_WHL_OSX_VERSION,
     labels.PRECOMPILE,

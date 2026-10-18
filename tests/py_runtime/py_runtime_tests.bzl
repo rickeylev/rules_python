@@ -119,6 +119,31 @@ def _test_bootstrap_template_impl(env, target):
 
 _tests.append(_test_bootstrap_template)
 
+def _test_bootstrap_template_default_native(name):
+    rt_util.helper_target(
+        py_runtime,
+        name = name + "_subject",
+        interpreter_path = "/py",
+        python_version = "PY3",
+    )
+    analysis_test(
+        name = name,
+        target = name + "_subject",
+        impl = _test_bootstrap_template_default_native_impl,
+        config_settings = {
+            labels.BOOTSTRAP_IMPL: "native",
+        },
+        attr_values = {},
+    )
+
+def _test_bootstrap_template_default_native_impl(env, target):
+    env.expect.that_target(target).provider(
+        PyRuntimeInfo,
+        factory = py_runtime_info_subject,
+    ).bootstrap_template().path().contains("stage1_native_bootstrap_template")
+
+_tests.append(_test_bootstrap_template_default_native)
+
 def _test_cannot_have_both_inbuild_and_system_interpreter(name):
     rt_util.helper_target(
         py_runtime,

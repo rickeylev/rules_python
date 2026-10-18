@@ -93,3 +93,44 @@ sh_test(
     ],
     target_compatible_with = SUPPORTS_BOOTSTRAP_SCRIPT,
 )
+
+# =====
+# bootstrap_impl=native testing
+# =====
+py_reconfig_binary(
+    name = "inner_bootstrap_native",
+    srcs = ["inner.py"],
+    bootstrap_impl = "native",
+    main = "inner.py",
+    tags = ["manual"],
+    deps = [":inner_lib"],
+)
+
+py_reconfig_binary(
+    name = "outer_bootstrap_native",
+    srcs = ["outer.py"],
+    bootstrap_impl = "native",
+    main = "outer.py",
+    tags = ["manual"],
+)
+
+genrule(
+    name = "outer_calls_inner_native_python",
+    outs = ["outer_calls_inner_native_python.out"],
+    cmd = "RULES_PYTHON_TESTING_TELL_RUNFILES_ROOT=1 $(location :outer_bootstrap_native) $(location :inner_bootstrap_native) > $@",
+    tags = ["manual"],
+    tools = [
+        ":inner_bootstrap_native",
+        ":outer_bootstrap_native",
+    ],
+)
+
+sh_test(
+    name = "bootstrap_native_python_test",
+    srcs = ["verify_native_python.sh"],
+    data = [
+        "verify.sh",
+        ":outer_calls_inner_native_python",
+    ],
+    target_compatible_with = SUPPORTS_BOOTSTRAP_SCRIPT,
+)

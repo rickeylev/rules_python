@@ -1,0 +1,14 @@
+load("@rules_rust//rust:defs.bzl", "rust_test")
+
+package(default_visibility = ["//:__subpackages__"])
+
+licenses(["notice"])
+
+rust_test(
+    name = "stage1_native_bootstrap_test",
+    size = "small",
+    srcs = ["stage1_native_bootstrap_test.rs"],
+    deps = [
+        "//crates/stage1_native_bootstrap:stage1_native_bootstrap_lib",
+    ],
+)

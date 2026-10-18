@@ -238,4 +238,146 @@ py_test(
     },
 )
 
+py_reconfig_binary(
+    name = "bootstrap_native_zipapp_bin",
+    srcs = ["bin.py"],
+    bootstrap_impl = "native",
+    # Force it to not be self-executable
+    build_python_zip = False,
+    main = "bin.py",
+    target_compatible_with = SUPPORTS_BOOTSTRAP_SCRIPT,
+)
+
+filegroup(
+    name = "bootstrap_native_zipapp_zip",
+    testonly = 1,
+    srcs = [":bootstrap_native_zipapp_bin"],
+    output_group = "python_zip_file",
+)
+
+sh_test(
+    name = "bootstrap_native_zipapp_test",
+    srcs = ["bootstrap_script_zipapp_test.sh"],
+    data = [":bootstrap_native_zipapp_zip"],
+    env = {
+        "ZIP_RLOCATION": "$(rlocationpaths :bootstrap_native_zipapp_zip)".format(),
+    },
+    target_compatible_with = SUPPORTS_BOOTSTRAP_SCRIPT,
+    deps = [
+        "@bazel_tools//tools/bash/runfiles",
+    ],
+)
+
+sh_py_run_test(
+    name = "run_binary_bootstrap_native_venvs_use_declare_symlink_no_test",
+    bootstrap_impl = "native",
+    py_src = "bin.py",
+    sh_src = "run_binary_venvs_use_declare_symlink_no_test.sh",
+    target_compatible_with = SUPPORTS_BOOTSTRAP_SCRIPT,
+    venvs_use_declare_symlink = "no",
+)
+
+sh_py_run_test(
+    name = "run_binary_bootstrap_native_zip_yes_test",
+    bootstrap_impl = "native",
+    build_python_zip = True,
+    py_src = "bin.py",
+    sh_src = "run_binary_zip_yes_test.sh",
+    target_compatible_with = SUPPORTS_BOOTSTRAP_SCRIPT,
+)
+
+sh_py_run_test(
+    name = "run_binary_bootstrap_native_zip_no_test",
+    bootstrap_impl = "native",
+    build_python_zip = False,
+    py_src = "bin.py",
+    sh_src = "run_binary_zip_no_test.sh",
+    target_compatible_with = SUPPORTS_BOOTSTRAP_SCRIPT,
+)
+
+sh_py_run_test(
+    name = "run_binary_bootstrap_native_find_runfiles_test",
+    bootstrap_impl = "native",
+    py_src = "bin.py",
+    sh_src = "run_binary_find_runfiles_test.sh",
+    target_compatible_with = SUPPORTS_BOOTSTRAP_SCRIPT,
+)
+
+genrule(
+    name = "prebuilt_native_bootstrap_bin",
+    srcs = ["//python/private:stage1_native_bootstrap_template"],
+    outs = ["prebuilt_stage1_bootstrap.bin"],
+    cmd = "cp $< $@ && chmod +x $@",
+    tags = ["manual"],
+)
+
+sh_py_run_test(
+    name = "run_binary_prebuilt_native_bootstrap_test",
+    bootstrap_impl = "native",
+    build_python_zip = False,
+    config_settings = {
+        "//python/private:native_bootstrap_template": "//tests/bootstrap_impls:prebuilt_native_bootstrap_bin",
+    },
+    py_src = "bin.py",
+    sh_src = "run_binary_zip_no_test.sh",
+    target_compatible_with = SUPPORTS_BOOTSTRAP_SCRIPT,
+)
+
+py_reconfig_test(
+    name = "sys_path_order_bootstrap_native_test",
+    srcs = ["sys_path_order_test.py"],
+    bootstrap_impl = "native",
+    env = {"BOOTSTRAP": "native"},
+    imports = ["./USER_IMPORT/site-packages"],
+    main = "sys_path_order_test.py",
+    target_compatible_with = SUPPORTS_BOOTSTRAP_SCRIPT,
+)
+
+pytest_test(
+    name = "stdlib_symlink_syspath_bootstrap_native_test",
+    srcs = ["stdlib_symlink_syspath_test.py"],
+    config_settings = {
+        "//python/config_settings:bootstrap_impl": "native",
+    },
+    target_compatible_with = SUPPORTS_BOOTSTRAP_SCRIPT,
+    deps = [
+        "//python/runfiles",
+    ],
+)
+
+py_reconfig_test(
+    name = "main_module_bootstrap_native_test",
+    srcs = ["main_module.py"],
+    bootstrap_impl = "native",
+    imports = ["."],
+    main_module = "tests.bootstrap_impls.main_module",
+    target_compatible_with = SUPPORTS_BOOTSTRAP_SCRIPT,
+)
+
+sh_py_run_test(
+    name = "inherit_pythonsafepath_env_bootstrap_native_test",
+    bootstrap_impl = "native",
+    py_src = "bin.py",
+    sh_src = "inherit_pythonsafepath_env_test.sh",
+    target_compatible_with = SUPPORTS_BOOTSTRAP_SCRIPT,
+)
+
+sh_py_run_test(
+    name = "sys_executable_inherits_sys_path_bootstrap_native_test",
+    bootstrap_impl = "native",
+    imports = ["./MARKER"],
+    py_src = "call_sys_exe.py",
+    sh_src = "sys_executable_inherits_sys_path_test.sh",
+    target_compatible_with = SUPPORTS_BOOTSTRAP_SCRIPT,
+)
+
+py_reconfig_test(
+    name = "interpreter_args_bootstrap_native_test",
+    srcs = ["interpreter_args_test.py"],
+    bootstrap_impl = "native",
+    interpreter_args = ["-XSPECIAL=1"],
+    main = "interpreter_args_test.py",
+    target_compatible_with = SUPPORTS_BOOTSTRAP_SCRIPT,
+)
+
 relative_path_test_suite(name = "relative_path_tests")

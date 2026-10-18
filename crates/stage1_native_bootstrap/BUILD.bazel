@@ -1,0 +1,32 @@
+load("@rules_rust//rust:defs.bzl", "rust_binary", "rust_library")
+
+package(default_visibility = ["//:__subpackages__"])
+
+licenses(["notice"])
+
+rust_library(
+    name = "stage1_native_bootstrap_lib",
+    srcs = ["src/lib.rs"],
+    edition = "2021",
+)
+
+rust_binary(
+    name = "stage1_native_bootstrap_template",
+    srcs = ["src/template_main.rs"],
+    edition = "2021",
+    visibility = ["//visibility:public"],
+    deps = [":stage1_native_bootstrap_lib"],
+)
+
+rust_binary(
+    name = "stage1_native_bootstrap_embedder",
+    srcs = ["src/embedder_main.rs"],
+    edition = "2021",
+    visibility = ["//visibility:public"],
+    deps = [":stage1_native_bootstrap_lib"],
+)
+
+filegroup(
+    name = "distribution",
+    srcs = glob(["**"]),
+)

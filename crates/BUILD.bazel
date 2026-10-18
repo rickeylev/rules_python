@@ -6,5 +6,6 @@ filegroup(
     name = "distribution",
     srcs = glob(["**"]) + [
         "//crates/exe_zip_maker:distribution",
+        "//crates/stage1_native_bootstrap:distribution",
     ],
 )
