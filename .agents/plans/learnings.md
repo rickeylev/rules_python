@@ -35,13 +35,18 @@
      `analysis_test(config_settings = ...)`, wrap the target string with
      `str(Label("//..."))` so the label resolves in the root repository rather
      than `@@rules_testing+`.
-7. **WORKSPACE `rules_rust_stub` Compatibility for `crates/` Targets**:
-   - In WORKSPACE mode, `@rules_rust//rust:defs.bzl` maps to
-     `tests/modules/rules_rust_stub/rust/defs.bzl`, where `rust_binary` expands
-     to a non-executable `native.filegroup(name = name, tags = ["manual"])`.
-   - Rule attributes referencing a `rust_binary` (such as
-     `_native_bootstrap_embedder` in `python/private/py_executable.bzl`) must
-     gate the label with `select()` on
-     `//python/private:is_native_bootstrap_enabled` and use `allow_files = True,
-     cfg = "exec"` so non-native bootstrap builds in WORKSPACE mode do not fail
-     attribute analysis.
+7. **WORKSPACE and Downstream Bzlmod Compatibility for `crates/` Targets**:
+   - In `MODULE.bazel`, `rules_rust` is declared with `dev_dependency = True`.
+     In WORKSPACE mode, `@rules_rust//rust:defs.bzl` maps to
+     `tests/modules/rules_rust_stub/rust/defs.bzl`; in downstream Bzlmod
+     modules (e.g. `tests/integration/local_toolchains`), `@rules_rust` does
+     not exist at all.
+   - Targets in `python/private/BUILD.bazel` must gate `//crates/...` defaults
+     behind `IS_BZLMOD_ROOT_MODULE`
+     (`str(Label("//:unused")).startswith("@@//")` in
+     `python/private/bzlmod_enabled.bzl`) so downstream Bzlmod modules never
+     load `//crates/.../BUILD.bazel`.
+   - Making `stage1_native_bootstrap_template` also act as the embedder when
+     unconfigured and invoked with `--template ... --output ...` allows a
+     single prebuilt bootstrap binary to embed target metadata into a copy of
+     itself even when `@rules_rust` is absent.

@@ -60,8 +60,10 @@ Rust) per target.
        into `<python_exe>` with target `interpreter_args` and
        `<runfiles_dir>/<stage2_bootstrap>`.
 3. **Prebuilt Binary Embedder (`crates/stage1_native_bootstrap/`)**:
-   - Compile a Rust embedder binary (`stage1_native_bootstrap_embedder`) that
-     accepts `--template`, `--output`, and target bootstrap metadata flags.
+   - Compile a Rust embedder binary (`stage1_native_bootstrap_embedder`) — and
+     allow an unconfigured `stage1_native_bootstrap_template` binary itself to
+     run the embedder when invoked with `--template` — accepting `--template`,
+     `--output`, and target bootstrap metadata flags.
    - Copy the input template binary (either compiled from source or provided as
      a prebuilt binary via `py_runtime(bootstrap_template = ...)` or
      `--//python/private:native_bootstrap_template`), locate the magic sentinel,
@@ -73,10 +75,14 @@ Rust) per target.
      fall back to expanding `%...%` placeholders so custom text templates remain
      compatible.
 4. **Rule Integration (`python/private/py_executable.bzl`)**:
-   - Add `_native_bootstrap_embedder` (`cfg = "exec"`, `allow_files = True`, and
-     gated with `select()` on `//python/private:is_native_bootstrap_enabled` so
-     WORKSPACE builds using `tests/modules/rules_rust_stub` do not fail
-     analysis) to `EXECUTABLE_ATTRS`.
+   - Gate `//crates/stage1_native_bootstrap:...` aliases in
+     `python/private/BUILD.bazel` with `IS_BZLMOD_ROOT_MODULE`
+     (`python/private/bzlmod_enabled.bzl`) so downstream Bzlmod modules (where
+     `rules_rust` is a `dev_dependency = True`) and WORKSPACE builds do not load
+     `//crates/...`.
+   - Add `_native_bootstrap_embedder` (`cfg = "exec"`, `allow_files = True`) to
+     `EXECUTABLE_ATTRS`, falling back to executing `template` itself when no
+     separate embedder executable is present.
    - Treat `BootstrapImplFlag.NATIVE` alongside `BootstrapImplFlag.SCRIPT` for
      build-time venv creation.
    - In `_create_stage1_bootstrap`, run `PyEmbedNativeBootstrap` when

@@ -50,14 +50,21 @@ fn load_embedded_config() -> Result<BootstrapConfig, &'static str> {
 }
 
 fn main() {
+    let args: Vec<String> = env::args().collect();
     let cfg = match load_embedded_config() {
         Ok(c) => c,
         Err(msg) => {
+            if args.get(1).map(|s| s.as_str()) == Some("--template") {
+                if let Err(err) = stage1_native_bootstrap_lib::run_embedder(args) {
+                    eprintln!("stage1_native_bootstrap: {err}");
+                    process::exit(1);
+                }
+                return;
+            }
             eprintln!("stage1_native_bootstrap: {msg}");
             process::exit(1);
         }
     };
-    let args: Vec<String> = env::args().collect();
     let code = run_stage1_with_config(cfg, &args);
     process::exit(code);
 }

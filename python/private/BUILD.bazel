@@ -17,6 +17,7 @@ load("@bazel_skylib//rules:common_settings.bzl", "bool_flag")
 load("//python:py_binary.bzl", "py_binary")
 load("//python:py_library.bzl", "py_library")
 load(":bazel_config_mode.bzl", "bazel_config_mode")
+load(":bzlmod_enabled.bzl", "IS_BZLMOD_ROOT_MODULE")
 load(":distribution_filegroup.bzl", "distribution_filegroup")
 load(":py_exec_tools_toolchain.bzl", "current_interpreter_executable")
 load(":py_interpreter_program.bzl", "py_interpreter_program")
@@ -107,7 +108,9 @@ filegroup(
 
 alias(
     name = "stage1_native_bootstrap_template",
-    actual = "//crates/stage1_native_bootstrap:stage1_native_bootstrap_template",
+    actual = (
+        "//crates/stage1_native_bootstrap:stage1_native_bootstrap_template" if IS_BZLMOD_ROOT_MODULE else ":stage1_bootstrap_template"
+    ),
     # Not actually public. Only public because it's an implicit dependency of
     # py_runtime.
     visibility = NOT_ACTUALLY_PUBLIC,
@@ -115,7 +118,9 @@ alias(
 
 alias(
     name = "stage1_native_bootstrap_embedder",
-    actual = "//crates/stage1_native_bootstrap:stage1_native_bootstrap_embedder",
+    actual = (
+        "//crates/stage1_native_bootstrap:stage1_native_bootstrap_embedder" if IS_BZLMOD_ROOT_MODULE else ":empty"
+    ),
     # Not actually public. Only public because it's an implicit dependency of
     # rules built via py_binary_rule_builder() / py_test_rule_builder().
     visibility = ["//visibility:public"],

@@ -1037,8 +1037,11 @@ def _create_stage1_bootstrap(
                     map_each = _map_runtime_venv_symlink,
                     before_each = "--runtime_venv_symlink",
                 )
+            embedder = ctx.attr._native_bootstrap_embedder[DefaultInfo].files_to_run
+            if not embedder or not embedder.executable:
+                embedder = template
             ctx.actions.run(
-                executable = ctx.attr._native_bootstrap_embedder[DefaultInfo].files_to_run,
+                executable = embedder,
                 arguments = [args],
                 inputs = [template],
                 outputs = [output],

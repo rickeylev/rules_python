@@ -16,3 +16,7 @@
 # When bzlmod is enabled, canonical repos names have @@ in them, while under
 # workspace builds, there is never a @@ in labels.
 BZLMOD_ENABLED = "@@" in str(Label("//:unused"))
+
+# True only when rules_python is the root Bzlmod module, where dev_dependency
+# repositories (such as @rules_rust) are available.
+IS_BZLMOD_ROOT_MODULE = str(Label("//:unused")).startswith("@@//")
