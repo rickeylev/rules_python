@@ -1008,7 +1008,6 @@ def _create_stage1_bootstrap(
             args = ctx.actions.args()
             args.add("--template", template)
             args.add("--output", output)
-            args.add("--shebang", runtime.stub_shebang)
             args.add("--stage2_bootstrap", subs["%stage2_bootstrap%"])
             args.add("--python_binary", python_binary_path)
             args.add("--python_binary_actual", python_binary_actual)

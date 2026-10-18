@@ -3,12 +3,11 @@ use std::fs;
 
 use stage1_native_bootstrap_lib::{
     basename_str, create_temp_dir, dirname_str, embed_bootstrap_file,
-    embed_config_into_binary, expand_text_template_fallback,
-    extract_runfiles_prefix, find_magic_offset, find_runfiles_root_with_env,
-    join_path, join_path3, load_overflow_payload, parse_cfg_payload,
-    parse_embed_args, parse_overflow_trailer_from_bytes, serialize_cfg_payload,
-    strip_last_two_components, BootstrapConfig, EmbedOptions, CFG_BUFFER_SIZE,
-    CFG_HEADER_LEN, CFG_MAGIC, CFG_MAGIC_LEN,
+    embed_config_into_binary, extract_runfiles_prefix, find_magic_offset,
+    find_runfiles_root_with_env, join_path, join_path3, load_overflow_payload,
+    parse_cfg_payload, parse_embed_args, parse_overflow_trailer_from_bytes,
+    serialize_cfg_payload, strip_last_two_components, BootstrapConfig,
+    EmbedOptions, CFG_BUFFER_SIZE, CFG_HEADER_LEN, CFG_MAGIC, CFG_MAGIC_LEN,
 };
 
 fn make_mock_template_binary() -> Vec<u8> {
@@ -27,7 +26,6 @@ fn test_serialize_and_parse_cfg_payload_roundtrip() {
     let opts = EmbedOptions {
         template_path: "tpl".to_string(),
         output_path: "out".to_string(),
-        shebang: "#!/bin/sh".to_string(),
         stage2_bootstrap: "_main/pkg/stage2.py".to_string(),
         python_binary: "_main/pkg/.venv/bin/python3".to_string(),
         python_binary_actual: "python3_x86_64/bin/python3".to_string(),
@@ -84,7 +82,7 @@ fn test_embed_config_into_binary_inplace_preserves_size() {
         ..EmbedOptions::default()
     };
 
-    let embedded = embed_config_into_binary(&tpl, &opts);
+    let embedded = embed_config_into_binary(&tpl, &opts).unwrap();
     assert_eq!(embedded.len(), tpl.len());
 
     let offset = find_magic_offset(&embedded).expect("magic should be present");
@@ -134,7 +132,7 @@ fn test_embed_config_into_binary_overflow_trailer_roundtrip() {
         ..EmbedOptions::default()
     };
 
-    let embedded = embed_config_into_binary(&tpl, &opts);
+    let embedded = embed_config_into_binary(&tpl, &opts).unwrap();
     assert!(embedded.len() > tpl.len());
 
     let offset = find_magic_offset(&embedded).unwrap();
@@ -156,7 +154,7 @@ fn test_embed_config_into_binary_overflow_trailer_roundtrip() {
 }
 
 #[test]
-fn test_expand_text_template_fallback_and_file_io() {
+fn test_embed_bootstrap_file_and_missing_magic_error() {
     let temp_dir = env::temp_dir().join(format!(
         "stage1_native_bootstrap_test_{}",
         std::process::id()
@@ -164,18 +162,14 @@ fn test_expand_text_template_fallback_and_file_io() {
     let _ = fs::remove_dir_all(&temp_dir);
     fs::create_dir_all(&temp_dir).unwrap();
 
-    let tpl_path = temp_dir.join("custom_tpl.sh");
-    let out_path = temp_dir.join("nested").join("out.sh");
-    fs::write(
-        &tpl_path,
-        b"%shebang%\nSTAGE2=%stage2_bootstrap%\nPY=%python_binary%\nARGS=%interpreter_args%\n",
-    )
-    .unwrap();
+    let tpl_path = temp_dir.join("prebuilt_tpl.bin");
+    let out_path = temp_dir.join("nested").join("out.bin");
+    let tpl = make_mock_template_binary();
+    fs::write(&tpl_path, &tpl).unwrap();
 
     let opts = EmbedOptions {
         template_path: tpl_path.to_string_lossy().into_owned(),
         output_path: out_path.to_string_lossy().into_owned(),
-        shebang: "#!/usr/bin/env bash".to_string(),
         stage2_bootstrap: "_main/s2.py".to_string(),
         python_binary: "_main/py3".to_string(),
         interpreter_args: vec!["-a".to_string(), "-b".to_string()],
@@ -183,14 +177,16 @@ fn test_expand_text_template_fallback_and_file_io() {
     };
 
     embed_bootstrap_file(&opts).unwrap();
-    let content = fs::read_to_string(&out_path).unwrap();
-    assert_eq!(
-        content,
-        "#!/usr/bin/env bash\nSTAGE2=_main/s2.py\nPY=_main/py3\nARGS=-a\n-b\n"
-    );
+    let embedded = fs::read(&out_path).unwrap();
+    assert_eq!(embedded.len(), tpl.len());
 
-    let direct = expand_text_template_fallback(b"target=%target%", &opts);
-    assert_eq!(direct, b"target=");
+    let text_tpl_path = temp_dir.join("custom_tpl.sh");
+    fs::write(&text_tpl_path, b"#!/usr/bin/env bash\n").unwrap();
+    let bad_opts = EmbedOptions {
+        template_path: text_tpl_path.to_string_lossy().into_owned(),
+        ..opts
+    };
+    assert!(embed_bootstrap_file(&bad_opts).is_err());
 
     let _ = fs::remove_dir_all(&temp_dir);
 }
@@ -207,10 +203,10 @@ fn test_load_overflow_payload_from_file() {
     let tpl = make_mock_template_binary();
     let opts = EmbedOptions {
         stage2_bootstrap: "_main/file_overflow.py".to_string(),
-        interpreter_args: vec!["Y".repeat(70000)],
+        interpreter_args: vec!["Y".repeat(5000)],
         ..EmbedOptions::default()
     };
-    let embedded = embed_config_into_binary(&tpl, &opts);
+    let embedded = embed_config_into_binary(&tpl, &opts).unwrap();
     let exe_path = temp_dir.join("overflow.bin");
     fs::write(&exe_path, &embedded).unwrap();
 
@@ -218,7 +214,7 @@ fn test_load_overflow_payload_from_file() {
     load_overflow_payload(&exe_path.to_string_lossy(), &mut cfg).unwrap();
     assert_eq!(cfg.stage2_bootstrap, "_main/file_overflow.py");
     assert_eq!(cfg.interpreter_args.len(), 1);
-    assert_eq!(cfg.interpreter_args[0].len(), 70000);
+    assert_eq!(cfg.interpreter_args[0].len(), 5000);
 
     let _ = fs::remove_dir_all(&temp_dir);
 }

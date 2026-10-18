@@ -8,7 +8,7 @@ use std::process::{Command, Stdio};
 use std::sync::atomic::{AtomicI32, AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-pub const CFG_BUFFER_SIZE: usize = 65536;
+pub const CFG_BUFFER_SIZE: usize = 4096;
 pub const CFG_MAGIC_LEN: usize = 32;
 pub const CFG_HEADER_LEN: usize = 36;
 pub const EOF_TRAILER_MAGIC_LEN: usize = 24;
@@ -38,7 +38,6 @@ pub struct BootstrapConfig {
 pub struct EmbedOptions {
     pub template_path: String,
     pub output_path: String,
-    pub shebang: String,
     pub stage2_bootstrap: String,
     pub python_binary: String,
     pub python_binary_actual: String,
@@ -57,7 +56,6 @@ impl Default for EmbedOptions {
         Self {
             template_path: String::new(),
             output_path: String::new(),
-            shebang: "#!/usr/bin/env bash".to_string(),
             stage2_bootstrap: String::new(),
             python_binary: String::new(),
             python_binary_actual: String::new(),
@@ -176,7 +174,6 @@ pub fn parse_embed_args(args: &[String]) -> Result<EmbedOptions, String> {
         match flag {
             "--template" => opts.template_path = val,
             "--output" => opts.output_path = val,
-            "--shebang" => opts.shebang = val,
             "--stage2_bootstrap" => opts.stage2_bootstrap = val,
             "--python_binary" => opts.python_binary = val,
             "--python_binary_actual" => opts.python_binary_actual = val,
@@ -201,7 +198,7 @@ pub fn parse_embed_args(args: &[String]) -> Result<EmbedOptions, String> {
 
 pub const CFG_FOOTER_ZERO_LEN: usize = 16;
 
-/// Finds the byte offset of the 64 KiB `CFG_MAGIC` buffer in `tpl_buf`.
+/// Finds the byte offset of the 4 KiB `CFG_MAGIC` buffer in `tpl_buf`.
 pub fn find_magic_offset(tpl_buf: &[u8]) -> Option<usize> {
     if tpl_buf.len() < CFG_BUFFER_SIZE {
         return None;
@@ -214,62 +211,20 @@ pub fn find_magic_offset(tpl_buf: &[u8]) -> Option<usize> {
     })
 }
 
-/// Expands `%...%` text placeholders when a custom text template is provided.
-pub fn expand_text_template_fallback(tpl_buf: &[u8], opts: &EmbedOptions) -> Vec<u8> {
-    let interp_args_joined = opts.interpreter_args.join("\n");
-    let symlinks_joined = opts.runtime_venv_symlinks.join("\n");
-    let subs: [(&[u8], &[u8]); 12] = [
-        (b"%shebang%", opts.shebang.as_bytes()),
-        (b"%stage2_bootstrap%", opts.stage2_bootstrap.as_bytes()),
-        (b"%python_binary%", opts.python_binary.as_bytes()),
-        (b"%python_binary_actual%", opts.python_binary_actual.as_bytes()),
-        (b"%is_zipfile%", opts.is_zipfile.as_bytes()),
-        (
-            b"%recreate_venv_at_runtime%",
-            opts.recreate_venv_at_runtime.as_bytes(),
-        ),
-        (
-            b"%resolve_python_binary_at_runtime%",
-            opts.resolve_python_binary_at_runtime.as_bytes(),
-        ),
-        (
-            b"%venv_rel_site_packages%",
-            opts.venv_rel_site_packages.as_bytes(),
-        ),
-        (b"%workspace_name%", opts.workspace_name.as_bytes()),
-        (b"%target%", opts.target.as_bytes()),
-        (b"%interpreter_args%", interp_args_joined.as_bytes()),
-        (b"%runtime_venv_symlinks%", symlinks_joined.as_bytes()),
-    ];
-
-    let mut out = Vec::with_capacity(tpl_buf.len() + 256);
-    let mut pos = 0;
-    while pos < tpl_buf.len() {
-        let mut matched = false;
-        if tpl_buf[pos] == b'%' {
-            for (key, val) in &subs {
-                if tpl_buf[pos..].starts_with(key) {
-                    out.extend_from_slice(val);
-                    pos += key.len();
-                    matched = true;
-                    break;
-                }
-            }
-        }
-        if !matched {
-            out.push(tpl_buf[pos]);
-            pos += 1;
-        }
-    }
-    out
-}
-
-/// Embeds `opts` into `tpl_buf` (either patching the 64 KiB sentinel buffer in
-/// place, appending an EOF overflow trailer if >65,484 bytes, or expanding text
-/// placeholders if no binary sentinel is present).
-pub fn embed_config_into_binary(tpl_buf: &[u8], opts: &EmbedOptions) -> Vec<u8> {
+/// Embeds `opts` into `tpl_buf` (either patching the 4 KiB sentinel buffer in
+/// place or appending an EOF overflow trailer if >4,044 bytes). Returns an
+/// error if `tpl_buf` does not contain the `CFG_MAGIC` buffer.
+pub fn embed_config_into_binary(
+    tpl_buf: &[u8],
+    opts: &EmbedOptions,
+) -> Result<Vec<u8>, String> {
     let Some(magic_offset) = find_magic_offset(tpl_buf) else {
-        return expand_text_template_fallback(tpl_buf, opts);
+        return Err(
+            "template binary is missing native bootstrap magic sentinel \
+             (\\x89RPY_NATIVE_BOOTSTRAP_CFG_V1_00\\0); ensure bootstrap_template \
+             is a native bootstrap binary when --bootstrap_impl=native"
+                .to_string(),
+        );
     };
 
     let mut out = tpl_buf.to_vec();
@@ -294,7 +249,7 @@ pub fn embed_config_into_binary(tpl_buf: &[u8], opts: &EmbedOptions) -> Vec<u8> 
         out.extend_from_slice(&(payload.len() as u64).to_le_bytes());
         out.extend_from_slice(&payload);
     }
-    out
+    Ok(out)
 }
 
 fn set_executable_permissions(path: &Path) -> io::Result<()> {
@@ -315,7 +270,8 @@ fn set_executable_permissions(path: &Path) -> io::Result<()> {
 /// `opts.output_path`.
 pub fn embed_bootstrap_file(opts: &EmbedOptions) -> io::Result<()> {
     let tpl_buf = fs::read(&opts.template_path)?;
-    let out_buf = embed_config_into_binary(&tpl_buf, opts);
+    let out_buf = embed_config_into_binary(&tpl_buf, opts)
+        .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
     let output_path = Path::new(&opts.output_path);
     if let Some(parent) = output_path.parent() {
         if !parent.as_os_str().is_empty() {
