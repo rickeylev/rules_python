@@ -94,9 +94,12 @@ Rust) per target.
    - Fail at build time with a descriptive error if the input `template` does
      not contain the 32-byte `CFG_MAGIC` sentinel (e.g., if a text template was
      mistakenly provided under `--bootstrap_impl=native`).
-   - If the payload exceeds the fixed 4 KiB buffer (`> 4044` bytes), mark
-     `overflow=1`, `overflow_offset`, and `overflow_len` in the `.data` buffer
-     and append an EOF trailer block (`\0RPY_NATIVE_EOF_CFG_V1\0\0`).
+   - On Unix, always patch the 4 KiB `.data` buffer in-place (failing at build
+     time if the payload exceeds `4044` bytes).
+   - On Windows (`--eof_trailer 1` or PE `MZ` template binary), always append
+     the variable-sized EOF trailer
+     (`[payload][payload_len: u64_le][\0RPY_NATIVE_EOF_CFG_V1\0\0]`) and seek to
+     the end of the executable in $O(1)$ at runtime.
    - Support `@param_file` arguments (`args.use_param_file("@%s")`) in
      `PyEmbedNativeBootstrap` so large Windows `runtime_venv_symlinks` lists do
      not exceed OS command-line limits (`CreateProcessW` 32 KiB limit).
@@ -118,7 +121,7 @@ Rust) per target.
 
 ### Binary Configuration Layout and Buffer Size Justification
 
-The stage-1 binary embeds a 4 KiB (`4096`-byte) array in `.data`:
+On **Unix**, the stage-1 binary embeds a 4 KiB (`4096`-byte) array in `.data`:
 
 ```text
 Offset 0..31:     "\x89RPY_NATIVE_BOOTSTRAP_CFG_V1_00\0" (32-byte magic)
@@ -127,8 +130,20 @@ Offset 36..4079:  NUL-terminated "key=value\0" entries, terminated by "\0"
 Offset 4080..4095: 16-byte zero footer verified by find_magic_offset
 ```
 
-**Why 4 KiB (`4096` bytes) was chosen**:
-- Because `G_BOOTSTRAP_CFG` is initialized with the non-zero 32-byte
+On **Windows**, the stage-1 binary only embeds the 32-byte `CFG_MAGIC` sentinel
+in `.rodata` and always appends a variable-sized EOF trailer at the end of the
+executable:
+
+```text
+[template binary bytes]
+[NUL-terminated "key=value\0" payload (payload_length bytes)]
+[uint64_le payload_length (8 bytes)]
+["\0RPY_NATIVE_EOF_CFG_V1\0\0" (24-byte EOF_TRAILER_MAGIC)]
+```
+
+**Why Unix uses a 4 KiB `.data` buffer and Windows always uses the EOF
+trailer**:
+- Because `G_BOOTSTRAP_CFG` on Unix is initialized with the non-zero 32-byte
   `CFG_MAGIC` prefix, the linker places the entire array in `.data`
   (`SHT_PROGBITS` on ELF) rather than `.bss` (`SHT_NOBITS`). Every byte in
   `CFG_BUFFER_SIZE` is physically stored on disk in the template binary and in
@@ -138,18 +153,15 @@ Offset 4080..4095: 16-byte zero footer verified by find_magic_offset
   payloads across test binaries are `472`–`588` bytes (`11.7%`–`14.5%` of
   `4044` B); even specifying all 37 CPython CLI flags/`-X` options and all 38
   `PYTHON*` environment variables simultaneously totals `~2,646` bytes (`65%`).
+  A 4 KiB (`4096`-byte, 1 OS page) in-place buffer fits Unix targets directly in
+  memory (`0` runtime file I/O syscalls) while preserving Mach-O `__LINKEDIT`
+  layout and `exe_zip_maker` preamble offsets.
 - On Windows, `runtime_venv_symlinks` adds `~145` bytes per symlink entry
   (`~1.1 KiB` for 0 wheels, `~14–18 KiB` for 25 wheels, and `~50–600+ KiB` for
-  100–200+ wheels or namespace packages). Because no fixed `.data` buffer size
-  can fit large Windows wheel graphs without wasting space on small binaries,
-  Windows keeps the 4 KiB `.data` buffer and relies on the variable-sized EOF
-  overlay when `> 4044` bytes (writing `overflow_offset` and `overflow_len` in
-  `.data` for $O(1)$ file seeking at runtime).
-- Choosing 4 KiB (`4096` bytes) matches a single OS memory page (`0x1000`
-  alignment), provides `4044` bytes of usable in-place payload capacity
-  (`4096 - 36 header - 16 footer`) while costing only one 4 KiB page on disk
-  per binary, and transparently falls back to the EOF overflow trailer when
-  Windows `runtime_venv_symlinks` or large `interpreter_args` exceed `4044` B.
+  100–200+ wheels or namespace packages). Always using the variable-sized EOF
+  trailer on Windows avoids a two-mode in-place vs. overflow split, avoids
+  allocating a 4 KiB `.data` buffer in Windows binaries, and reads the footer at
+  `SeekFrom::End(-32)` in $O(1)$ at startup.
 
 Keys embedded by `_create_stage1_bootstrap`:
 - `stage2_bootstrap`: Runfiles-relative path to stage-2 `.py` script.
@@ -240,10 +252,10 @@ error.
      native template binary without redefining custom `py_runtime` and
      `toolchain` targets, while `py_runtime(bootstrap_template = ...)` continues
      to work for custom runtimes.
-2. **How should payloads larger than the 4 KiB in-binary buffer (such as
-   Windows `runtime_venv_symlinks`) be handled?**
-   - *Decision*: Reserve a 4 KiB (`4096`-byte, 1 OS page) buffer in `.data`
-     (which fits Unix targets in-place) and rely on the variable-sized EOF
-     overlay (`\0RPY_NATIVE_EOF_CFG_V1\0\0`) indexed by `overflow_offset` and
-     `overflow_len` in `.data` when Windows `runtime_venv_symlinks` or large
-     `interpreter_args` exceed `4044` bytes.
+2. **How should Unix vs. Windows bootstrap payloads (such as Windows
+   `runtime_venv_symlinks`) be stored in the binary?**
+   - *Decision*: On Unix, always use a 4 KiB (`4096`-byte, 1 OS page) in-place
+     `.data` buffer (`4044` usable bytes). On Windows, always append a
+     variable-sized EOF trailer (`\0RPY_NATIVE_EOF_CFG_V1\0\0`) at the end of
+     the executable and read it via `SeekFrom::End(-32)` at startup, keeping a
+     single codepath per platform.

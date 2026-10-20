@@ -29,9 +29,6 @@ pub struct BootstrapConfig {
     pub venv_rel_site_packages: String,
     pub workspace_name: String,
     pub target: String,
-    pub overflow: i32,
-    pub overflow_offset: usize,
-    pub overflow_len: usize,
     pub interpreter_args: Vec<String>,
     pub runtime_venv_symlinks: Vec<String>,
 }
@@ -49,6 +46,7 @@ pub struct EmbedOptions {
     pub venv_rel_site_packages: String,
     pub workspace_name: String,
     pub target: String,
+    pub use_eof_trailer: bool,
     pub interpreter_args: Vec<String>,
     pub runtime_venv_symlinks: Vec<String>,
 }
@@ -67,6 +65,7 @@ impl Default for EmbedOptions {
             venv_rel_site_packages: String::new(),
             workspace_name: String::new(),
             target: String::new(),
+            use_eof_trailer: false,
             interpreter_args: Vec::new(),
             runtime_venv_symlinks: Vec::new(),
         }
@@ -146,9 +145,6 @@ pub fn parse_cfg_payload(payload: &[u8], cfg: &mut BootstrapConfig) {
             b"venv_rel_site_packages" => cfg.venv_rel_site_packages = val,
             b"workspace_name" => cfg.workspace_name = val,
             b"target" => cfg.target = val,
-            b"overflow" => cfg.overflow = val.parse().unwrap_or(0),
-            b"overflow_offset" => cfg.overflow_offset = val.parse().unwrap_or(0),
-            b"overflow_len" => cfg.overflow_len = val.parse().unwrap_or(0),
             b"interpreter_arg" => {
                 if !val.is_empty() {
                     cfg.interpreter_args.push(val);
@@ -222,6 +218,7 @@ pub fn parse_embed_args(args: &[String]) -> Result<EmbedOptions, String> {
             "--venv_rel_site_packages" => opts.venv_rel_site_packages = val,
             "--workspace_name" => opts.workspace_name = val,
             "--target" => opts.target = val,
+            "--eof_trailer" => opts.use_eof_trailer = val == "1" || val == "true",
             "--interpreter_arg" => opts.interpreter_args.push(val),
             "--runtime_venv_symlink" => opts.runtime_venv_symlinks.push(val),
             _ => return Err(format!("unknown or incomplete arg: {flag}")),
@@ -234,6 +231,13 @@ pub fn parse_embed_args(args: &[String]) -> Result<EmbedOptions, String> {
 }
 
 pub const CFG_FOOTER_ZERO_LEN: usize = 16;
+
+/// Returns whether `tpl_buf` contains the 32-byte `CFG_MAGIC` sentinel.
+pub fn has_magic_sentinel(tpl_buf: &[u8]) -> bool {
+    tpl_buf
+        .windows(CFG_MAGIC_LEN)
+        .any(|window| window == CFG_MAGIC)
+}
 
 /// Finds the byte offset of the 4 KiB `CFG_MAGIC` buffer in `tpl_buf`.
 pub fn find_magic_offset(tpl_buf: &[u8]) -> Option<usize> {
@@ -248,13 +252,36 @@ pub fn find_magic_offset(tpl_buf: &[u8]) -> Option<usize> {
     })
 }
 
-/// Embeds `opts` into `tpl_buf` (either patching the 4 KiB sentinel buffer in
-/// place or appending an EOF overflow trailer if >4,044 bytes). Returns an
-/// error if `tpl_buf` does not contain the `CFG_MAGIC` buffer.
+/// Embeds `opts` into `tpl_buf`.
+///
+/// - On Unix (default), patches the 4 KiB `.data` sentinel buffer in-place and
+///   returns an error if the serialized payload exceeds `4,044` bytes.
+/// - On Windows (`opts.use_eof_trailer` or a PE `MZ` binary), always appends
+///   the variable-sized EOF trailer (`[payload][payload_len: u64_le][EOF_TRAILER_MAGIC]`).
 pub fn embed_config_into_binary(
     tpl_buf: &[u8],
     opts: &EmbedOptions,
 ) -> Result<Vec<u8>, String> {
+    let payload = serialize_cfg_payload(opts);
+    let use_eof = opts.use_eof_trailer || tpl_buf.starts_with(b"MZ");
+
+    if use_eof {
+        if !has_magic_sentinel(tpl_buf) {
+            return Err(
+                "template binary is missing native bootstrap magic sentinel \
+                 (\\x89RPY_NATIVE_BOOTSTRAP_CFG_V1_00\\0); ensure bootstrap_template \
+                 is a native bootstrap binary when --bootstrap_impl=native"
+                    .to_string(),
+            );
+        }
+        let mut out = Vec::with_capacity(tpl_buf.len() + payload.len() + EOF_TRAILER_LEN);
+        out.extend_from_slice(tpl_buf);
+        out.extend_from_slice(&payload);
+        out.extend_from_slice(&(payload.len() as u64).to_le_bytes());
+        out.extend_from_slice(&EOF_TRAILER_MAGIC);
+        return Ok(out);
+    }
+
     let Some(magic_offset) = find_magic_offset(tpl_buf) else {
         return Err(
             "template binary is missing native bootstrap magic sentinel \
@@ -264,33 +291,21 @@ pub fn embed_config_into_binary(
         );
     };
 
-    let mut out = tpl_buf.to_vec();
-    let payload = serialize_cfg_payload(opts);
     let max_inplace_len = CFG_BUFFER_SIZE - CFG_HEADER_LEN - CFG_FOOTER_ZERO_LEN;
+    if payload.len() > max_inplace_len {
+        return Err(format!(
+            "bootstrap config payload ({} bytes) exceeds 4 KiB in-place buffer capacity ({max_inplace_len} bytes)",
+            payload.len()
+        ));
+    }
+
+    let mut out = tpl_buf.to_vec();
     let cfg_region = &mut out[magic_offset..magic_offset + CFG_BUFFER_SIZE];
     cfg_region[CFG_MAGIC_LEN..].fill(0);
-
-    if payload.len() <= max_inplace_len {
-        let plen = (payload.len() as u32).to_le_bytes();
-        cfg_region[32..36].copy_from_slice(&plen);
-        cfg_region[CFG_HEADER_LEN..CFG_HEADER_LEN + payload.len()]
-            .copy_from_slice(&payload);
-    } else {
-        let trailer_offset = tpl_buf.len();
-        let marker = format!(
-            "overflow=1\0overflow_offset={trailer_offset}\0overflow_len={}\0\0",
-            payload.len()
-        );
-        let marker_bytes = marker.as_bytes();
-        let mlen = (marker_bytes.len() as u32).to_le_bytes();
-        cfg_region[32..36].copy_from_slice(&mlen);
-        cfg_region[CFG_HEADER_LEN..CFG_HEADER_LEN + marker_bytes.len()]
-            .copy_from_slice(marker_bytes);
-
-        out.extend_from_slice(&EOF_TRAILER_MAGIC);
-        out.extend_from_slice(&(payload.len() as u64).to_le_bytes());
-        out.extend_from_slice(&payload);
-    }
+    let plen = (payload.len() as u32).to_le_bytes();
+    cfg_region[32..36].copy_from_slice(&plen);
+    cfg_region[CFG_HEADER_LEN..CFG_HEADER_LEN + payload.len()]
+        .copy_from_slice(&payload);
     Ok(out)
 }
 
@@ -334,48 +349,65 @@ pub fn run_embedder(args: Vec<String>) -> Result<(), String> {
     embed_bootstrap_file(&opts).map_err(|e| format!("{}: {}", opts.output_path, e))
 }
 
-/// Scans `file_buf` for `EOF_TRAILER_MAGIC` and parses the overflow payload.
-pub fn parse_overflow_trailer_from_bytes(
+/// Parses the EOF trailer (`[payload][payload_len: u64_le][EOF_TRAILER_MAGIC]`)
+/// from the end of `file_buf`.
+pub fn parse_eof_trailer_from_bytes(
     file_buf: &[u8],
     cfg: &mut BootstrapConfig,
 ) -> Result<(), String> {
     if file_buf.len() < EOF_TRAILER_LEN {
-        return Err("overflow config marker not found in executable".to_string());
+        return Err("unconfigured native bootstrap template binary".to_string());
     }
-    for i in 0..=file_buf.len() - EOF_TRAILER_LEN {
-        if file_buf[i..i + EOF_TRAILER_MAGIC_LEN] == EOF_TRAILER_MAGIC {
-            let mut len_bytes = [0u8; 8];
-            len_bytes.copy_from_slice(
-                &file_buf[i + EOF_TRAILER_MAGIC_LEN..i + EOF_TRAILER_LEN],
-            );
-            let len = u64::from_le_bytes(len_bytes) as usize;
-            let payload_start = i + EOF_TRAILER_LEN;
-            if len > 0 && payload_start.saturating_add(len) <= file_buf.len() {
-                parse_cfg_payload(&file_buf[payload_start..payload_start + len], cfg);
-                return Ok(());
-            }
-        }
+    let magic_start = file_buf.len() - EOF_TRAILER_MAGIC_LEN;
+    if file_buf[magic_start..] != EOF_TRAILER_MAGIC {
+        return Err("unconfigured native bootstrap template binary".to_string());
     }
-    Err("overflow config marker not found in executable".to_string())
+    let len_start = file_buf.len() - EOF_TRAILER_LEN;
+    let mut len_bytes = [0u8; 8];
+    len_bytes.copy_from_slice(&file_buf[len_start..magic_start]);
+    let len = u64::from_le_bytes(len_bytes) as usize;
+    if len == 0 || len > len_start {
+        return Err("unconfigured native bootstrap template binary".to_string());
+    }
+    let payload_start = len_start - len;
+    parse_cfg_payload(&file_buf[payload_start..len_start], cfg);
+    Ok(())
 }
 
-pub fn load_overflow_payload(self_exe: &str, cfg: &mut BootstrapConfig) -> Result<(), String> {
-    if cfg.overflow_offset > 0 && cfg.overflow_len > 0 {
-        if let Ok(mut f) = File::open(self_exe) {
-            if f.seek(SeekFrom::Start(cfg.overflow_offset as u64)).is_ok() {
-                let mut trailer_buf = vec![0u8; EOF_TRAILER_LEN + cfg.overflow_len];
-                if f.read_exact(&mut trailer_buf).is_ok()
-                    && trailer_buf[..EOF_TRAILER_MAGIC_LEN] == EOF_TRAILER_MAGIC
-                {
-                    parse_cfg_payload(&trailer_buf[EOF_TRAILER_LEN..], cfg);
-                    return Ok(());
-                }
-            }
-        }
+/// Seeks to the end of `self_exe` and reads the Windows EOF trailer payload in
+/// $O(1)$ without loading the executable image into memory.
+pub fn load_eof_trailer_config(self_exe: &str) -> Result<BootstrapConfig, String> {
+    let mut f = File::open(self_exe)
+        .map_err(|e| format!("failed to open self executable for EOF trailer: {e}"))?;
+    let file_len = f
+        .seek(SeekFrom::End(0))
+        .map_err(|e| format!("failed to seek to end of executable: {e}"))?;
+    if file_len < EOF_TRAILER_LEN as u64 {
+        return Err("unconfigured native bootstrap template binary".to_string());
     }
-    let file_buf = fs::read(self_exe)
-        .map_err(|e| format!("failed to read self executable for overflow config: {e}"))?;
-    parse_overflow_trailer_from_bytes(&file_buf, cfg)
+    f.seek(SeekFrom::Start(file_len - EOF_TRAILER_LEN as u64))
+        .map_err(|e| format!("failed to seek to EOF trailer footer: {e}"))?;
+    let mut footer = [0u8; EOF_TRAILER_LEN];
+    f.read_exact(&mut footer)
+        .map_err(|e| format!("failed to read EOF trailer footer: {e}"))?;
+    if footer[8..] != EOF_TRAILER_MAGIC {
+        return Err("unconfigured native bootstrap template binary".to_string());
+    }
+    let mut len_bytes = [0u8; 8];
+    len_bytes.copy_from_slice(&footer[..8]);
+    let payload_len = u64::from_le_bytes(len_bytes);
+    let trailer_start = file_len - EOF_TRAILER_LEN as u64;
+    if payload_len == 0 || payload_len > trailer_start {
+        return Err("unconfigured native bootstrap template binary".to_string());
+    }
+    f.seek(SeekFrom::Start(trailer_start - payload_len))
+        .map_err(|e| format!("failed to seek to EOF trailer payload: {e}"))?;
+    let mut payload = vec![0u8; payload_len as usize];
+    f.read_exact(&mut payload)
+        .map_err(|e| format!("failed to read EOF trailer payload: {e}"))?;
+    let mut cfg = BootstrapConfig::default();
+    parse_cfg_payload(&payload, &mut cfg);
+    Ok(cfg)
 }
 
 pub fn join_path(a: &str, b: &str) -> String {
@@ -716,26 +748,12 @@ extern "C" fn forward_signal_handler(sig: i32) {
 }
 
 /// Runs stage-1 bootstrap execution using a parsed `BootstrapConfig`.
-pub fn run_stage1_with_config(mut cfg: BootstrapConfig, args: &[String]) -> i32 {
+pub fn run_stage1_with_config(cfg: BootstrapConfig, args: &[String]) -> i32 {
     let argv0 = args
         .first()
         .map(|s| s.as_str())
         .unwrap_or("stage1_native_bootstrap");
     let verbose = is_nonempty_env("RULES_PYTHON_BOOTSTRAP_VERBOSE");
-
-    if cfg.overflow != 0 {
-        let self_exe = match resolve_self_executable(argv0) {
-            Ok(p) => p,
-            Err(e) => {
-                eprintln!("stage1_native_bootstrap: {e}");
-                return 1;
-            }
-        };
-        if let Err(e) = load_overflow_payload(&self_exe, &mut cfg) {
-            eprintln!("stage1_native_bootstrap: {e}");
-            return 1;
-        }
-    }
 
     let mut zip_dir_to_clean: Option<String> = None;
     let mut venv_dir_to_clean: Option<String> = None;

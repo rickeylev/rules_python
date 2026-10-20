@@ -4,8 +4,8 @@ use std::fs;
 use stage1_native_bootstrap_lib::{
     basename_str, create_temp_dir, dirname_str, embed_bootstrap_file,
     embed_config_into_binary, extract_runfiles_prefix, find_magic_offset,
-    find_runfiles_root_with_env, join_path, join_path3, load_overflow_payload,
-    parse_cfg_payload, parse_embed_args, parse_overflow_trailer_from_bytes,
+    find_runfiles_root_with_env, join_path, join_path3, load_eof_trailer_config,
+    parse_cfg_payload, parse_embed_args, parse_eof_trailer_from_bytes,
     serialize_cfg_payload, strip_last_two_components, BootstrapConfig,
     EmbedOptions, CFG_BUFFER_SIZE, CFG_HEADER_LEN, CFG_MAGIC, CFG_MAGIC_LEN,
 };
@@ -18,6 +18,15 @@ fn make_mock_template_binary() -> Vec<u8> {
     bin.resize(magic_start + CFG_BUFFER_SIZE, 0);
     bin[magic_start..magic_start + CFG_MAGIC_LEN].copy_from_slice(&CFG_MAGIC);
     bin.extend_from_slice(&[0xBB; 64]);
+    bin
+}
+
+fn make_mock_windows_template_binary() -> Vec<u8> {
+    let mut bin = Vec::with_capacity(128);
+    bin.extend_from_slice(b"MZ");
+    bin.resize(64, 0xAA);
+    bin.extend_from_slice(&CFG_MAGIC);
+    bin.extend_from_slice(&[0xBB; 32]);
     bin
 }
 
@@ -35,6 +44,7 @@ fn test_serialize_and_parse_cfg_payload_roundtrip() {
         venv_rel_site_packages: "lib/python3.11/site-packages".to_string(),
         workspace_name: "_main".to_string(),
         target: "//pkg:bin".to_string(),
+        use_eof_trailer: false,
         interpreter_args: vec!["-B".to_string(), "-Xutf8".to_string()],
         runtime_venv_symlinks: vec![
             "lib/foo|other/lib/foo".to_string(),
@@ -55,7 +65,6 @@ fn test_serialize_and_parse_cfg_payload_roundtrip() {
     assert_eq!(cfg.venv_rel_site_packages, "lib/python3.11/site-packages");
     assert_eq!(cfg.workspace_name, "_main");
     assert_eq!(cfg.target, "//pkg:bin");
-    assert_eq!(cfg.overflow, 0);
     assert_eq!(
         cfg.interpreter_args,
         vec!["-B".to_string(), "-Xutf8".to_string()]
@@ -100,7 +109,12 @@ fn test_embed_config_into_binary_inplace_preserves_size() {
     assert_eq!(cfg.python_binary, "_main/.app.venv/bin/python3");
     assert_eq!(cfg.target, "//:app");
     assert_eq!(cfg.interpreter_args, vec!["-XSPECIAL=1".to_string()]);
-    assert_eq!(cfg.overflow, 0);
+
+    let too_large_opts = EmbedOptions {
+        interpreter_args: vec!["X".repeat(5000)],
+        ..opts
+    };
+    assert!(embed_config_into_binary(&tpl, &too_large_opts).is_err());
 }
 
 #[test]
@@ -117,41 +131,30 @@ fn test_find_magic_offset_skips_rodata_copy() {
 }
 
 #[test]
-fn test_embed_config_into_binary_overflow_trailer_roundtrip() {
-    let tpl = make_mock_template_binary();
+fn test_embed_config_into_binary_windows_eof_trailer_roundtrip() {
+    let tpl = make_mock_windows_template_binary();
     let long_arg = "X".repeat(2000);
     let mut many_args = Vec::new();
     for i in 0..40 {
         many_args.push(format!("-D{i}={long_arg}"));
     }
     let opts = EmbedOptions {
-        stage2_bootstrap: "_main/overflow_stage2.py".to_string(),
-        python_binary: "_main/.overflow.venv/bin/python3".to_string(),
-        target: "//:overflow_app".to_string(),
+        stage2_bootstrap: "_main/windows_stage2.py".to_string(),
+        python_binary: "_main/.windows.venv/Scripts/python.exe".to_string(),
+        target: "//:windows_app".to_string(),
+        use_eof_trailer: true,
         interpreter_args: many_args.clone(),
         ..EmbedOptions::default()
     };
 
     let embedded = embed_config_into_binary(&tpl, &opts).unwrap();
     assert!(embedded.len() > tpl.len());
-
-    let offset = find_magic_offset(&embedded).unwrap();
-    let mut len_bytes = [0u8; 4];
-    len_bytes.copy_from_slice(&embedded[offset + 32..offset + 36]);
-    let plen = u32::from_le_bytes(len_bytes) as usize;
+    assert_eq!(&embedded[..tpl.len()], &tpl[..]);
 
     let mut cfg = BootstrapConfig::default();
-    parse_cfg_payload(
-        &embedded[offset + CFG_HEADER_LEN..offset + CFG_HEADER_LEN + plen],
-        &mut cfg,
-    );
-    assert_eq!(cfg.overflow, 1);
-    assert_eq!(cfg.overflow_offset, tpl.len());
-    assert!(cfg.overflow_len > 4000);
-
-    parse_overflow_trailer_from_bytes(&embedded, &mut cfg).unwrap();
-    assert_eq!(cfg.stage2_bootstrap, "_main/overflow_stage2.py");
-    assert_eq!(cfg.target, "//:overflow_app");
+    parse_eof_trailer_from_bytes(&embedded, &mut cfg).unwrap();
+    assert_eq!(cfg.stage2_bootstrap, "_main/windows_stage2.py");
+    assert_eq!(cfg.target, "//:windows_app");
     assert_eq!(cfg.interpreter_args, many_args);
 }
 
@@ -194,43 +197,30 @@ fn test_embed_bootstrap_file_and_missing_magic_error() {
 }
 
 #[test]
-fn test_load_overflow_payload_from_file() {
+fn test_load_eof_trailer_config_from_file() {
     let temp_dir = env::temp_dir().join(format!(
-        "stage1_overflow_file_test_{}",
+        "stage1_eof_trailer_file_test_{}",
         std::process::id()
     ));
     let _ = fs::remove_dir_all(&temp_dir);
     fs::create_dir_all(&temp_dir).unwrap();
 
-    let tpl = make_mock_template_binary();
+    let tpl = make_mock_windows_template_binary();
+    let unconfigured_path = temp_dir.join("unconfigured.exe");
+    fs::write(&unconfigured_path, &tpl).unwrap();
+    assert!(load_eof_trailer_config(&unconfigured_path.to_string_lossy()).is_err());
+
     let opts = EmbedOptions {
-        stage2_bootstrap: "_main/file_overflow.py".to_string(),
+        stage2_bootstrap: "_main/file_eof.py".to_string(),
         interpreter_args: vec!["Y".repeat(5000)],
         ..EmbedOptions::default()
     };
     let embedded = embed_config_into_binary(&tpl, &opts).unwrap();
-    let exe_path = temp_dir.join("overflow.bin");
+    let exe_path = temp_dir.join("windows_configured.exe");
     fs::write(&exe_path, &embedded).unwrap();
 
-    // 1. Direct seek using overflow_offset and overflow_len parsed from header
-    let offset = find_magic_offset(&embedded).unwrap();
-    let mut len_bytes = [0u8; 4];
-    len_bytes.copy_from_slice(&embedded[offset + 32..offset + 36]);
-    let plen = u32::from_le_bytes(len_bytes) as usize;
-    let mut cfg_direct = BootstrapConfig::default();
-    parse_cfg_payload(
-        &embedded[offset + CFG_HEADER_LEN..offset + CFG_HEADER_LEN + plen],
-        &mut cfg_direct,
-    );
-    load_overflow_payload(&exe_path.to_string_lossy(), &mut cfg_direct).unwrap();
-    assert_eq!(cfg_direct.stage2_bootstrap, "_main/file_overflow.py");
-    assert_eq!(cfg_direct.interpreter_args.len(), 1);
-    assert_eq!(cfg_direct.interpreter_args[0].len(), 5000);
-
-    // 2. Fallback scan when overflow_offset is 0
-    let mut cfg = BootstrapConfig::default();
-    load_overflow_payload(&exe_path.to_string_lossy(), &mut cfg).unwrap();
-    assert_eq!(cfg.stage2_bootstrap, "_main/file_overflow.py");
+    let cfg = load_eof_trailer_config(&exe_path.to_string_lossy()).unwrap();
+    assert_eq!(cfg.stage2_bootstrap, "_main/file_eof.py");
     assert_eq!(cfg.interpreter_args.len(), 1);
     assert_eq!(cfg.interpreter_args[0].len(), 5000);
 
@@ -248,7 +238,7 @@ fn test_parse_embed_args_validation() {
     let param_file = temp_dir.join("args.params");
     fs::write(
         &param_file,
-        "--template\nin.bin\n--output\nout.bin\n--stage2_bootstrap\ns2.py\n--target\n@@//pkg:bin\n--runtime_venv_symlink\nLib/site-packages/pkg|+pypi+pkg/site-packages/pkg\n",
+        "--template\nin.bin\n--output\nout.bin\n--eof_trailer\n1\n--stage2_bootstrap\ns2.py\n--target\n@@//pkg:bin\n--runtime_venv_symlink\nLib/site-packages/pkg|+pypi+pkg/site-packages/pkg\n",
     )
     .unwrap();
     let param_args = vec![
@@ -258,6 +248,7 @@ fn test_parse_embed_args_validation() {
     let param_opts = parse_embed_args(&param_args).unwrap();
     assert_eq!(param_opts.template_path, "in.bin");
     assert_eq!(param_opts.output_path, "out.bin");
+    assert!(param_opts.use_eof_trailer);
     assert_eq!(param_opts.stage2_bootstrap, "s2.py");
     assert_eq!(param_opts.target, "@@//pkg:bin");
     assert_eq!(

@@ -1010,6 +1010,8 @@ def _create_stage1_bootstrap(
             args.set_param_file_format("multiline")
             args.add("--template", template)
             args.add("--output", output)
+            if is_windows_platform(ctx):
+                args.add("--eof_trailer", "1")
             args.add("--stage2_bootstrap", subs["%stage2_bootstrap%"])
             args.add("--python_binary", python_binary_path)
             args.add("--python_binary_actual", python_binary_actual)
