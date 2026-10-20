@@ -2,7 +2,7 @@
 
 use std::env;
 use std::fs::{self, File};
-use std::io::{self, Write};
+use std::io::{self, Read, Seek, SeekFrom, Write};
 use std::path::Path;
 use std::process::{Command, Stdio};
 use std::sync::atomic::{AtomicI32, AtomicU64, Ordering};
@@ -30,6 +30,8 @@ pub struct BootstrapConfig {
     pub workspace_name: String,
     pub target: String,
     pub overflow: i32,
+    pub overflow_offset: usize,
+    pub overflow_len: usize,
     pub interpreter_args: Vec<String>,
     pub runtime_venv_symlinks: Vec<String>,
 }
@@ -145,6 +147,8 @@ pub fn parse_cfg_payload(payload: &[u8], cfg: &mut BootstrapConfig) {
             b"workspace_name" => cfg.workspace_name = val,
             b"target" => cfg.target = val,
             b"overflow" => cfg.overflow = val.parse().unwrap_or(0),
+            b"overflow_offset" => cfg.overflow_offset = val.parse().unwrap_or(0),
+            b"overflow_len" => cfg.overflow_len = val.parse().unwrap_or(0),
             b"interpreter_arg" => {
                 if !val.is_empty() {
                     cfg.interpreter_args.push(val);
@@ -160,16 +164,49 @@ pub fn parse_cfg_payload(payload: &[u8], cfg: &mut BootstrapConfig) {
     }
 }
 
-/// Parses CLI arguments for `stage1_native_bootstrap_embedder`.
-pub fn parse_embed_args(args: &[String]) -> Result<EmbedOptions, String> {
-    let mut opts = EmbedOptions::default();
+/// Expands `@param_file` arguments into a flat argument vector.
+fn expand_param_files(args: &[String]) -> Result<Vec<String>, String> {
+    let mut expanded = Vec::with_capacity(args.len());
+    if let Some(first) = args.first() {
+        expanded.push(first.clone());
+    }
     let mut i = 1;
     while i < args.len() {
-        let flag = args[i].as_str();
-        if i + 1 >= args.len() {
+        let arg = &args[i];
+        if arg.starts_with("--") {
+            expanded.push(arg.clone());
+            if i + 1 < args.len() {
+                expanded.push(args[i + 1].clone());
+                i += 2;
+            } else {
+                i += 1;
+            }
+        } else if let Some(param_path) = arg.strip_prefix('@') {
+            let content = fs::read_to_string(param_path)
+                .map_err(|e| format!("failed to read param file {param_path}: {e}"))?;
+            for line in content.lines() {
+                expanded.push(line.to_string());
+            }
+            i += 1;
+        } else {
+            expanded.push(arg.clone());
+            i += 1;
+        }
+    }
+    Ok(expanded)
+}
+
+/// Parses CLI arguments for `stage1_native_bootstrap_embedder`.
+pub fn parse_embed_args(args: &[String]) -> Result<EmbedOptions, String> {
+    let expanded = expand_param_files(args)?;
+    let mut opts = EmbedOptions::default();
+    let mut i = 1;
+    while i < expanded.len() {
+        let flag = expanded[i].as_str();
+        if i + 1 >= expanded.len() {
             return Err(format!("unknown or incomplete arg: {flag}"));
         }
-        let val = args[i + 1].clone();
+        let val = expanded[i + 1].clone();
         i += 2;
         match flag {
             "--template" => opts.template_path = val,
@@ -239,11 +276,16 @@ pub fn embed_config_into_binary(
         cfg_region[CFG_HEADER_LEN..CFG_HEADER_LEN + payload.len()]
             .copy_from_slice(&payload);
     } else {
-        let marker = b"overflow=1\0\0";
-        let mlen = (marker.len() as u32).to_le_bytes();
+        let trailer_offset = tpl_buf.len();
+        let marker = format!(
+            "overflow=1\0overflow_offset={trailer_offset}\0overflow_len={}\0\0",
+            payload.len()
+        );
+        let marker_bytes = marker.as_bytes();
+        let mlen = (marker_bytes.len() as u32).to_le_bytes();
         cfg_region[32..36].copy_from_slice(&mlen);
-        cfg_region[CFG_HEADER_LEN..CFG_HEADER_LEN + marker.len()]
-            .copy_from_slice(marker);
+        cfg_region[CFG_HEADER_LEN..CFG_HEADER_LEN + marker_bytes.len()]
+            .copy_from_slice(marker_bytes);
 
         out.extend_from_slice(&EOF_TRAILER_MAGIC);
         out.extend_from_slice(&(payload.len() as u64).to_le_bytes());
@@ -318,6 +360,19 @@ pub fn parse_overflow_trailer_from_bytes(
 }
 
 pub fn load_overflow_payload(self_exe: &str, cfg: &mut BootstrapConfig) -> Result<(), String> {
+    if cfg.overflow_offset > 0 && cfg.overflow_len > 0 {
+        if let Ok(mut f) = File::open(self_exe) {
+            if f.seek(SeekFrom::Start(cfg.overflow_offset as u64)).is_ok() {
+                let mut trailer_buf = vec![0u8; EOF_TRAILER_LEN + cfg.overflow_len];
+                if f.read_exact(&mut trailer_buf).is_ok()
+                    && trailer_buf[..EOF_TRAILER_MAGIC_LEN] == EOF_TRAILER_MAGIC
+                {
+                    parse_cfg_payload(&trailer_buf[EOF_TRAILER_LEN..], cfg);
+                    return Ok(());
+                }
+            }
+        }
+    }
     let file_buf = fs::read(self_exe)
         .map_err(|e| format!("failed to read self executable for overflow config: {e}"))?;
     parse_overflow_trailer_from_bytes(&file_buf, cfg)

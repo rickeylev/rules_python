@@ -95,7 +95,11 @@ Rust) per target.
      not contain the 32-byte `CFG_MAGIC` sentinel (e.g., if a text template was
      mistakenly provided under `--bootstrap_impl=native`).
    - If the payload exceeds the fixed 4 KiB buffer (`> 4044` bytes), mark
-     `overflow=1` in the buffer and append an EOF trailer block.
+     `overflow=1`, `overflow_offset`, and `overflow_len` in the `.data` buffer
+     and append an EOF trailer block (`\0RPY_NATIVE_EOF_CFG_V1\0\0`).
+   - Support `@param_file` arguments (`args.use_param_file("@%s")`) in
+     `PyEmbedNativeBootstrap` so large Windows `runtime_venv_symlinks` lists do
+     not exceed OS command-line limits (`CreateProcessW` 32 KiB limit).
 4. **Rule Integration (`python/private/py_executable.bzl`)**:
    - Gate `//crates/stage1_native_bootstrap:...` aliases in
      `python/private/BUILD.bazel` with `IS_BZLMOD_ROOT_MODULE`
@@ -129,17 +133,23 @@ Offset 4080..4095: 16-byte zero footer verified by find_magic_offset
   (`SHT_PROGBITS` on ELF) rather than `.bss` (`SHT_NOBITS`). Every byte in
   `CFG_BUFFER_SIZE` is physically stored on disk in the template binary and in
   every `py_binary` / `py_test` executable produced from it.
-- A typical target's serialized `key=value` payload (`stage2_bootstrap`,
-  `python_binary`, `python_binary_actual`, `venv_rel_site_packages`,
-  `workspace_name`, `target`, three `"0"`/`"1"` flags, and `interpreter_args`)
-  is ~300–600 bytes; even when `--venvs_use_declare_symlink=no` embeds
-  interpreter `runtime_venv_symlinks`, the payload is ~800–1,800 bytes.
+- On Unix, dependency imports and venv symlinks live in `_bazel_site_init.py`,
+  `stage2_bootstrap.py`, and `.runfiles` rather than stage 1. Measured stage-1
+  payloads across test binaries are `472`–`588` bytes (`11.7%`–`14.5%` of
+  `4044` B); even specifying all 37 CPython CLI flags/`-X` options and all 38
+  `PYTHON*` environment variables simultaneously totals `~2,646` bytes (`65%`).
+- On Windows, `runtime_venv_symlinks` adds `~145` bytes per symlink entry
+  (`~1.1 KiB` for 0 wheels, `~14–18 KiB` for 25 wheels, and `~50–600+ KiB` for
+  100–200+ wheels or namespace packages). Because no fixed `.data` buffer size
+  can fit large Windows wheel graphs without wasting space on small binaries,
+  Windows keeps the 4 KiB `.data` buffer and relies on the variable-sized EOF
+  overlay when `> 4044` bytes (writing `overflow_offset` and `overflow_len` in
+  `.data` for $O(1)$ file seeking at runtime).
 - Choosing 4 KiB (`4096` bytes) matches a single OS memory page (`0x1000`
   alignment), provides `4044` bytes of usable in-place payload capacity
-  (`4096 - 36 header - 16 footer`, >2x–6x typical payloads) while costing only
-  one 4 KiB page on disk per binary (versus 64 KiB), and transparently falls
-  back to the EOF overflow trailer for targets with unusually large
-  `runtime_venv_symlinks` or `interpreter_args`.
+  (`4096 - 36 header - 16 footer`) while costing only one 4 KiB page on disk
+  per binary, and transparently falls back to the EOF overflow trailer when
+  Windows `runtime_venv_symlinks` or large `interpreter_args` exceed `4044` B.
 
 Keys embedded by `_create_stage1_bootstrap`:
 - `stage2_bootstrap`: Runfiles-relative path to stage-2 `.py` script.
@@ -230,8 +240,10 @@ error.
      native template binary without redefining custom `py_runtime` and
      `toolchain` targets, while `py_runtime(bootstrap_template = ...)` continues
      to work for custom runtimes.
-2. **How should payloads larger than the 4 KiB in-binary buffer be handled?**
+2. **How should payloads larger than the 4 KiB in-binary buffer (such as
+   Windows `runtime_venv_symlinks`) be handled?**
    - *Decision*: Reserve a 4 KiB (`4096`-byte, 1 OS page) buffer in `.data`
-     (sufficient for standard targets) and automatically fall back to appending
-     an EOF trailer (`\0RPY_NATIVE_EOF_CFG_V1\0\0`) when the serialized metadata
-     exceeds `4044` bytes.
+     (which fits Unix targets in-place) and rely on the variable-sized EOF
+     overlay (`\0RPY_NATIVE_EOF_CFG_V1\0\0`) indexed by `overflow_offset` and
+     `overflow_len` in `.data` when Windows `runtime_venv_symlinks` or large
+     `interpreter_args` exceed `4044` bytes.

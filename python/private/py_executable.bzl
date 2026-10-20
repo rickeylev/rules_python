@@ -1006,6 +1006,8 @@ def _create_stage1_bootstrap(
         subs["%shebang%"] = runtime.stub_shebang
         if BootstrapImplFlag.get_value(ctx) == BootstrapImplFlag.NATIVE:
             args = ctx.actions.args()
+            args.use_param_file("@%s")
+            args.set_param_file_format("multiline")
             args.add("--template", template)
             args.add("--output", output)
             args.add("--stage2_bootstrap", subs["%stage2_bootstrap%"])

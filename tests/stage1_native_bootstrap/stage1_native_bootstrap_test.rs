@@ -146,6 +146,8 @@ fn test_embed_config_into_binary_overflow_trailer_roundtrip() {
         &mut cfg,
     );
     assert_eq!(cfg.overflow, 1);
+    assert_eq!(cfg.overflow_offset, tpl.len());
+    assert!(cfg.overflow_len > 4000);
 
     parse_overflow_trailer_from_bytes(&embedded, &mut cfg).unwrap();
     assert_eq!(cfg.stage2_bootstrap, "_main/overflow_stage2.py");
@@ -210,6 +212,22 @@ fn test_load_overflow_payload_from_file() {
     let exe_path = temp_dir.join("overflow.bin");
     fs::write(&exe_path, &embedded).unwrap();
 
+    // 1. Direct seek using overflow_offset and overflow_len parsed from header
+    let offset = find_magic_offset(&embedded).unwrap();
+    let mut len_bytes = [0u8; 4];
+    len_bytes.copy_from_slice(&embedded[offset + 32..offset + 36]);
+    let plen = u32::from_le_bytes(len_bytes) as usize;
+    let mut cfg_direct = BootstrapConfig::default();
+    parse_cfg_payload(
+        &embedded[offset + CFG_HEADER_LEN..offset + CFG_HEADER_LEN + plen],
+        &mut cfg_direct,
+    );
+    load_overflow_payload(&exe_path.to_string_lossy(), &mut cfg_direct).unwrap();
+    assert_eq!(cfg_direct.stage2_bootstrap, "_main/file_overflow.py");
+    assert_eq!(cfg_direct.interpreter_args.len(), 1);
+    assert_eq!(cfg_direct.interpreter_args[0].len(), 5000);
+
+    // 2. Fallback scan when overflow_offset is 0
     let mut cfg = BootstrapConfig::default();
     load_overflow_payload(&exe_path.to_string_lossy(), &mut cfg).unwrap();
     assert_eq!(cfg.stage2_bootstrap, "_main/file_overflow.py");
@@ -221,6 +239,32 @@ fn test_load_overflow_payload_from_file() {
 
 #[test]
 fn test_parse_embed_args_validation() {
+    let temp_dir = env::temp_dir().join(format!(
+        "stage1_param_file_test_{}",
+        std::process::id()
+    ));
+    let _ = fs::remove_dir_all(&temp_dir);
+    fs::create_dir_all(&temp_dir).unwrap();
+    let param_file = temp_dir.join("args.params");
+    fs::write(
+        &param_file,
+        "--template\nin.bin\n--output\nout.bin\n--stage2_bootstrap\ns2.py\n--target\n@@//pkg:bin\n--runtime_venv_symlink\nLib/site-packages/pkg|+pypi+pkg/site-packages/pkg\n",
+    )
+    .unwrap();
+    let param_args = vec![
+        "embedder".to_string(),
+        format!("@{}", param_file.to_string_lossy()),
+    ];
+    let param_opts = parse_embed_args(&param_args).unwrap();
+    assert_eq!(param_opts.template_path, "in.bin");
+    assert_eq!(param_opts.output_path, "out.bin");
+    assert_eq!(param_opts.stage2_bootstrap, "s2.py");
+    assert_eq!(param_opts.target, "@@//pkg:bin");
+    assert_eq!(
+        param_opts.runtime_venv_symlinks,
+        vec!["Lib/site-packages/pkg|+pypi+pkg/site-packages/pkg".to_string()]
+    );
+    let _ = fs::remove_dir_all(&temp_dir);
     let args = vec![
         "embedder".to_string(),
         "--template".to_string(),
@@ -229,6 +273,8 @@ fn test_parse_embed_args_validation() {
         "out.bin".to_string(),
         "--stage2_bootstrap".to_string(),
         "s2.py".to_string(),
+        "--target".to_string(),
+        "@@//pkg:bin".to_string(),
         "--interpreter_arg".to_string(),
         "-I".to_string(),
     ];
@@ -236,6 +282,7 @@ fn test_parse_embed_args_validation() {
     assert_eq!(opts.template_path, "in.bin");
     assert_eq!(opts.output_path, "out.bin");
     assert_eq!(opts.stage2_bootstrap, "s2.py");
+    assert_eq!(opts.target, "@@//pkg:bin");
     assert_eq!(opts.interpreter_args, vec!["-I".to_string()]);
 
     let missing_required = vec![
