@@ -82,7 +82,14 @@ package(default_visibility = ["//visibility:public"])
 exports_files(["requirements.bzl"])
 """
 
-def _pip_repository_impl(rctx):
+def render_pip_repository(rctx, *, requirements_txt = None):
+    """Render a PyPI hub repository for WORKSPACE from requirements or uv.lock.
+
+    Args:
+        rctx: {type}`repository_ctx` Handle to the rule repository context.
+        requirements_txt: {type}`str | None` Optional pre-rendered requirements.txt
+            string (e.g. converted from `uv.lock`).
+    """
     logger = repo_utils.logger(rctx)
     python_interpreter = pypi_repo_utils.resolve_python_interpreter(
         rctx,
@@ -109,10 +116,25 @@ def _pip_repository_impl(rctx):
         "windows_x86_64",
     ]
 
-    marker_env = env(os = rctx.os.name, arch = rctx.os.arch, python_version = python_version)
-    requirements_by_platform = parse_requirements(
-        rctx,
-        requirements_by_platform = requirements_files_by_platform(
+    if requirements_txt != None:
+        # Convert uv.lock to requirements.txt text and feed it through the
+        # requirements_lock parser via a stub context instead of passing uv_lock
+        # directly to parse_requirements(). The native uv_lock path in
+        # parse_requirements() requires populated whl_platform_tags/whl_abi_tags
+        # to select wheels and omits --hash flags from requirement_line, whereas
+        # WORKSPACE whl_library delegates resolution and hash verification to
+        # pip using requirement_line.
+        parse_ctx = struct(
+            read = lambda _: requirements_txt,
+        )
+        req_files_by_platform = requirements_files_by_platform(
+            requirements_lock = rctx.attr.uv_lock,
+            extra_pip_args = rctx.attr.extra_pip_args,
+            platforms = platforms,
+        )
+    else:
+        parse_ctx = rctx
+        req_files_by_platform = requirements_files_by_platform(
             requirements_by_platform = rctx.attr.requirements_by_platform,
             requirements_linux = rctx.attr.requirements_linux,
             requirements_lock = rctx.attr.requirements_lock,
@@ -120,7 +142,12 @@ def _pip_repository_impl(rctx):
             requirements_windows = rctx.attr.requirements_windows,
             extra_pip_args = rctx.attr.extra_pip_args,
             platforms = platforms,
-        ),
+        )
+
+    marker_env = env(os = rctx.os.name, arch = rctx.os.arch, python_version = python_version)
+    requirements_by_platform = parse_requirements(
+        parse_ctx,
+        requirements_by_platform = req_files_by_platform,
         extra_pip_args = rctx.attr.extra_pip_args,
         platforms = {
             p: struct(
@@ -270,6 +297,9 @@ def _pip_repository_impl(rctx):
     })
 
     return
+
+def _pip_repository_impl(rctx):
+    render_pip_repository(rctx)
 
 pip_repository = repository_rule(
     attrs = dict(

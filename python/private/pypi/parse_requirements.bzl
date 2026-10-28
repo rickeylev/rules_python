@@ -28,7 +28,6 @@ behavior.
 
 load("//python/private:normalize_name.bzl", "normalize_name")
 load("//python/private:repo_utils.bzl", "repo_utils")
-load("//python/uv/private:uv_lock_to_requirements.bzl", "uv_lock_extras_map")  # buildifier: disable=bzl-visibility
 load(":argparse.bzl", "argparse")
 load(":hash.bzl", "hash")
 load(":index_sources.bzl", "index_sources")
@@ -36,6 +35,7 @@ load(":parse_requirements_txt.bzl", "parse_requirements_txt")
 load(":pep508_evaluate.bzl", "evaluate")
 load(":pep508_requirement.bzl", "requirement")
 load(":select_whl.bzl", "select_whl")
+load(":uv_lock_to_requirements.bzl", "uv_lock_extras_map")
 
 def parse_requirements(
         ctx,

@@ -1,7 +1,7 @@
 """Tests for uv_lock_to_requirements."""
 
 load("@rules_testing//lib:test_suite.bzl", "test_suite")
-load("//python/uv/private:uv_lock_to_requirements.bzl", "uv_lock_to_requirements")  # buildifier: disable=bzl-visibility
+load("//python/private/pypi:uv_lock_to_requirements.bzl", "uv_lock_to_requirements")  # buildifier: disable=bzl-visibility
 
 _tests = []
 

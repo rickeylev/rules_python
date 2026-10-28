@@ -8,11 +8,11 @@ The requirements now form a triple:
 
 - pyproject.toml - human editable, expresses only direct dependencies and
   load-bearing version constraints
-- requirements.txt - lockfile produced by pip-compile or other means
+- uv.lock - lockfile produced by uv
 - requirements.bzl - the "parsed" version of the lockfile readable by Bazel downloader
 
 The `requirements.bzl` file contains baked-in attributes such as
-`python_interpreter_target` as they were specified in the original `pip_parse`
+`python_interpreter_target` as they were specified in the original `uv_lock`
 rule. These can be overridden at install time by passing arguments to
 `install_deps`. For example:
 

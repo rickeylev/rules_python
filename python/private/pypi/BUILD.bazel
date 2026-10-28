@@ -243,9 +243,9 @@ bzl_library(
         ":pep508_evaluate",
         ":pep508_requirement",
         ":select_whl",
+        ":uv_lock_to_requirements",
         "//python/private:normalize_name",
         "//python/private:repo_utils",
-        "//python/uv/private:uv_lock_to_requirements",
     ],
 )
 
@@ -432,6 +432,30 @@ bzl_library(
     deps = [
         "@rules_python//python/private/pypi:labels",
         "@rules_python//python/private/pypi:missing_package",
+    ],
+)
+
+bzl_library(
+    name = "uv_lock",
+    srcs = ["uv_lock.bzl"],
+    deps = [
+        ":multi_pip_parse",
+        ":uv_lock_repo",
+        "//python:versions",
+        "@bazel_skylib//lib:types",
+    ],
+)
+
+bzl_library(
+    name = "uv_lock_repo",
+    srcs = ["uv_lock_repo.bzl"],
+    deps = [
+        ":attrs",
+        ":pip_repository",
+        ":pip_repository_attrs",
+        ":uv_lock_to_requirements",
+        "//python/private:repo_utils",
+        "@toml.bzl//:toml",
     ],
 )
 
@@ -670,6 +694,11 @@ bzl_library(
 bzl_library(
     name = "platform",
     srcs = ["platform.bzl"],
+)
+
+bzl_library(
+    name = "uv_lock_to_requirements",
+    srcs = ["uv_lock_to_requirements.bzl"],
 )
 
 bzl_library(
