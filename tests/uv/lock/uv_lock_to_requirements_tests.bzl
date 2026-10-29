@@ -285,5 +285,62 @@ pytest-bazel[all]==0.1.6 \\
 
 _tests.append(_test_requires_dist_extras)
 
+def _test_transitive_dependency_edge_markers(env):
+    """Test that markers on dependency edges propagate transitively."""
+    got = uv_lock_to_requirements(json.decode("""{"package":[
+        {"name":"cryptography","version":"50.0.2","source":{"registry":"https://pypi.org/simple"},"wheels":[{"hash":"sha256:cccc","url":"https://example.org/cryptography.whl"}]},
+        {"name":"keyring","version":"25.7.0","source":{"registry":"https://pypi.org/simple"},"dependencies":[{"name":"secretstorage","marker":"sys_platform == 'linux'"}],"wheels":[{"hash":"sha256:aaaa","url":"https://example.org/keyring.whl"}]},
+        {"name":"root-pkg","version":"0.0.0","source":{"virtual":"."},"dependencies":[{"name":"keyring","marker":"platform_machine != 's390x'"}]},
+        {"name":"secretstorage","version":"3.5.0","source":{"registry":"https://pypi.org/simple"},"dependencies":[{"name":"cryptography"}],"wheels":[{"hash":"sha256:bbbb","url":"https://example.org/secretstorage.whl"}]}
+    ]}"""))
+    env.expect.that_str(got).equals("""\
+cryptography==50.0.2 ; platform_machine != 's390x' and sys_platform == 'linux' \\
+    --hash=sha256:cccc
+    # via secretstorage
+
+keyring==25.7.0 ; platform_machine != 's390x' \\
+    --hash=sha256:aaaa
+    # via root-pkg
+
+secretstorage==3.5.0 ; platform_machine != 's390x' and sys_platform == 'linux' \\
+    --hash=sha256:bbbb
+    # via keyring
+""")
+
+_tests.append(_test_transitive_dependency_edge_markers)
+
+def _test_diamond_dependency_edge_markers(env):
+    """Test diamond paths with conditional vs unconditional edges."""
+    got = uv_lock_to_requirements(json.decode("""{"package":[
+        {"name":"both-conditional","version":"1.0.0","source":{"registry":"https://pypi.org/simple"},"wheels":[{"hash":"sha256:1111","url":"https://example.org/bc.whl"}]},
+        {"name":"one-unconditional","version":"1.0.0","source":{"registry":"https://pypi.org/simple"},"wheels":[{"hash":"sha256:2222","url":"https://example.org/ou.whl"}]},
+        {"name":"pkg-a","version":"0.1.0","source":{"registry":"https://pypi.org/simple"},"dependencies":[{"name":"both-conditional","marker":"sys_platform == 'linux'"},{"name":"one-unconditional","marker":"sys_platform == 'linux'"}],"wheels":[{"hash":"sha256:aaaa","url":"https://example.org/a.whl"}]},
+        {"name":"pkg-b","version":"0.2.0","source":{"registry":"https://pypi.org/simple"},"dependencies":[{"name":"both-conditional","marker":"sys_platform == 'win32'"},{"name":"one-unconditional"}],"wheels":[{"hash":"sha256:bbbb","url":"https://example.org/b.whl"}]},
+        {"name":"root-pkg","version":"0.0.0","source":{"virtual":"."},"dependencies":[{"name":"pkg-a"},{"name":"pkg-b"}]}
+    ]}"""))
+    env.expect.that_str(got).equals("""\
+both-conditional==1.0.0 ; sys_platform == 'linux' or sys_platform == 'win32' \\
+    --hash=sha256:1111
+    # via
+    #   pkg-a
+    #   pkg-b
+
+one-unconditional==1.0.0 \\
+    --hash=sha256:2222
+    # via
+    #   pkg-a
+    #   pkg-b
+
+pkg-a==0.1.0 \\
+    --hash=sha256:aaaa
+    # via root-pkg
+
+pkg-b==0.2.0 \\
+    --hash=sha256:bbbb
+    # via root-pkg
+""")
+
+_tests.append(_test_diamond_dependency_edge_markers)
+
 def uv_lock_to_requirements_test_suite(name):
     test_suite(name = name, basic_tests = _tests)

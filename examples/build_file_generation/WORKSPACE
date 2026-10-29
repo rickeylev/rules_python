@@ -45,12 +45,13 @@ load("@uv_manifest//:dist_manifest.bzl", "uv_register_toolchains")
 
 uv_register_toolchains(name = "uv")
 
-load("@rules_python//python:pip.bzl", "uv_lock")
+load("@rules_python//python:pip.bzl", "pip_parse")
 
-# Accepts a locked uv.lock file and installs the dependencies listed within.
+# This macro wraps the `pip_repository` rule that invokes `pip`, with `incremental` set.
+# Accepts a locked/compiled requirements file and installs the dependencies listed within.
 # Those dependencies become available in a generated `requirements.bzl` file.
 # You can instead check this `requirements.bzl` file into your repo.
-uv_lock(
+pip_parse(
     name = "pip",
 
     # Requirement groups allow Bazel to tolerate PyPi cycles by putting dependencies
@@ -74,13 +75,14 @@ uv_lock(
     # Here, we use the interpreter constant that resolves to the host interpreter from the default Python toolchain.
     python_interpreter_target = "@python3_14_host//:python",
     # Set the location of the lock file.
-    uv_lock = "//:uv.lock",
+    requirements_lock = "//:requirements_lock.txt",
+    requirements_windows = "//:requirements_windows.txt",
 )
 
 # Load the install_deps macro.
 load("@pip//:requirements.bzl", "install_deps")
 
-# Initialize repositories for all packages in uv.lock.
+# Initialize repositories for all packages in requirements_lock.txt.
 install_deps()
 
 ######################################################################

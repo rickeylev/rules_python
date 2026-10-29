@@ -1,8 +1,36 @@
 load("@rules_python//python/uv:lock.bzl", "lock")
 
 lock(
-    name = "requirements",
+    name = "requirements_3_10",
     srcs = ["pyproject.toml"],
-    out = "uv.lock",
+    out = "requirements_lock_3_10.txt",
     python_version = "3.10",
+)
+
+lock(
+    name = "requirements_3_11",
+    srcs = ["pyproject.toml"],
+    out = "requirements_lock_3_11.txt",
+    python_version = "3.11",
+)
+
+lock(
+    name = "requirements_3_12",
+    srcs = ["pyproject.toml"],
+    out = "requirements_lock_3_12.txt",
+    python_version = "3.12",
+)
+
+lock(
+    name = "requirements_3_13",
+    srcs = ["pyproject.toml"],
+    out = "requirements_lock_3_13.txt",
+    python_version = "3.13",
+)
+
+lock(
+    name = "requirements_3_14",
+    srcs = ["pyproject.toml"],
+    out = "requirements_lock_3_14.txt",
+    python_version = "3.14",
 )

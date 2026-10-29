@@ -43,6 +43,7 @@ pip.parse(
     hub_name = "pypi",
     # We need to use the same version here as in the `python.toolchain` call.
     python_version = "3.14.0",
-    uv_lock = "//:uv.lock",
+    requirements_lock = "//:requirements_lock.txt",
+    requirements_windows = "//:requirements_windows.txt",
 )
 use_repo(pip, "pypi")

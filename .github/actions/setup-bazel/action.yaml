@@ -34,7 +34,7 @@ runs:
         repository-cache: |
           - MODULE.bazel
           - dev/uv.lock
-          - tools/publish/uv.lock
+          - tools/publish/requirements_linux.txt
         bazelrc: |
           # .bazelrc enables --config=pyrefly by default; disable the pyrefly
           # output group here so operational workflows don't download the

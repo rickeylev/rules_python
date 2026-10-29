@@ -14,7 +14,14 @@ load("@rules_python_gazelle_plugin//modules_mapping:def.bzl", "modules_mapping")
 lock(
     name = "requirements",
     srcs = ["pyproject.toml"],
-    out = "uv.lock",
+    out = "requirements_lock.txt",
+)
+
+lock(
+    name = "requirements_windows",
+    srcs = ["pyproject.toml"],
+    out = "requirements_windows.txt",
+    args = ["--python-platform=windows"],
 )
 
 # This repository rule fetches the metadata for python packages we
@@ -26,7 +33,6 @@ modules_mapping(
     exclude_patterns = [
         "^_|(\\._)+",  # This is the default.
         "(\\.tests)+",  # Add a custom one to get rid of the psutil tests.
-        "^colorama",  # Get rid of colorama for Windows so that the same manifest works on all OSes.
     ],
     wheels = all_whl_requirements,
 )
@@ -42,7 +48,7 @@ gazelle_python_manifest(
     name = "gazelle_python_manifest",
     # NOTE: We can pass a list just like in `bzlmod_build_file_generation` example
     # but we keep a single target here for regression testing.
-    lockfiles = "//:uv.lock",
+    lockfiles = "//:requirements_lock.txt",
     modules_mapping = ":modules_map",
     pip_repository_name = "pip",
 )
