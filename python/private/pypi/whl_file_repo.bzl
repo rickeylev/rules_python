@@ -17,6 +17,25 @@ def download_whl(rctx, *, logger):
         The path of the downloaded wheel.
     """
     filename = rctx.attr.filename
+    integrity = rctx.attr.integrity
+    raw_urls = rctx.attr.urls
+    platform_whls = getattr(rctx.attr, "platform_whls", None)
+    if platform_whls:
+        host = "{}_{}".format(
+            repo_utils.get_platforms_os_name(rctx),
+            repo_utils.get_platforms_cpu_name(rctx),
+        )
+        entry_json = platform_whls.get(host)
+        if not entry_json:
+            fail("No wheel in `platform_whls` for host platform '{}'; available platforms: {}".format(
+                host,
+                sorted(platform_whls.keys()),
+            ))
+        entry = json.decode(entry_json)
+        filename = entry["filename"]
+        integrity = entry.get("integrity", "")
+        raw_urls = entry["urls"]
+
     if not filename.endswith(".whl"):
         fail("Only wheels are supported")
     urls = [
@@ -26,16 +45,16 @@ def download_whl(rctx, *, logger):
             envsubst = rctx.attr.envsubst,
             getenv = rctx.getenv,
         )
-        for url in rctx.attr.urls
+        for url in raw_urls
     ]
     result = rctx.download(
         url = urls,
         output = filename,
         sha256 = rctx.attr.sha256,
-        integrity = rctx.attr.integrity if not rctx.attr.sha256 else "",
+        integrity = integrity if not rctx.attr.sha256 else "",
         auth = get_auth(rctx, urls),
     )
-    if not rctx.attr.sha256 and not rctx.attr.integrity:
+    if not rctx.attr.sha256 and not integrity:
         logger.warn("Please update the requirement line to include the hash:\n{} \\\n    --hash=sha256:{}".format(
             rctx.attr.requirement,
             result.sha256,
@@ -50,6 +69,7 @@ whl_file_repo_attrs = {
     "index_url": attr.string(doc = "The index URL used to resolve relative wheel URLs."),
     "integrity": attr.string(doc = "The expected SRI checksum, used when sha256 is unset."),
     "patches": attr.label_keyed_string_dict(doc = "Patch labels mapped to their strip levels."),
+    "platform_whls": attr.string_dict(doc = "Per-platform JSON-encoded wheel metadata (`filename`, `integrity`, `urls`)."),
     "requirement": attr.string(doc = "The requirement used in download diagnostics."),
     "sha256": attr.string(doc = "The expected SHA256 checksum."),
     "urls": attr.string_list(doc = "The wheel download URLs."),

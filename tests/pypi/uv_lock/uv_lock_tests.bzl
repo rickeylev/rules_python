@@ -177,6 +177,76 @@ def _test_select_workspace_packages_bazel_downloader(env):
 
 _tests.append(_test_select_workspace_packages_bazel_downloader)
 
+def _test_select_workspace_packages_cross_platform(env):
+    """Verify multi-platform wheels emit host-independent `platform_whls`."""
+    linux_hex = "035c1e85572b141bf1c3a3eff0e33a8eb74917522f2559075ff8d2fea780a1ae"
+    osx_hex = "feedcafe0123456789abcdef0123456789abcdef0123456789abcdef01234567"
+    requirements_by_platform = [
+        struct(
+            name = "charset_normalizer",
+            is_exposed = True,
+            srcs = [
+                struct(
+                    distribution = "charset-normalizer",
+                    extra_pip_args = [],
+                    requirement_line = "charset-normalizer==3.5.2",
+                    target_platforms = ["linux_x86_64"],
+                    filename = "charset_normalizer-3.5.2-cp37-abi3-manylinux1_x86_64.whl",
+                    digest = "sha256:{}".format(linux_hex),
+                    url = "https://files.pythonhosted.org/packages/charset_normalizer-3.5.2-cp37-abi3-manylinux1_x86_64.whl",
+                    yanked = None,
+                ),
+                struct(
+                    distribution = "charset-normalizer",
+                    extra_pip_args = [],
+                    requirement_line = "charset-normalizer==3.5.2",
+                    target_platforms = ["osx_aarch64", "osx_x86_64"],
+                    filename = "charset_normalizer-3.5.2-cp37-abi3-macosx_10_9_universal2.whl",
+                    digest = "sha256:{}".format(osx_hex),
+                    url = "https://files.pythonhosted.org/packages/charset_normalizer-3.5.2-cp37-abi3-macosx_10_9_universal2.whl",
+                    yanked = None,
+                ),
+            ],
+        ),
+    ]
+
+    bzl_packages, packages, _ = select_workspace_packages(
+        requirements_by_platform,
+        repo_name = "pypi",
+        download_only = False,
+        repository_platform = "linux_x86_64",
+        cross_platform = True,
+    )
+
+    env.expect.that_collection(bzl_packages).contains_exactly(["charset_normalizer"])
+    env.expect.that_collection(packages).contains_exactly([
+        (
+            "pypi_charset_normalizer",
+            "charset-normalizer==3.5.2",
+            {
+                "platform_whls": {
+                    "linux_x86_64": json.encode({
+                        "filename": "charset_normalizer-3.5.2-cp37-abi3-manylinux1_x86_64.whl",
+                        "integrity": hash.integrity("sha256:{}".format(linux_hex)),
+                        "urls": ["https://files.pythonhosted.org/packages/charset_normalizer-3.5.2-cp37-abi3-manylinux1_x86_64.whl"],
+                    }),
+                    "osx_aarch64": json.encode({
+                        "filename": "charset_normalizer-3.5.2-cp37-abi3-macosx_10_9_universal2.whl",
+                        "integrity": hash.integrity("sha256:{}".format(osx_hex)),
+                        "urls": ["https://files.pythonhosted.org/packages/charset_normalizer-3.5.2-cp37-abi3-macosx_10_9_universal2.whl"],
+                    }),
+                    "osx_x86_64": json.encode({
+                        "filename": "charset_normalizer-3.5.2-cp37-abi3-macosx_10_9_universal2.whl",
+                        "integrity": hash.integrity("sha256:{}".format(osx_hex)),
+                        "urls": ["https://files.pythonhosted.org/packages/charset_normalizer-3.5.2-cp37-abi3-macosx_10_9_universal2.whl"],
+                    }),
+                },
+            },
+        ),
+    ])
+
+_tests.append(_test_select_workspace_packages_cross_platform)
+
 def uv_lock_test_suite(name):
     """Create the test suite.
 
