@@ -1772,7 +1772,7 @@ def _test_uv_lock_edge_marker_reachability(env):
         struct(
             name = "cryptography",
             index_url = "https://pypi.org/simple/cryptography",
-            is_exposed = True,
+            is_exposed = False,
             is_multiple_versions = False,
             srcs = [
                 struct(
@@ -1815,7 +1815,7 @@ def _test_uv_lock_edge_marker_reachability(env):
         struct(
             name = "secretstorage",
             index_url = "https://pypi.org/simple/secretstorage",
-            is_exposed = True,
+            is_exposed = False,
             is_multiple_versions = False,
             srcs = [
                 struct(
