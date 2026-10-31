@@ -35,7 +35,6 @@ load(":parse_requirements_txt.bzl", "parse_requirements_txt")
 load(":pep508_evaluate.bzl", "evaluate")
 load(":pep508_requirement.bzl", "requirement")
 load(":select_whl.bzl", "select_whl")
-load(":uv_lock_to_requirements.bzl", "uv_lock_extras_map")
 
 def parse_requirements(
         ctx,
@@ -134,6 +133,7 @@ def _parse_requirements_with_uv_lock(
             all_platforms = _get_all_platforms(requirements_by_platform) if requirements_by_platform else sorted(platforms.keys()),
             platforms = platforms,
             extra_pip_args = extra_pip_args,
+            extract_url_srcs = extract_url_srcs,
             logger = logger,
         )
 
@@ -147,7 +147,13 @@ def _parse_requirements_with_uv_lock(
         logger = logger,
     )
 
-def _parse_uv_lock_json(uv_lock, all_platforms, logger, extra_pip_args = None, platforms = {}):
+def _parse_uv_lock_json(
+        uv_lock,
+        all_platforms,
+        logger,
+        extra_pip_args = None,
+        platforms = {},
+        extract_url_srcs = True):
     """Parse uv.lock JSON and build the same return structs as parse_requirements.
 
     Args:
@@ -157,18 +163,22 @@ def _parse_uv_lock_json(uv_lock, all_platforms, logger, extra_pip_args = None, p
         extra_pip_args: {type}`list[str] | None` Extra pip arguments to pass through.
         platforms: {type}`dict[str, struct]` A dict of platform name to platform info
             (containing `.env` with PEP 508 marker environment).
+        extract_url_srcs: {type}`bool` Whether to select artifact URLs for Bazel
+            downloader (`True` in Bzlmod) or emit pip requirement lines with
+            hashes and empty URLs (`False` in WORKSPACE).
 
     Returns:
         {type}`list[struct]` The same format as {func}`parse_requirements`.
     """
-    extras_map = uv_lock_extras_map(uv_lock)
+    extras_map = _uv_lock_extras_map(uv_lock)
+    markers_map = {} if extract_url_srcs else _uv_lock_markers_map(uv_lock)
 
     uv_packages = {}
 
     if not platforms:
         fail("BUG: platforms must be configured")
 
-    for pkg in uv_lock["package"]:
+    for pkg in uv_lock.get("package", []):
         name = pkg["name"]
         version = pkg["version"]
         norm_name = normalize_name(name)
@@ -189,9 +199,12 @@ def _parse_uv_lock_json(uv_lock, all_platforms, logger, extra_pip_args = None, p
         pkg_extras = sorted(extras_map.get(name, []))
         extra_str = "[{}]".format(",".join(pkg_extras)) if pkg_extras else ""
 
-        markers = pkg.get("resolution-markers", [])
-        if markers:
-            marker_expr = " or ".join(markers)
+        if extract_url_srcs:
+            markers = pkg.get("resolution-markers", [])
+            marker_expr = " or ".join(markers) if markers else ""
+        else:
+            marker_expr = markers_map.get((name, version), "")
+        if marker_expr:
             pkg_platforms = [
                 p
                 for p in all_platforms
@@ -199,6 +212,39 @@ def _parse_uv_lock_json(uv_lock, all_platforms, logger, extra_pip_args = None, p
             ]
         else:
             pkg_platforms = list(all_platforms)
+
+        if not extract_url_srcs:
+            if not pkg_platforms:
+                continue
+            if source.get("git"):
+                requirement_line = "{name}{extras} @ {requirement}".format(
+                    name = name,
+                    extras = extra_str,
+                    requirement = _uv_lock_git_requirement(source["git"]),
+                )
+            elif source.get("registry"):
+                hashes = _collect_uv_lock_hashes(pkg)
+                requirement_line = "{} {}".format(
+                    "{name}{extras}=={version}".format(
+                        name = name,
+                        extras = extra_str,
+                        version = version,
+                    ),
+                    " ".join(["--hash={}".format(h) for h in hashes]),
+                ).strip()
+            else:
+                continue
+            entry["resolved_srcs"].append(struct(
+                distribution = name,
+                extra_pip_args = list(extra_pip_args or []),
+                requirement_line = requirement_line,
+                target_platforms = sorted(pkg_platforms),
+                filename = "",
+                digest = "",
+                url = "",
+                yanked = None,
+            ))
+            continue
 
         # Prepare candidates
         candidates = []
@@ -375,6 +421,173 @@ def _parse_uv_lock_hash(hash_str):
     """
     algo, _, hex_digest = hash_str.partition(":")
     return hash.digest(algo, hex_digest)
+
+def _collect_uv_lock_hashes(pkg):
+    """Collect sorted `<algo>:<digest>` strings from all wheels and sdist of a package."""
+    hashes = []
+    for wheel in pkg.get("wheels", []):
+        digest = _parse_uv_lock_hash(wheel.get("hash", ""))
+        if digest:
+            hashes.append(digest)
+    sdist = pkg.get("sdist", None)
+    if sdist:
+        digest = _parse_uv_lock_hash(sdist.get("hash", ""))
+        if digest:
+            hashes.append(digest)
+    return sorted(hashes)
+
+def _uv_lock_extras_map(uv_lock):
+    """Compute extras for each package from uv.lock data."""
+    extras_map = {}
+    for pkg in uv_lock.get("package", []):
+        pkg_name = pkg.get("name", "")
+
+        for extra in pkg.get("provides-extras", pkg.get("extras", [])):
+            _add_extras(extras_map, pkg_name, [extra])
+
+        opt_deps = pkg.get("optional-dependencies", {})
+        if opt_deps:
+            _add_extras(extras_map, pkg_name, sorted(opt_deps.keys()))
+
+        for dep in pkg.get("dependencies", []):
+            dep_name = dep.get("name", "")
+            dep_extras_raw = dep.get("extra", [])
+            dep_extras = [dep_extras_raw] if type(dep_extras_raw) == "string" else dep_extras_raw
+            if dep_extras and dep_name != pkg_name:
+                _add_extras(extras_map, dep_name, dep_extras)
+
+        metadata = pkg.get("metadata", {})
+        for rd in metadata.get("requires-dist", []):
+            rd_name = rd.get("name", "")
+            rd_extras_raw = rd.get("extras", [])
+            rd_extras = [rd_extras_raw] if type(rd_extras_raw) == "string" else rd_extras_raw
+            if rd_extras and rd_name != pkg_name:
+                _add_extras(extras_map, rd_name, rd_extras)
+
+    return extras_map
+
+def _add_extras(extras_map, pkg_name, extras):
+    existing = extras_map.get(pkg_name, [])
+    for extra in extras:
+        if extra not in existing:
+            existing.append(extra)
+    extras_map[pkg_name] = sorted(existing)
+
+def _uv_lock_markers_map(uv_lock):
+    """Compute effective environment markers for each `(name, version)` in uv.lock.
+
+    Propagates dependency-edge markers from root packages through the dependency
+    graph and combines them with package-level `resolution-markers`.
+    """
+    packages = uv_lock.get("package", [])
+    if not packages:
+        return {}
+
+    by_name = {}
+    by_name_version = {}
+    for idx, pkg in enumerate(packages):
+        pkg_name = pkg.get("name", "")
+        pkg_version = pkg.get("version", "")
+        by_name.setdefault(pkg_name, []).append(idx)
+        by_name_version[(pkg_name, pkg_version)] = idx
+
+    outgoing = [[] for _ in range(len(packages))]
+    has_incoming = [False for _ in range(len(packages))]
+    for idx, pkg in enumerate(packages):
+        pkg_name = pkg.get("name", "")
+        all_deps = list(pkg.get("dependencies", []))
+        for _extra, deps in pkg.get("optional-dependencies", {}).items():
+            all_deps.extend(deps)
+        for _group, deps in pkg.get("dev-dependencies", {}).items():
+            all_deps.extend(deps)
+
+        for dep in all_deps:
+            dep_name = dep.get("name", "")
+            if not dep_name or dep_name == pkg_name:
+                continue
+            dep_version = dep.get("version", "")
+            if dep_version and (dep_name, dep_version) in by_name_version:
+                targets = [by_name_version[(dep_name, dep_version)]]
+            else:
+                targets = by_name.get(dep_name, [])
+            edge_marker = dep.get("marker", "")
+            for target_idx in targets:
+                has_incoming[target_idx] = True
+                outgoing[idx].append((target_idx, edge_marker))
+
+    # reach[idx] is True (unconditionally reachable from a root) or a list of
+    # disjunctive path marker strings.
+    reach = []
+    for idx, pkg in enumerate(packages):
+        source = pkg.get("source", {})
+        is_root = (
+            not has_incoming[idx] or
+            bool(source.get("virtual")) or
+            bool(source.get("editable"))
+        )
+        reach.append(True if is_root else [])
+
+    for _ in range(len(packages)):
+        changed = False
+        for u in range(len(packages)):
+            u_reach = reach[u]
+            if u_reach == []:
+                continue
+            for v, edge_marker in outgoing[u]:
+                if reach[v] == True:
+                    continue
+                if u_reach == True:
+                    if not edge_marker:
+                        reach[v] = True
+                        changed = True
+                    elif edge_marker not in reach[v]:
+                        reach[v].append(edge_marker)
+                        changed = True
+                else:
+                    for d in u_reach:
+                        combined = _and_combine(d, edge_marker) if edge_marker else d
+                        if combined not in reach[v]:
+                            reach[v].append(combined)
+                            changed = True
+        if not changed:
+            break
+
+    markers_map = {}
+    for idx, pkg in enumerate(packages):
+        pkg_name = pkg.get("name", "")
+        pkg_version = pkg.get("version", "")
+        v_reach = reach[idx]
+        if v_reach == True or v_reach == []:
+            reach_expr = ""
+        else:
+            reach_expr = " or ".join(v_reach)
+
+        res_markers = pkg.get("resolution-markers", [])
+        res_expr = " or ".join(res_markers) if res_markers else ""
+
+        if reach_expr and res_expr:
+            final_expr = _and_combine(reach_expr, res_expr)
+        else:
+            final_expr = reach_expr or res_expr
+
+        markers_map[(pkg_name, pkg_version)] = final_expr
+
+    return markers_map
+
+def _and_combine(a, b):
+    if not a:
+        return b
+    if not b or a == b:
+        return a
+    a_clauses = a.split(" and ") if " or " not in a else [a]
+    b_clauses = b.split(" and ") if " or " not in b else [b]
+    if all([c in a_clauses for c in b_clauses]):
+        return a
+    if all([c in b_clauses for c in a_clauses]):
+        return b
+    a_str = "({})".format(a) if " or " in a else a
+    b_str = "({})".format(b) if " or " in b else b
+    return "{} and {}".format(a_str, b_str)
 
 def _parse_requirements_from_req_files(
         ctx,

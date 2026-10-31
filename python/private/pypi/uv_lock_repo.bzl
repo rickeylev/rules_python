@@ -5,14 +5,12 @@ load("//python/private:repo_utils.bzl", "REPO_DEBUG_ENV_VAR")
 load(":attrs.bzl", COMMON_ATTRS = "ATTRS")
 load(":pip_repository.bzl", "render_pip_repository")
 load(":pip_repository_attrs.bzl", "ATTRS")
-load(":uv_lock_to_requirements.bzl", "uv_lock_to_requirements")
 
 def _uv_lock_repo_impl(rctx):
-    uv_lock_content = toml.decode(rctx.read(rctx.attr.uv_lock))
-    requirements_txt = uv_lock_to_requirements(uv_lock_content)
     render_pip_repository(
         rctx,
-        requirements_txt = requirements_txt,
+        uv_lock = rctx.attr.uv_lock,
+        toml_decode = toml.decode,
     )
 
 uv_lock_repo = repository_rule(
