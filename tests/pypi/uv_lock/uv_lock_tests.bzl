@@ -245,6 +245,19 @@ def _test_select_workspace_packages_cross_platform(env):
         ),
     ])
 
+    # On a host platform without a matching source (e.g. windows_x86_64 here),
+    # the package is excluded so `all_requirements` never references an
+    # unfetchable wheel repository.
+    win_bzl_packages, win_packages, _ = select_workspace_packages(
+        requirements_by_platform,
+        repo_name = "pypi",
+        download_only = False,
+        repository_platform = "windows_x86_64",
+        cross_platform = True,
+    )
+    env.expect.that_collection(win_bzl_packages).contains_exactly([])
+    env.expect.that_collection(win_packages).contains_exactly([])
+
 _tests.append(_test_select_workspace_packages_cross_platform)
 
 def uv_lock_test_suite(name):

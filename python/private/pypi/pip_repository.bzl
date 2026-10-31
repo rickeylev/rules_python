@@ -143,36 +143,6 @@ def select_workspace_packages(
         if not whl.is_exposed:
             continue
         repo_pkg = "{}_{}".format(repo_name, whl.name)
-        if cross_platform:
-            if not whl.srcs:
-                continue
-            first_src = whl.srcs[0]
-            options = options or first_src.extra_pip_args
-            whl_srcs = [s for s in whl.srcs if s.url and s.filename.endswith(".whl")]
-            if len(whl.srcs) == 1 and len(whl_srcs) == 1:
-                selected_entries[whl.name] = (
-                    repo_pkg,
-                    first_src.requirement_line,
-                    _whl_entry_kwargs(first_src),
-                )
-            elif whl_srcs:
-                platform_whls = {}
-                for s in whl_srcs:
-                    encoded = json.encode(_whl_entry_kwargs(s))
-                    for plat in s.target_platforms:
-                        platform_whls[plat] = encoded
-                selected_entries[whl.name] = (
-                    repo_pkg,
-                    first_src.requirement_line,
-                    {"platform_whls": dict(sorted(platform_whls.items()))},
-                )
-            else:
-                requirement_line = first_src.requirement_line
-                if first_src.digest:
-                    requirement_line = "{} --hash={}".format(requirement_line, first_src.digest)
-                selected_entries[whl.name] = (repo_pkg, requirement_line)
-            continue
-
         requirement = select_requirement(
             whl.srcs,
             platform = None if download_only else repository_platform,
@@ -180,6 +150,32 @@ def select_workspace_packages(
         if not requirement:
             continue
         options = options or requirement.extra_pip_args
+        if cross_platform:
+            whl_srcs = [s for s in whl.srcs if s.url and s.filename.endswith(".whl")]
+            if len(whl.srcs) == 1 and len(whl_srcs) == 1:
+                selected_entries[whl.name] = (
+                    repo_pkg,
+                    requirement.requirement_line,
+                    _whl_entry_kwargs(whl_srcs[0]),
+                )
+            elif whl_srcs and (download_only or requirement.filename.endswith(".whl")):
+                platform_whls = {}
+                for s in whl_srcs:
+                    encoded = json.encode(_whl_entry_kwargs(s))
+                    for plat in s.target_platforms:
+                        platform_whls[plat] = encoded
+                selected_entries[whl.name] = (
+                    repo_pkg,
+                    requirement.requirement_line,
+                    {"platform_whls": dict(sorted(platform_whls.items()))},
+                )
+            else:
+                requirement_line = requirement.requirement_line
+                if requirement.digest:
+                    requirement_line = "{} --hash={}".format(requirement_line, requirement.digest)
+                selected_entries[whl.name] = (repo_pkg, requirement_line)
+            continue
+
         requirement_line = requirement.requirement_line
         if requirement.url and requirement.filename.endswith(".whl"):
             selected_entries[whl.name] = (repo_pkg, requirement_line, _whl_entry_kwargs(requirement))
