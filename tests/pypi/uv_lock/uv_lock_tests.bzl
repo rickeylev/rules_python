@@ -2,6 +2,8 @@
 
 load("@rules_testing//lib:test_suite.bzl", "test_suite")
 load("//python:pip.bzl", "uv_lock")
+load("//python/private/pypi:hash.bzl", "hash")  # buildifier: disable=bzl-visibility
+load("//python/private/pypi:pip_repository.bzl", "select_workspace_packages")  # buildifier: disable=bzl-visibility
 load("//tests/support/mocks:mocks.bzl", "mocks")
 
 _tests = []
@@ -79,6 +81,101 @@ def _test_multi_version(env):
     ])
 
 _tests.append(_test_multi_version)
+
+def _test_select_workspace_packages_bazel_downloader(env):
+    """Verify `.whl` entries use Bazel downloader kwargs while sdist/git fall back to pip."""
+    digest_hex = "035c1e85572b141bf1c3a3eff0e33a8eb74917522f2559075ff8d2fea780a1ae"
+    sdist_hex = "feedcafe0123456789abcdef0123456789abcdef0123456789abcdef01234567"
+    requirements_by_platform = [
+        struct(
+            name = "certifi",
+            is_exposed = True,
+            srcs = [
+                struct(
+                    distribution = "certifi",
+                    extra_pip_args = [],
+                    requirement_line = "certifi==2026.10.19",
+                    target_platforms = ["linux_x86_64"],
+                    filename = "certifi-2026.10.19-py3-none-any.whl",
+                    digest = "sha256:{}".format(digest_hex),
+                    url = "https://files.pythonhosted.org/packages/certifi-2026.10.19-py3-none-any.whl",
+                    yanked = None,
+                ),
+            ],
+        ),
+        struct(
+            name = "sdist_only",
+            is_exposed = True,
+            srcs = [
+                struct(
+                    distribution = "sdist-only",
+                    extra_pip_args = ["--retries=3"],
+                    requirement_line = "sdist-only==1.0.0",
+                    target_platforms = ["linux_x86_64"],
+                    filename = "sdist_only-1.0.0.tar.gz",
+                    digest = "sha256:{}".format(sdist_hex),
+                    url = "https://files.pythonhosted.org/packages/sdist_only-1.0.0.tar.gz",
+                    yanked = None,
+                ),
+            ],
+        ),
+        struct(
+            name = "git_pkg",
+            is_exposed = True,
+            srcs = [
+                struct(
+                    distribution = "git-pkg",
+                    extra_pip_args = [],
+                    requirement_line = "git-pkg @ git+https://github.com/org/repo.git@deadbeef",
+                    target_platforms = ["linux_x86_64"],
+                    filename = "",
+                    digest = "",
+                    url = "",
+                    yanked = None,
+                ),
+            ],
+        ),
+        struct(
+            name = "virtual_root",
+            is_exposed = False,
+            srcs = [],
+        ),
+    ]
+
+    bzl_packages, packages, options = select_workspace_packages(
+        requirements_by_platform,
+        repo_name = "pypi",
+        download_only = False,
+        repository_platform = "linux_x86_64",
+    )
+
+    env.expect.that_collection(bzl_packages).contains_exactly([
+        "certifi",
+        "git_pkg",
+        "sdist_only",
+    ])
+    env.expect.that_collection(options).contains_exactly(["--retries=3"])
+    env.expect.that_collection(packages).contains_exactly([
+        (
+            "pypi_certifi",
+            "certifi==2026.10.19",
+            {
+                "filename": "certifi-2026.10.19-py3-none-any.whl",
+                "integrity": hash.integrity("sha256:{}".format(digest_hex)),
+                "urls": ["https://files.pythonhosted.org/packages/certifi-2026.10.19-py3-none-any.whl"],
+            },
+        ),
+        (
+            "pypi_git_pkg",
+            "git-pkg @ git+https://github.com/org/repo.git@deadbeef",
+        ),
+        (
+            "pypi_sdist_only",
+            "sdist-only==1.0.0 --hash=sha256:{}".format(sdist_hex),
+        ),
+    ])
+
+_tests.append(_test_select_workspace_packages_bazel_downloader)
 
 def uv_lock_test_suite(name):
     """Create the test suite.
