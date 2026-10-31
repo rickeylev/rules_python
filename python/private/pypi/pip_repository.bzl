@@ -102,12 +102,21 @@ def _whl_platform_tags(platform_name):
         return ["any", "win_{}".format(arch)]
     return ["any"]
 
+def _whl_entry_kwargs(src):
+    whl_kwargs = {"filename": src.filename}
+    integrity = hash.integrity(src.digest)
+    if integrity:
+        whl_kwargs["integrity"] = integrity
+    whl_kwargs["urls"] = [src.url]
+    return whl_kwargs
+
 def select_workspace_packages(
         requirements_by_platform,
         *,
         repo_name,
         download_only,
-        repository_platform):
+        repository_platform,
+        cross_platform = False):
     """Select per-package entries for a WORKSPACE requirements.bzl hub.
 
     When a resolved source is a downloadable `.whl` URL (e.g. from `uv_lock`),
@@ -121,6 +130,8 @@ def select_workspace_packages(
         repo_name: {type}`str` Name of the hub repository.
         download_only: {type}`bool` Whether `download_only` is enabled.
         repository_platform: {type}`str` Host platform identifier.
+        cross_platform: {type}`bool` Whether to emit host-independent entries
+            across all target platforms (`True` when `uv_lock` is used).
 
     Returns:
         {type}`tuple[list[str], list[tuple], list[str] | None]` A 3-tuple of
@@ -131,6 +142,37 @@ def select_workspace_packages(
     for whl in requirements_by_platform:
         if not whl.is_exposed:
             continue
+        repo_pkg = "{}_{}".format(repo_name, whl.name)
+        if cross_platform:
+            if not whl.srcs:
+                continue
+            first_src = whl.srcs[0]
+            options = options or first_src.extra_pip_args
+            whl_srcs = [s for s in whl.srcs if s.url and s.filename.endswith(".whl")]
+            if len(whl.srcs) == 1 and len(whl_srcs) == 1:
+                selected_entries[whl.name] = (
+                    repo_pkg,
+                    first_src.requirement_line,
+                    _whl_entry_kwargs(first_src),
+                )
+            elif whl_srcs:
+                platform_whls = {}
+                for s in whl_srcs:
+                    encoded = json.encode(_whl_entry_kwargs(s))
+                    for plat in s.target_platforms:
+                        platform_whls[plat] = encoded
+                selected_entries[whl.name] = (
+                    repo_pkg,
+                    first_src.requirement_line,
+                    {"platform_whls": dict(sorted(platform_whls.items()))},
+                )
+            else:
+                requirement_line = first_src.requirement_line
+                if first_src.digest:
+                    requirement_line = "{} --hash={}".format(requirement_line, first_src.digest)
+                selected_entries[whl.name] = (repo_pkg, requirement_line)
+            continue
+
         requirement = select_requirement(
             whl.srcs,
             platform = None if download_only else repository_platform,
@@ -138,15 +180,9 @@ def select_workspace_packages(
         if not requirement:
             continue
         options = options or requirement.extra_pip_args
-        repo_pkg = "{}_{}".format(repo_name, whl.name)
         requirement_line = requirement.requirement_line
         if requirement.url and requirement.filename.endswith(".whl"):
-            whl_kwargs = {"filename": requirement.filename}
-            integrity = hash.integrity(requirement.digest)
-            if integrity:
-                whl_kwargs["integrity"] = integrity
-            whl_kwargs["urls"] = [requirement.url]
-            selected_entries[whl.name] = (repo_pkg, requirement_line, whl_kwargs)
+            selected_entries[whl.name] = (repo_pkg, requirement_line, _whl_entry_kwargs(requirement))
         else:
             if requirement.digest:
                 requirement_line = "{} --hash={}".format(requirement_line, requirement.digest)
@@ -224,7 +260,11 @@ def render_pip_repository(rctx, *, uv_lock = None, toml_decode = None):
         extra_pip_args = rctx.attr.extra_pip_args,
         platforms = {
             p: struct(
-                env = marker_env,
+                env = env(
+                    os = p.partition("_")[0],
+                    arch = p.partition("_")[2],
+                    python_version = python_version,
+                ) if uv_lock else marker_env,
                 whl_abi_tags = whl_abi_tags if uv_lock else [],
                 whl_platform_tags = _whl_platform_tags(p) if uv_lock else [],
             )
@@ -240,6 +280,7 @@ def render_pip_repository(rctx, *, uv_lock = None, toml_decode = None):
         repo_name = rctx.attr.name,
         download_only = rctx.attr.download_only,
         repository_platform = host_platform(rctx),
+        cross_platform = bool(uv_lock),
     )
 
     # Normalize cycles first
