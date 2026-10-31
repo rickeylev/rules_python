@@ -140,8 +140,6 @@ def select_workspace_packages(
     selected_entries = {}
     options = None
     for whl in requirements_by_platform:
-        if not whl.is_exposed:
-            continue
         repo_pkg = "{}_{}".format(repo_name, whl.name)
         requirement = select_requirement(
             whl.srcs,

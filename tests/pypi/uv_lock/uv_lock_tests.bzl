@@ -184,7 +184,7 @@ def _test_select_workspace_packages_cross_platform(env):
     requirements_by_platform = [
         struct(
             name = "charset_normalizer",
-            is_exposed = True,
+            is_exposed = False,
             srcs = [
                 struct(
                     distribution = "charset-normalizer",
