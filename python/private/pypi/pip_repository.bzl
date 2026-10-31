@@ -82,13 +82,14 @@ package(default_visibility = ["//visibility:public"])
 exports_files(["requirements.bzl"])
 """
 
-def render_pip_repository(rctx, *, requirements_txt = None):
+def render_pip_repository(rctx, *, uv_lock = None, toml_decode = None):
     """Render a PyPI hub repository for WORKSPACE from requirements or uv.lock.
 
     Args:
         rctx: {type}`repository_ctx` Handle to the rule repository context.
-        requirements_txt: {type}`str | None` Optional pre-rendered requirements.txt
-            string (e.g. converted from `uv.lock`).
+        uv_lock: {type}`Label | None` Optional label to a resolved `uv.lock` file.
+        toml_decode: {type}`callable | None` TOML decoder function used when
+            `uv_lock` is provided.
     """
     logger = repo_utils.logger(rctx)
     python_interpreter = pypi_repo_utils.resolve_python_interpreter(
@@ -116,37 +117,19 @@ def render_pip_repository(rctx, *, requirements_txt = None):
         "windows_x86_64",
     ]
 
-    if requirements_txt != None:
-        # Convert uv.lock to requirements.txt text and feed it through the
-        # requirements_lock parser via a stub context instead of passing uv_lock
-        # directly to parse_requirements(). The native uv_lock path in
-        # parse_requirements() requires populated whl_platform_tags/whl_abi_tags
-        # to select wheels and omits --hash flags from requirement_line, whereas
-        # WORKSPACE whl_library delegates resolution and hash verification to
-        # pip using requirement_line.
-        parse_ctx = struct(
-            read = lambda _: requirements_txt,
-        )
-        req_files_by_platform = requirements_files_by_platform(
-            requirements_lock = rctx.attr.uv_lock,
-            extra_pip_args = rctx.attr.extra_pip_args,
-            platforms = platforms,
-        )
-    else:
-        parse_ctx = rctx
-        req_files_by_platform = requirements_files_by_platform(
-            requirements_by_platform = rctx.attr.requirements_by_platform,
-            requirements_linux = rctx.attr.requirements_linux,
-            requirements_lock = rctx.attr.requirements_lock,
-            requirements_osx = rctx.attr.requirements_darwin,
-            requirements_windows = rctx.attr.requirements_windows,
-            extra_pip_args = rctx.attr.extra_pip_args,
-            platforms = platforms,
-        )
+    req_files_by_platform = {} if uv_lock else requirements_files_by_platform(
+        requirements_by_platform = rctx.attr.requirements_by_platform,
+        requirements_linux = rctx.attr.requirements_linux,
+        requirements_lock = rctx.attr.requirements_lock,
+        requirements_osx = rctx.attr.requirements_darwin,
+        requirements_windows = rctx.attr.requirements_windows,
+        extra_pip_args = rctx.attr.extra_pip_args,
+        platforms = platforms,
+    )
 
     marker_env = env(os = rctx.os.name, arch = rctx.os.arch, python_version = python_version)
     requirements_by_platform = parse_requirements(
-        parse_ctx,
+        rctx,
         requirements_by_platform = req_files_by_platform,
         extra_pip_args = rctx.attr.extra_pip_args,
         platforms = {
@@ -158,6 +141,8 @@ def render_pip_repository(rctx, *, requirements_txt = None):
             for p in platforms
         },
         extract_url_srcs = False,
+        uv_lock = uv_lock,
+        toml_decode = toml_decode,
         logger = logger,
     )
     selected_requirements = {}
