@@ -141,13 +141,11 @@ def select_workspace_packages(
         repo_pkg = "{}_{}".format(repo_name, whl.name)
         requirement_line = requirement.requirement_line
         if requirement.url and requirement.filename.endswith(".whl"):
-            whl_kwargs = {
-                "filename": requirement.filename,
-                "urls": [requirement.url],
-            }
+            whl_kwargs = {"filename": requirement.filename}
             integrity = hash.integrity(requirement.digest)
             if integrity:
                 whl_kwargs["integrity"] = integrity
+            whl_kwargs["urls"] = [requirement.url]
             selected_entries[whl.name] = (repo_pkg, requirement_line, whl_kwargs)
         else:
             if requirement.digest:
