@@ -18,6 +18,7 @@ load("@bazel_skylib//lib:sets.bzl", "sets")
 load("//python/private:normalize_name.bzl", "normalize_name")
 load("//python/private:repo_utils.bzl", "REPO_DEBUG_ENV_VAR", "repo_utils")
 load("//python/private:text_util.bzl", "render")
+load(":hash.bzl", "hash")
 load(":parse_requirements.bzl", "host_platform", "parse_requirements", "select_requirement")
 load(":pep508_env.bzl", "env")
 load(":pip_repository_attrs.bzl", "ATTRS")
@@ -82,6 +83,81 @@ package(default_visibility = ["//visibility:public"])
 exports_files(["requirements.bzl"])
 """
 
+def _whl_platform_tags(platform_name):
+    os_name, _, arch = platform_name.partition("_")
+    if os_name == "linux":
+        return [
+            "any",
+            "linux_{}".format(arch),
+            "manylinux_*_{}".format(arch),
+        ]
+    elif os_name == "osx":
+        tag_cpus = ["universal2", "arm64"] if arch == "aarch64" else ["universal2", arch]
+        return ["any"] + ["macosx_*_{}".format(suffix) for suffix in tag_cpus]
+    elif os_name == "windows":
+        if arch == "x86_64":
+            return ["any", "win_amd64"]
+        elif arch == "aarch64":
+            return ["any", "win_arm64"]
+        return ["any", "win_{}".format(arch)]
+    return ["any"]
+
+def select_workspace_packages(
+        requirements_by_platform,
+        *,
+        repo_name,
+        download_only,
+        repository_platform):
+    """Select per-package entries for a WORKSPACE requirements.bzl hub.
+
+    When a resolved source is a downloadable `.whl` URL (e.g. from `uv_lock`),
+    emits a 3-tuple `(repo_pkg_name, requirement_line, whl_kwargs)` so
+    `whl_library` fetches the wheel with Bazel's downloader instead of `pip`.
+    Otherwise emits a 2-tuple `(repo_pkg_name, requirement_line)` for `pip`.
+
+    Args:
+        requirements_by_platform: {type}`list[struct]` Parsed requirement
+            structs from `parse_requirements`.
+        repo_name: {type}`str` Name of the hub repository.
+        download_only: {type}`bool` Whether `download_only` is enabled.
+        repository_platform: {type}`str` Host platform identifier.
+
+    Returns:
+        {type}`tuple[list[str], list[tuple], list[str] | None]` A 3-tuple of
+        `(bzl_packages, packages, options)`.
+    """
+    selected_entries = {}
+    options = None
+    for whl in requirements_by_platform:
+        if not whl.is_exposed:
+            continue
+        requirement = select_requirement(
+            whl.srcs,
+            platform = None if download_only else repository_platform,
+        )
+        if not requirement:
+            continue
+        options = options or requirement.extra_pip_args
+        repo_pkg = "{}_{}".format(repo_name, whl.name)
+        requirement_line = requirement.requirement_line
+        if requirement.url and requirement.filename.endswith(".whl"):
+            whl_kwargs = {
+                "filename": requirement.filename,
+                "urls": [requirement.url],
+            }
+            integrity = hash.integrity(requirement.digest)
+            if integrity:
+                whl_kwargs["integrity"] = integrity
+            selected_entries[whl.name] = (repo_pkg, requirement_line, whl_kwargs)
+        else:
+            if requirement.digest:
+                requirement_line = "{} --hash={}".format(requirement_line, requirement.digest)
+            selected_entries[whl.name] = (repo_pkg, requirement_line)
+
+    bzl_packages = sorted(selected_entries.keys())
+    packages = [selected_entries[p] for p in bzl_packages]
+    return bzl_packages, packages, options
+
 def render_pip_repository(rctx, *, uv_lock = None, toml_decode = None):
     """Render a PyPI hub repository for WORKSPACE from requirements or uv.lock.
 
@@ -97,14 +173,26 @@ def render_pip_repository(rctx, *, uv_lock = None, toml_decode = None):
         python_interpreter = rctx.attr.python_interpreter,
         python_interpreter_target = rctx.attr.python_interpreter_target,
     )
-    result = pypi_repo_utils.execute_checked(
-        rctx,
-        python = python_interpreter,
-        srcs = [],
-        op = "GetPythonVersion",
-        arguments = ["-c", "import sys; print(sys.version.split()[0])"],
-    )
-    python_version = result.stdout.strip().splitlines()[-1]
+    is_freethreaded = False
+    if uv_lock:
+        result = pypi_repo_utils.execute_checked(
+            rctx,
+            python = python_interpreter,
+            srcs = [],
+            op = "GetPythonVersion",
+            arguments = ["-c", "import sys; print(sys.version.split()[0], int('t' in getattr(sys, 'abiflags', '')))"],
+        )
+        python_version, _, freethreaded_flag = result.stdout.strip().splitlines()[-1].partition(" ")
+        is_freethreaded = freethreaded_flag == "1"
+    else:
+        result = pypi_repo_utils.execute_checked(
+            rctx,
+            python = python_interpreter,
+            srcs = [],
+            op = "GetPythonVersion",
+            arguments = ["-c", "import sys; print(sys.version.split()[0])"],
+        )
+        python_version = result.stdout.strip().splitlines()[-1]
     platforms = [
         "linux_aarch64",
         "linux_arm",
@@ -128,6 +216,10 @@ def render_pip_repository(rctx, *, uv_lock = None, toml_decode = None):
     )
 
     marker_env = env(os = rctx.os.name, arch = rctx.os.arch, python_version = python_version)
+    major, _, minor = ".".join(python_version.split(".")[:2]).partition(".")
+    whl_abi_tags = (
+        ["none", "cp{}{}t".format(major, minor)] if is_freethreaded else ["none", "abi3", "cp{}{}".format(major, minor)]
+    )
     requirements_by_platform = parse_requirements(
         rctx,
         requirements_by_platform = req_files_by_platform,
@@ -135,30 +227,22 @@ def render_pip_repository(rctx, *, uv_lock = None, toml_decode = None):
         platforms = {
             p: struct(
                 env = marker_env,
-                whl_abi_tags = [],
-                whl_platform_tags = [],
+                whl_abi_tags = whl_abi_tags if uv_lock else [],
+                whl_platform_tags = _whl_platform_tags(p) if uv_lock else [],
             )
             for p in platforms
         },
-        extract_url_srcs = False,
+        extract_url_srcs = bool(uv_lock),
         uv_lock = uv_lock,
         toml_decode = toml_decode,
         logger = logger,
     )
-    selected_requirements = {}
-    options = None
-    repository_platform = host_platform(rctx)
-    for whl in requirements_by_platform:
-        requirement = select_requirement(
-            whl.srcs,
-            platform = None if rctx.attr.download_only else repository_platform,
-        )
-        if not requirement:
-            continue
-        options = options or requirement.extra_pip_args
-        selected_requirements[whl.name] = requirement.requirement_line
-
-    bzl_packages = sorted(selected_requirements.keys())
+    bzl_packages, packages, options = select_workspace_packages(
+        requirements_by_platform,
+        repo_name = rctx.attr.name,
+        download_only = rctx.attr.download_only,
+        repository_platform = host_platform(rctx),
+    )
 
     # Normalize cycles first
     requirement_cycles = {
@@ -273,12 +357,7 @@ def render_pip_repository(rctx, *, uv_lock = None, toml_decode = None):
         "%%IMPORTS%%": "\n".join(imports),
         "%%MACRO_TMPL%%": macro_tmpl,
         "%%NAME%%": rctx.attr.name,
-        "%%PACKAGES%%": render.list(
-            [
-                ("{}_{}".format(rctx.attr.name, p), r)
-                for p, r in sorted(selected_requirements.items())
-            ],
-        ),
+        "%%PACKAGES%%": render.list(packages),
     })
 
     return

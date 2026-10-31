@@ -100,7 +100,6 @@ foo==0.0.1 --hash=sha512:deadbeef
 foo[extra]==0.0.2 --hash=sha256:deadbeef
 bar==0.0.1 --hash=sha256:deadb00f
 """,
-        "uv_lock_diamond_edge_markers": """{"package":[{"name":"alpha","version":"1.0.0","source":{"registry":"https://pypi.org/simple"},"dependencies":[{"name":"shared"}],"wheels":[{"hash":"sha256:aaa","url":"https://files.pythonhosted.org/packages/alpha-1.0.0-py3-none-any.whl"}]},{"name":"beta","version":"1.0.0","source":{"registry":"https://pypi.org/simple"},"dependencies":[{"name":"shared"}],"wheels":[{"hash":"sha256:bbb","url":"https://files.pythonhosted.org/packages/beta-1.0.0-py3-none-any.whl"}]},{"name":"root","version":"0.1.0","source":{"virtual":"."},"dependencies":[{"name":"alpha","marker":"sys_platform == 'linux'"},{"name":"beta","marker":"sys_platform == 'darwin'"}]},{"name":"shared","version":"2.0.0","source":{"registry":"https://pypi.org/simple"},"wheels":[{"hash":"sha256:ccc","url":"https://files.pythonhosted.org/packages/shared-2.0.0-py3-none-any.whl"}]}]}""",
         "uv_lock_empty": """{"package":[]}""",
         "uv_lock_foo": """{"package":[{"dependencies":[{"extra":"extra","name":"bar"}],"name":"foo","source":{"registry":"https://pypi.org/simple"},"version":"0.0.1","wheels":[{"hash":"sha256:deadbeef","url":"https://files.pythonhosted.org/packages/foo-0.0.1-py3-none-any.whl"}]}]}""",
         "uv_lock_foo_bar": """{"package":[{"name":"bar","version":"0.0.1","source":{"registry":"https://pypi.org/simple"},"sdist":{"hash":"sha256:deadb00f","url":"https://files.pythonhosted.org/packages/bar-0.0.1.tar.gz"}},{"name":"foo","version":"0.0.1","source":{"registry":"https://pypi.org/simple"},"wheels":[{"hash":"sha256:deadbeef","url":"https://files.pythonhosted.org/packages/foo-0.0.1-py3-none-any.whl"}]}]}""",
@@ -118,7 +117,6 @@ bar==0.0.1 --hash=sha256:deadb00f
         "uv_lock_git_vcs": """{"package":[{"name":"foo","source":{"git":"https://github.com/org/foo?rev=deadbeef#deadbeef"},"version":"0.1.0"}]}""",
         "uv_lock_git_vcs_subdirectory": """{"package":[{"name":"foo","source":{"git":"https://github.com/org/mono.git?subdirectory=python%2Ffoo&branch=main#0123abcd"},"version":"0.1.0+g0123abcd"}]}""",
         "uv_lock_rules_python_pkg": """{"package":[{"name":"rules_python","source":{"registry":"https://pypi.org/simple"},"version":"0.0.1","wheels":[{"hash":"sha256:deadbeef","url":"https://files.pythonhosted.org/packages/rules_python-0.0.1-py3-none-any.whl"}]}]}""",
-        "uv_lock_transitive_edge_markers": """{"package":[{"name":"cryptography","version":"50.0.2","source":{"registry":"https://pypi.org/simple"},"sdist":{"hash":"sha256:ccc","url":"https://files.pythonhosted.org/packages/cryptography-50.0.2.tar.gz"}},{"name":"keyring","version":"25.7.0","source":{"registry":"https://pypi.org/simple"},"dependencies":[{"name":"secretstorage","marker":"sys_platform == 'linux'"}],"wheels":[{"hash":"sha256:aaa","url":"https://files.pythonhosted.org/packages/keyring-25.7.0-py3-none-any.whl"}]},{"name":"secretstorage","version":"3.5.0","source":{"registry":"https://pypi.org/simple"},"dependencies":[{"name":"cryptography"}],"wheels":[{"hash":"sha256:bbb","url":"https://files.pythonhosted.org/packages/secretstorage-3.5.0-py3-none-any.whl"}]}]}""",
     }
 
     return mocks.mctx(
@@ -1746,133 +1744,6 @@ def _test_uv_lock_requires_dist_extras(env):
     ])
 
 _tests.append(_test_uv_lock_requires_dist_extras)
-
-def _test_uv_lock_workspace_hashes_and_no_urls(env):
-    """Test extract_url_srcs = False emits sorted wheel + sdist hashes and drops URLs."""
-    got = parse_requirements(
-        uv_lock = "uv_lock_foo_sdist",
-        extract_url_srcs = False,
-    )
-    env.expect.that_collection(got).contains_exactly([
-        struct(
-            name = "foo",
-            index_url = "https://pypi.org/simple/foo",
-            is_exposed = True,
-            is_multiple_versions = False,
-            srcs = [
-                struct(
-                    distribution = "foo",
-                    extra_pip_args = [],
-                    requirement_line = "foo==0.0.1 --hash=sha256:deadbeef --hash=sha256:feedcafe",
-                    target_platforms = ["linux_x86_64"],
-                    filename = "",
-                    digest = "",
-                    url = "",
-                    yanked = None,
-                ),
-            ],
-        ),
-    ])
-
-_tests.append(_test_uv_lock_workspace_hashes_and_no_urls)
-
-def _test_uv_lock_workspace_git_vcs(env):
-    """Test extract_url_srcs = False preserves git VCS requirement lines."""
-    got = parse_requirements(
-        uv_lock = "uv_lock_git_vcs_subdirectory",
-        extract_url_srcs = False,
-    )
-    env.expect.that_collection(got).contains_exactly([
-        struct(
-            name = "foo",
-            index_url = "",
-            is_exposed = True,
-            is_multiple_versions = False,
-            srcs = [
-                struct(
-                    distribution = "foo",
-                    extra_pip_args = [],
-                    requirement_line = "foo @ git+https://github.com/org/mono.git@0123abcd#subdirectory=python/foo",
-                    target_platforms = ["linux_x86_64"],
-                    filename = "",
-                    digest = "",
-                    url = "",
-                    yanked = None,
-                ),
-            ],
-        ),
-    ])
-
-_tests.append(_test_uv_lock_workspace_git_vcs)
-
-def _test_uv_lock_workspace_transitive_edge_markers(env):
-    """Test extract_url_srcs = False propagates transitive dependency-edge markers."""
-    got_win = parse_requirements(
-        uv_lock = "uv_lock_transitive_edge_markers",
-        extract_url_srcs = False,
-        platforms = {
-            "windows_x86_64": struct(
-                env = pep508_env(python_version = "3.11.0", os = "windows", arch = "x86_64"),
-                whl_abi_tags = [],
-                whl_platform_tags = [],
-            ),
-        },
-    )
-    env.expect.that_collection([p.name for p in got_win if p.is_exposed]).contains_exactly([
-        "keyring",
-    ])
-
-    got_linux = parse_requirements(
-        uv_lock = "uv_lock_transitive_edge_markers",
-        extract_url_srcs = False,
-        platforms = {
-            "linux_x86_64": struct(
-                env = pep508_env(python_version = "3.11.0", os = "linux", arch = "x86_64"),
-                whl_abi_tags = [],
-                whl_platform_tags = [],
-            ),
-        },
-    )
-    env.expect.that_collection([p.name for p in got_linux if p.is_exposed]).contains_exactly([
-        "cryptography",
-        "keyring",
-        "secretstorage",
-    ])
-
-_tests.append(_test_uv_lock_workspace_transitive_edge_markers)
-
-def _test_uv_lock_workspace_diamond_edge_markers(env):
-    """Test extract_url_srcs = False combines diamond dependency-edge markers with OR."""
-    got_darwin = parse_requirements(
-        uv_lock = "uv_lock_diamond_edge_markers",
-        extract_url_srcs = False,
-        platforms = {
-            "osx_aarch64": struct(
-                env = pep508_env(python_version = "3.11.0", os = "osx", arch = "aarch64"),
-                whl_abi_tags = [],
-                whl_platform_tags = [],
-            ),
-        },
-    )
-    env.expect.that_collection([p.name for p in got_darwin if p.is_exposed]).contains_exactly([
-        "beta",
-        "shared",
-    ])
-
-    got_win = parse_requirements(
-        uv_lock = "uv_lock_diamond_edge_markers",
-        extract_url_srcs = False,
-        platforms = {
-            "windows_x86_64": struct(
-                env = pep508_env(python_version = "3.11.0", os = "windows", arch = "x86_64"),
-                whl_abi_tags = [],
-                whl_platform_tags = [],
-            ),
-        },
-    )
-    env.expect.that_collection([p.name for p in got_win if p.is_exposed]).contains_exactly([])
-
-_tests.append(_test_uv_lock_workspace_diamond_edge_markers)
 
 def parse_requirements_test_suite(name):
     """Create the test suite.

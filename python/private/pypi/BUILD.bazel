@@ -322,6 +322,7 @@ bzl_library(
     name = "pip_repository",
     srcs = ["pip_repository.bzl"],
     deps = [
+        ":hash",
         ":parse_requirements",
         ":pep508_env",
         ":pip_repository_attrs",
