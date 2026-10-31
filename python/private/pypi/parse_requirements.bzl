@@ -167,7 +167,9 @@ def _parse_uv_lock_json(uv_lock, all_platforms, logger, extra_pip_args = None, p
     if not platforms:
         fail("BUG: platforms must be configured")
 
-    for pkg in uv_lock["package"]:
+    reachable = _uv_lock_reachable_platforms(uv_lock, all_platforms, platforms)
+
+    for idx, pkg in enumerate(uv_lock["package"]):
         name = pkg["name"]
         version = pkg["version"]
         norm_name = normalize_name(name)
@@ -188,16 +190,7 @@ def _parse_uv_lock_json(uv_lock, all_platforms, logger, extra_pip_args = None, p
         pkg_extras = sorted(extras_map.get(name, []))
         extra_str = "[{}]".format(",".join(pkg_extras)) if pkg_extras else ""
 
-        markers = pkg.get("resolution-markers", [])
-        if markers:
-            marker_expr = " or ".join(markers)
-            pkg_platforms = [
-                p
-                for p in all_platforms
-                if evaluate(marker_expr, env = platforms[p].env)
-            ]
-        else:
-            pkg_platforms = list(all_platforms)
+        pkg_platforms = reachable[idx]
 
         # Prepare candidates
         candidates = []
@@ -316,6 +309,104 @@ def _parse_uv_lock_json(uv_lock, all_platforms, logger, extra_pip_args = None, p
 
     logger.debug(lambda: "Parsed {} packages from uv.lock".format(len(ret)))
     return ret
+
+def _uv_lock_reachable_platforms(uv_lock, all_platforms, platforms):
+    """Compute reachable target platforms for each package index in `uv.lock`.
+
+    A package in `uv.lock` may have no `resolution-markers` of its own when only
+    a single version is locked, yet only be reachable via marker-guarded
+    dependency edges (for example, `keyring -> secretstorage` with
+    `marker = "sys_platform == 'linux'"` -> `cryptography` -> `cffi`).
+    Evaluating edge markers per platform from root packages ensures transitive
+    dependencies are restricted to platforms where they are actually reachable.
+
+    Args:
+        uv_lock: {type}`dict` Decoded `uv.lock` contents.
+        all_platforms: {type}`list[str]` Target platform names.
+        platforms: {type}`dict[str, struct]` Platform name to platform info.
+
+    Returns:
+        {type}`list[list[str]]` Parallel to `uv_lock["package"]`, listing the
+        subset of `all_platforms` on which each package entry is reachable.
+    """
+    packages = uv_lock.get("package", [])
+    num_pkgs = len(packages)
+    name_to_indices = {}
+    pkg_edges = []
+    has_incoming = {}
+
+    for idx, pkg in enumerate(packages):
+        norm_name = normalize_name(pkg["name"])
+        name_to_indices.setdefault(norm_name, []).append(idx)
+
+        edges = []
+        for dep in pkg.get("dependencies", []):
+            edges.append(dep)
+        for dep_list in pkg.get("optional-dependencies", {}).values():
+            for dep in dep_list:
+                edges.append(dep)
+        for dep_list in pkg.get("dev-dependencies", {}).values():
+            for dep in dep_list:
+                edges.append(dep)
+        pkg_edges.append(edges)
+
+        for dep in edges:
+            dep_norm = normalize_name(dep["name"])
+            if dep_norm != norm_name:
+                has_incoming[dep_norm] = True
+
+    roots = [
+        idx
+        for idx, pkg in enumerate(packages)
+        if normalize_name(pkg["name"]) not in has_incoming
+    ]
+    if not roots:
+        roots = list(range(num_pkgs))
+
+    reachable = [[] for _ in range(num_pkgs)]
+    for p in all_platforms:
+        platform = platforms.get(p)
+        if not platform:
+            continue
+        env = platform.env
+
+        active = []
+        for pkg in packages:
+            markers = pkg.get("resolution-markers", [])
+            if markers:
+                active.append(evaluate(" or ".join(markers), env = env))
+            else:
+                active.append(True)
+
+        visited = {}
+        queue = []
+        for root_idx in roots:
+            if active[root_idx] and root_idx not in visited:
+                visited[root_idx] = True
+                queue.append(root_idx)
+
+        for step in range(num_pkgs):
+            if step >= len(queue):
+                break
+            curr = queue[step]
+            for dep in pkg_edges[curr]:
+                dep_marker = dep.get("marker", "")
+                if dep_marker and not evaluate(dep_marker, env = env):
+                    continue
+                dep_norm = normalize_name(dep["name"])
+                dep_ver = dep.get("version", "")
+                for target_idx in name_to_indices.get(dep_norm, []):
+                    if not active[target_idx] or target_idx in visited:
+                        continue
+                    if dep_ver and packages[target_idx]["version"] != dep_ver:
+                        continue
+                    visited[target_idx] = True
+                    queue.append(target_idx)
+
+        for idx in visited:
+            reachable[idx].append(p)
+
+    return reachable
 
 def _uv_lock_git_requirement(git_source):
     """Turn a uv.lock git source into a pip direct reference.
