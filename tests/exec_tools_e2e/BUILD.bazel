@@ -1,0 +1,200 @@
+load("@bazel_skylib//rules:write_file.bzl", "write_file")
+load("@rules_rust//rust:defs.bzl", "rust_test")
+load("//python:packaging.bzl", "py_package", "py_wheel")
+load("//python:pip.bzl", "whl_filegroup")
+load("//python:py_binary.bzl", "py_binary")
+load("//python:py_library.bzl", "py_library")
+load("//python:py_test.bzl", "py_test")
+load("//python/entry_points:py_console_script_binary.bzl", "py_console_script_binary")
+load("//python/private/pypi:gen_wheel_record.bzl", "gen_wheel_record")  # buildifier: disable=bzl-visibility
+load("//python/private/pypi:venv_rewrite_shebang.bzl", "venv_rewrite_shebang")  # buildifier: disable=bzl-visibility
+load("//python/zipapp:py_zipapp_binary.bzl", "py_zipapp_binary")
+
+package(default_visibility = ["//:__subpackages__"])
+
+licenses(["notice"])
+
+write_file(
+    name = "e2e_header",
+    out = "include/e2e_header.h",
+    content = [
+        "#pragma once",
+        "#define E2E_HEADER_MAGIC 42",
+        "",
+    ],
+)
+
+write_file(
+    name = "e2e_pkg_mod_src",
+    out = "e2e_pkg_mod.py",
+    content = [
+        "import sys",
+        "",
+        "def main():",
+        "    print('E2E_STARLARK_OK')",
+        "    return 0",
+        "",
+        "def test_smoke():",
+        "    assert 2 + 2 == 4",
+        "",
+        "if __name__ == '__main__':",
+        "    test_smoke()",
+        "    sys.exit(main())",
+        "",
+    ],
+)
+
+write_file(
+    name = "e2e_entry_points",
+    out = "entry_points.txt",
+    content = [
+        "[console_scripts]",
+        "e2e-cli = tests.exec_tools_e2e.e2e_pkg_mod:main",
+        "",
+    ],
+)
+
+write_file(
+    name = "raw_script",
+    out = "raw_script.py",
+    content = [
+        "#!/usr/bin/env python3",
+        "print('REWRITTEN_SHEBANG_OK')",
+        "",
+    ],
+)
+
+write_file(
+    name = "sample_record",
+    out = "e2e_sample_wheel-1.2.3.dist-info/RECORD",
+    content = [
+        "e2e_sample_wheel-1.2.3.data/purelib/e2e_mod.py,sha256=abc,10",
+        "e2e_sample_wheel-1.2.3.data/scripts/my_cli,sha256=def,20",
+        "e2e_sample_wheel-1.2.3.data/headers/e2e_header.h,sha256=ghi,30",
+        "e2e_sample_wheel-1.2.3.data/data/etc/cfg.ini,sha256=jkl,40",
+        "e2e_sample_wheel-1.2.3.dist-info/RECORD,,",
+        "",
+    ],
+)
+
+py_library(
+    name = "e2e_lib",
+    srcs = [":e2e_pkg_mod_src"],
+    data = [":e2e_header"],
+)
+
+py_package(
+    name = "e2e_pkg",
+    deps = [":e2e_lib"],
+)
+
+py_wheel(
+    name = "e2e_wheel",
+    distribution = "e2e_sample_wheel",
+    entry_points = {
+        "console_scripts": [
+            "e2e-cli = tests.exec_tools_e2e.e2e_pkg_mod:main",
+        ],
+    },
+    python_tag = "py3",
+    version = "1.2.3",
+    deps = [":e2e_pkg"],
+)
+
+whl_filegroup(
+    name = "e2e_whl_filegroup",
+    pattern = "tests/exec_tools_e2e/include/.*\\.h",
+    whl = ":e2e_wheel",
+)
+
+venv_rewrite_shebang(
+    name = "e2e_rewritten_shebang",
+    src = ":raw_script",
+    package = "e2e_sample_wheel",
+    version = "1.2.3",
+)
+
+gen_wheel_record(
+    name = "e2e_rewritten_record",
+    srcs = [":sample_record"],
+    rewritten_scripts = ["my_cli"],
+)
+
+py_console_script_binary(
+    name = "e2e_console_bin",
+    entry_points_txt = ":e2e_entry_points",
+    pkg = ":e2e_lib",
+    script = "e2e-cli",
+)
+
+py_binary(
+    name = "e2e_app_bin",
+    srcs = [":e2e_pkg_mod_src"],
+    main = "e2e_pkg_mod.py",
+)
+
+py_zipapp_binary(
+    name = "e2e_zipapp",
+    binary = ":e2e_app_bin",
+)
+
+py_test(
+    name = "e2e_starlark_py_test",
+    size = "small",
+    srcs = [":e2e_pkg_mod_src"],
+    main = "e2e_pkg_mod.py",
+)
+
+rust_test(
+    name = "exec_tools_e2e_test",
+    size = "medium",
+    srcs = ["exec_tools_e2e_test.rs"],
+    data = [
+        ":e2e_console_bin",
+        ":e2e_rewritten_record",
+        ":e2e_rewritten_shebang",
+        ":e2e_wheel",
+        ":e2e_wheel.dist",
+        ":e2e_whl_filegroup",
+        ":e2e_zipapp",
+        "//crates/build_data_writer:distribution",
+        "//crates/exe_zip_maker:distribution",
+        "//crates/extract_wheel_files:distribution",
+        "//crates/py_console_script_gen:distribution",
+        "//crates/py_test_main_validator:distribution",
+        "//crates/py_wheel_dist:distribution",
+        "//crates/rupyru-box",
+        "//crates/rupyru-box:distribution",
+        "//crates/venv_shebang_rewriter:distribution",
+        "//crates/wheel_record_rewriter:distribution",
+        "//crates/wheelmaker:distribution",
+        "//crates/zip_main_maker:distribution",
+        "//crates/zipper:distribution",
+    ],
+    env = {
+        "DIST_BUILD_DATA_WRITER": "$(rootpaths //crates/build_data_writer:distribution)",
+        "DIST_EXE_ZIP_MAKER": "$(rootpaths //crates/exe_zip_maker:distribution)",
+        "DIST_EXTRACT_WHEEL_FILES": "$(rootpaths //crates/extract_wheel_files:distribution)",
+        "DIST_PY_CONSOLE_SCRIPT_GEN": "$(rootpaths //crates/py_console_script_gen:distribution)",
+        "DIST_PY_TEST_MAIN_VALIDATOR": "$(rootpaths //crates/py_test_main_validator:distribution)",
+        "DIST_PY_WHEEL_DIST": "$(rootpaths //crates/py_wheel_dist:distribution)",
+        "DIST_RUPYRU_BOX": "$(rootpaths //crates/rupyru-box:distribution)",
+        "DIST_VENV_SHEBANG_REWRITER": "$(rootpaths //crates/venv_shebang_rewriter:distribution)",
+        "DIST_WHEELMAKER": "$(rootpaths //crates/wheelmaker:distribution)",
+        "DIST_WHEEL_RECORD_REWRITER": "$(rootpaths //crates/wheel_record_rewriter:distribution)",
+        "DIST_ZIPPER": "$(rootpaths //crates/zipper:distribution)",
+        "DIST_ZIP_MAIN_MAKER": "$(rootpaths //crates/zip_main_maker:distribution)",
+        "E2E_CONSOLE_BIN": "$(rootpath :e2e_console_bin)",
+        "E2E_REWRITTEN_RECORD": "$(rootpath :e2e_rewritten_record)",
+        "E2E_REWRITTEN_SHEBANG": "$(rootpath :e2e_rewritten_shebang)",
+        "E2E_WHEEL": "$(rootpath :e2e_wheel)",
+        "E2E_WHEEL_DIST": "$(rootpath :e2e_wheel.dist)",
+        "E2E_WHL_FILEGROUP": "$(rootpath :e2e_whl_filegroup)",
+        "E2E_ZIPAPP": "$(rootpath :e2e_zipapp)",
+        "RUPYRU_BOX_BIN": "$(rootpath //crates/rupyru-box)",
+    },
+    deps = [
+        "@crates//:sha2",
+        "@crates//:zip",
+    ],
+)
