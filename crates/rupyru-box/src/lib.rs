@@ -9,6 +9,7 @@ pub const SUBCOMMANDS: &[&str] = &[
     "exe_zip_maker",
     "py_console_script_gen",
     "py_test_main_validator",
+    "wheelmaker",
     "zip_main_maker",
     "zipper",
     // keep-sorted end
@@ -61,6 +62,7 @@ where
         "exe_zip_maker" => exe_zip_maker_lib::run_cli(iter),
         "py_console_script_gen" => py_console_script_gen_lib::run_cli(iter),
         "py_test_main_validator" => py_test_main_validator_lib::run_cli(iter),
+        "wheelmaker" => wheelmaker_lib::run_cli(iter),
         "zip_main_maker" => zip_main_maker_lib::run_cli(iter),
         "zipper" => zipper_lib::run_cli(iter),
         // keep-sorted end

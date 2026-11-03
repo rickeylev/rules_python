@@ -737,6 +737,7 @@ bzl_library(
         ":toolchain_types",
         ":transition_labels",
         ":version",
+        "//python/private/toolchains:rupyru_box_toolchain",
     ],
 )
 

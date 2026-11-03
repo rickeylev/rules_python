@@ -6,6 +6,7 @@ load("@rules_testing//lib:truth.bzl", "matching")
 load("@rules_testing//lib:unit_test.bzl", "unit_test")
 load("@rules_testing//lib:util.bzl", rt_util = "util")
 load("//python:py_binary.bzl", "py_binary")
+load("//python/private:py_wheel.bzl", "py_wheel")  # buildifier: disable=bzl-visibility
 load("//python/private/toolchains:repo.bzl", "configure_tool_toolchains")  # buildifier: disable=bzl-visibility
 load("//python/private/toolchains:rupyru_box_toolchain.bzl", "rupyru_box_toolchain")  # buildifier: disable=bzl-visibility
 load("//python/zipapp:py_zipapp_binary.bzl", "py_zipapp_binary")
@@ -30,6 +31,7 @@ _RUST_TOOLS_SUFFIX = "crates/rupyru-box/rupyru-box"
 _PYTHON_EXE_ZIP_MAKER_SUFFIX = "tools/zipapp/exe_zip_maker_.py"
 _PYTHON_ZIPPER_SUFFIX = "tools/zipapp/zipper_.py"
 _PYTHON_ZIP_MAIN_MAKER_SUFFIX = "tools/zipapp/zip_main_maker_.py"
+_PYTHON_WHEELMAKER_SUFFIX = "tools/wheelmaker"
 _USE_RUST_FLAG = str(Label("//python/private/toolchains:use_rust_tools"))
 
 def _define_py_zipapp_subject(name):
@@ -106,6 +108,57 @@ def _test_py_zipapp_flag_disabled_uses_python_fallbacks_impl(env, target):
         )
 
 _tests.append(_test_py_zipapp_flag_disabled_uses_python_fallbacks)
+
+def _test_py_wheel_respects_use_rust_tools_flag(name):
+    rt_util.helper_target(
+        py_wheel,
+        name = name + "_rust",
+        distribution = "mydist_rust",
+        version = "1.0.0",
+    )
+    analysis_test(
+        name = name,
+        impl = _test_py_wheel_respects_use_rust_tools_flag_impl,
+        target = name + "_rust",
+        config_settings = {
+            _USE_RUST_FLAG: "yes",
+        },
+        attr_values = {"target_compatible_with": _COMPATIBLE_WITH},
+    )
+
+def _test_py_wheel_respects_use_rust_tools_flag_impl(env, target):
+    action = env.expect.that_target(target).action_named("PyWheel")
+    action.argv().contains_predicate(
+        matching.str_endswith(_RUST_TOOLS_SUFFIX),
+    )
+    action.argv().contains("wheelmaker")
+
+_tests.append(_test_py_wheel_respects_use_rust_tools_flag)
+
+def _test_py_wheel_flag_disabled_uses_python_wheelmaker(name):
+    rt_util.helper_target(
+        py_wheel,
+        name = name + "_py",
+        distribution = "mydist_py",
+        version = "1.0.0",
+    )
+    analysis_test(
+        name = name,
+        impl = _test_py_wheel_flag_disabled_uses_python_wheelmaker_impl,
+        target = name + "_py",
+        config_settings = {
+            _USE_RUST_FLAG: "no",
+        },
+        attr_values = {"target_compatible_with": _COMPATIBLE_WITH},
+    )
+
+def _test_py_wheel_flag_disabled_uses_python_wheelmaker_impl(env, target):
+    action = env.expect.that_target(target).action_named("PyWheel")
+    action.argv().contains_predicate(
+        matching.str_endswith(_PYTHON_WHEELMAKER_SUFFIX),
+    )
+
+_tests.append(_test_py_wheel_flag_disabled_uses_python_wheelmaker)
 
 def _test_prebuilt_file_toolchain_target(name):
     rt_util.helper_target(
