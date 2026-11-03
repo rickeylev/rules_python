@@ -7,6 +7,7 @@ use std::ffi::OsString;
 pub const SUBCOMMANDS: &[&str] = &[
     // keep-sorted start
     "exe_zip_maker",
+    "extract_wheel_files",
     "py_console_script_gen",
     "py_test_main_validator",
     "py_wheel_dist",
@@ -61,6 +62,7 @@ where
     match normalized.as_str() {
         // keep-sorted start
         "exe_zip_maker" => exe_zip_maker_lib::run_cli(iter),
+        "extract_wheel_files" => extract_wheel_files_lib::run_cli(iter),
         "py_console_script_gen" => py_console_script_gen_lib::run_cli(iter),
         "py_test_main_validator" => py_test_main_validator_lib::run_cli(iter),
         "py_wheel_dist" => py_wheel_dist_lib::run_cli(iter),

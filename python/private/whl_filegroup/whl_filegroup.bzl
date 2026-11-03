@@ -1,16 +1,25 @@
 """Implementation of whl_filegroup rule."""
 
+load("//python/private:toolchain_types.bzl", "RUPYRU_BOX_TOOLCHAIN_TYPE")
+load("//python/private/toolchains:rupyru_box_toolchain.bzl", "get_rupyru_box_tool")
+
 def _whl_filegroup_impl(ctx):
     out_dir = ctx.actions.declare_directory(ctx.attr.name)
+    tool = get_rupyru_box_tool(
+        ctx,
+        "extract_wheel_files",
+        ctx.attr._extract_wheel_files_tool,
+    )
     ctx.actions.run(
         outputs = [out_dir],
         inputs = [ctx.file.whl],
-        arguments = [
+        arguments = tool.prefix_args + [
             ctx.file.whl.path,
             out_dir.path,
             ctx.attr.pattern,
         ],
-        executable = ctx.executable._extract_wheel_files_tool,
+        executable = tool.files_to_run,
+        toolchain = tool.toolchain,
         mnemonic = "PyExtractWheelFiles",
         progress_message = "Extracting %s files from %s" % (ctx.attr.pattern, ctx.file.whl.short_path),
     )
@@ -61,4 +70,7 @@ from the already extracted whl file.
             executable = True,
         ),
     },
+    toolchains = [
+        config_common.toolchain_type(RUPYRU_BOX_TOOLCHAIN_TYPE, mandatory = False),
+    ],
 )

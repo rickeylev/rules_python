@@ -1,0 +1,580 @@
+use std::collections::BTreeSet;
+use std::env;
+use std::fs::{self, File};
+use std::io::Write;
+use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicUsize, Ordering};
+
+use extract_wheel_files_lib::{
+    extract_files, get_files, get_record, parse_args, parse_args_with_program, run, ExtractOptions,
+};
+use zip::write::SimpleFileOptions;
+use zip::{CompressionMethod, ZipWriter};
+
+static TEST_COUNTER: AtomicUsize = AtomicUsize::new(0);
+
+const EXAMPLE_WHEEL_REL_PATH: &str =
+    "examples/wheel/example_minimal_package-0.0.1-py3-none-any.whl";
+
+struct TempDir {
+    path: PathBuf,
+}
+
+impl TempDir {
+    fn new(prefix: &str) -> Self {
+        let id = TEST_COUNTER.fetch_add(1, Ordering::SeqCst);
+        let path = env::temp_dir().join(format!(
+            "extract_wheel_files_test_{}_{}_{}",
+            prefix,
+            std::process::id(),
+            id
+        ));
+        let _ = fs::remove_dir_all(&path);
+        fs::create_dir_all(&path).unwrap();
+        Self { path }
+    }
+
+    fn path(&self) -> &Path {
+        &self.path
+    }
+}
+
+impl Drop for TempDir {
+    fn drop(&mut self) {
+        let _ = fs::remove_dir_all(&self.path);
+    }
+}
+
+/// Helper to build a valid ZIP archive on disk using the `zip` crate.
+fn write_test_zip(
+    zip_path: &Path,
+    entries: &[(&str, &[u8], CompressionMethod)],
+    comment: Option<&str>,
+) {
+    let file = File::create(zip_path).unwrap();
+    let mut writer = ZipWriter::new(file);
+    if let Some(c) = comment {
+        writer.set_comment(c);
+    }
+    for &(name, data, method) in entries {
+        let options = SimpleFileOptions::default()
+            .compression_method(method)
+            .unix_permissions(0o644);
+        writer.start_file(name, options).unwrap();
+        writer.write_all(data).unwrap();
+    }
+    writer.finish().unwrap();
+}
+
+/// Recursively collects all regular files under `dir` as relative POSIX paths.
+fn collect_extracted_files(dir: &Path) -> BTreeSet<String> {
+    let mut out = BTreeSet::new();
+    let mut stack = vec![dir.to_path_buf()];
+    while let Some(curr) = stack.pop() {
+        if let Ok(entries) = fs::read_dir(&curr) {
+            for entry in entries.flatten() {
+                let p = entry.path();
+                if p.is_dir() {
+                    stack.push(p);
+                } else if p.is_file() {
+                    let rel = p
+                        .strip_prefix(dir)
+                        .unwrap()
+                        .components()
+                        .map(|c| c.as_os_str().to_string_lossy().into_owned())
+                        .collect::<Vec<_>>()
+                        .join("/");
+                    out.insert(rel);
+                }
+            }
+        }
+    }
+    out
+}
+
+fn create_synthetic_minimal_wheel(
+    whl_path: &Path,
+    method: CompressionMethod,
+    comment: Option<&str>,
+) {
+    let record_content = concat!(
+        "\"examples/wheel/lib/data,with,commas.txt\",sha256=abc,12\n",
+        "examples/wheel/lib/data.txt,sha256=def,8\n",
+        "examples/wheel/lib/module_with_data.py,sha256=ghi,20\n",
+        "examples/wheel/lib/module_with_type_annotations.py,sha256=jkl,25\n",
+        "examples/wheel/lib/module_with_type_annotations.pyi,sha256=mno,26\n",
+        "examples/wheel/lib/simple_module.py,sha256=pqr,15\n",
+        "examples/wheel/main.py,sha256=stu,18\n",
+        "example_minimal_package-0.0.1.dist-info/WHEEL,sha256=vwx,30\n",
+        "example_minimal_package-0.0.1.dist-info/METADATA,sha256=yz0,40\n",
+        "example_minimal_package-0.0.1.dist-info/RECORD,,\n",
+    );
+    let entries: &[(&str, &[u8], CompressionMethod)] = &[
+        (
+            "examples/wheel/lib/data,with,commas.txt",
+            b"comma,data\n",
+            method,
+        ),
+        ("examples/wheel/lib/data.txt", b"data\n", method),
+        (
+            "examples/wheel/lib/module_with_data.py",
+            b"def foo(): pass\n",
+            method,
+        ),
+        (
+            "examples/wheel/lib/module_with_type_annotations.py",
+            b"x: int = 1\n",
+            method,
+        ),
+        (
+            "examples/wheel/lib/module_with_type_annotations.pyi",
+            b"x: int\n",
+            method,
+        ),
+        ("examples/wheel/lib/simple_module.py", b"y = 2\n", method),
+        (
+            "examples/wheel/main.py",
+            b"if __name__ == '__main__': pass\n",
+            method,
+        ),
+        (
+            "example_minimal_package-0.0.1.dist-info/WHEEL",
+            b"Wheel-Version: 1.0\n",
+            method,
+        ),
+        (
+            "example_minimal_package-0.0.1.dist-info/METADATA",
+            b"Name: example_minimal_package\nVersion: 0.0.1\n",
+            method,
+        ),
+        (
+            "example_minimal_package-0.0.1.dist-info/RECORD",
+            record_content.as_bytes(),
+            method,
+        ),
+    ];
+    write_test_zip(whl_path, entries, comment);
+}
+
+#[test]
+fn test_get_wheel_record() {
+    let expected = vec![
+        "examples/wheel/lib/data,with,commas.txt",
+        "examples/wheel/lib/data.txt",
+        "examples/wheel/lib/module_with_data.py",
+        "examples/wheel/lib/module_with_type_annotations.py",
+        "examples/wheel/lib/module_with_type_annotations.pyi",
+        "examples/wheel/lib/simple_module.py",
+        "examples/wheel/main.py",
+        "example_minimal_package-0.0.1.dist-info/WHEEL",
+        "example_minimal_package-0.0.1.dist-info/METADATA",
+        "example_minimal_package-0.0.1.dist-info/RECORD",
+    ];
+
+    let example_wheel = Path::new(EXAMPLE_WHEEL_REL_PATH);
+    if example_wheel.exists() {
+        let record = get_record(example_wheel).unwrap();
+        assert_eq!(record, expected);
+    }
+
+    let tmp = TempDir::new("get_record");
+    let synth_whl = tmp.path().join("synth.whl");
+    create_synthetic_minimal_wheel(&synth_whl, CompressionMethod::Stored, None);
+    let record = get_record(&synth_whl).unwrap();
+    assert_eq!(record, expected);
+}
+
+#[test]
+fn test_get_files_with_pattern_and_empty() {
+    let tmp = TempDir::new("get_files");
+    let whl_path = tmp.path().join("minimal.whl");
+    create_synthetic_minimal_wheel(&whl_path, CompressionMethod::Deflated, None);
+
+    let record = get_record(&whl_path).unwrap();
+
+    // Pattern from tests/whl_filegroup/extract_wheel_files_test.py
+    let pattern = r"(examples/wheel/lib/.*\.txt$|.*main)";
+    let files = get_files(&record, pattern).unwrap();
+    let expected = vec![
+        "examples/wheel/lib/data,with,commas.txt",
+        "examples/wheel/lib/data.txt",
+        "examples/wheel/main.py",
+    ];
+    assert_eq!(files, expected);
+
+    // Empty pattern matches all files in RECORD
+    let all_files = get_files(&record, "").unwrap();
+    assert_eq!(all_files, record);
+}
+
+#[test]
+fn test_extract_files() {
+    let files = [
+        "examples/wheel/lib/data,with,commas.txt",
+        "examples/wheel/lib/data.txt",
+        "examples/wheel/main.py",
+    ];
+    let expected_set: BTreeSet<String> = files.iter().map(|s| s.to_string()).collect();
+
+    let example_wheel = Path::new(EXAMPLE_WHEEL_REL_PATH);
+    if example_wheel.exists() {
+        let tmp = TempDir::new("extract_real");
+        let outdir = tmp.path().join("out");
+        extract_files(example_wheel, &files, &outdir).unwrap();
+        let extracted = collect_extracted_files(&outdir);
+        assert_eq!(extracted, expected_set);
+    }
+
+    let tmp = TempDir::new("extract_synth");
+    let synth_whl = tmp.path().join("synth.whl");
+    create_synthetic_minimal_wheel(&synth_whl, CompressionMethod::Deflated, None);
+    let outdir = tmp.path().join("out");
+    extract_files(&synth_whl, &files, &outdir).unwrap();
+    let extracted = collect_extracted_files(&outdir);
+    assert_eq!(extracted, expected_set);
+    assert_eq!(
+        fs::read_to_string(outdir.join("examples/wheel/lib/data,with,commas.txt")).unwrap(),
+        "comma,data\n"
+    );
+}
+
+#[test]
+fn test_invalid_zip_error() {
+    let tmp = TempDir::new("invalid_zip");
+    let bad_zip = tmp.path().join("not_a_zip.whl");
+    fs::write(&bad_zip, b"not a zip archive at all").unwrap();
+
+    let err = get_record(&bad_zip).unwrap_err();
+    assert_eq!(
+        err,
+        format!("{} is not a valid zip file", bad_zip.display())
+    );
+
+    let short_zip = tmp.path().join("short.whl");
+    fs::write(&short_zip, b"short").unwrap();
+    let err2 = get_record(&short_zip).unwrap_err();
+    assert_eq!(
+        err2,
+        format!("{} is not a valid zip file", short_zip.display())
+    );
+}
+
+#[test]
+fn test_missing_or_multiple_record_files_error() {
+    let tmp = TempDir::new("record_count");
+
+    // 0 .dist-info/RECORD files
+    let zero_rec_whl = tmp.path().join("zero_record.whl");
+    write_test_zip(
+        &zero_rec_whl,
+        &[("pkg/mod.py", b"x = 1\n", CompressionMethod::Stored)],
+        None,
+    );
+    let err_zero = get_record(&zero_rec_whl).unwrap_err();
+    assert_eq!(
+        err_zero,
+        format!(
+            "{} doesn't contain exactly one .dist-info/RECORD",
+            zero_rec_whl.display()
+        )
+    );
+
+    // 2 .dist-info/RECORD files
+    let two_rec_whl = tmp.path().join("two_record.whl");
+    write_test_zip(
+        &two_rec_whl,
+        &[
+            (
+                "a-1.0.dist-info/RECORD",
+                b"a-1.0.dist-info/RECORD,,\n",
+                CompressionMethod::Stored,
+            ),
+            (
+                "b-1.0.dist-info/RECORD",
+                b"b-1.0.dist-info/RECORD,,\n",
+                CompressionMethod::Stored,
+            ),
+        ],
+        None,
+    );
+    let err_two = get_record(&two_rec_whl).unwrap_err();
+    assert_eq!(
+        err_two,
+        format!(
+            "{} doesn't contain exactly one .dist-info/RECORD",
+            two_rec_whl.display()
+        )
+    );
+}
+
+#[test]
+fn test_csv_quoted_paths_and_deflated_entries() {
+    let tmp = TempDir::new("csv_and_deflate");
+    let whl_path = tmp.path().join("special.whl");
+    let record_csv = concat!(
+        "\"pkg/file,with,commas.txt\",sha256=111,5\r\n",
+        "\"pkg/file\"\"with\"\"quotes.txt\",sha256=222,6\r\n",
+        "pkg/deflated.txt,sha256=333,1300\r\n",
+        "special-1.0.dist-info/RECORD,,\r\n",
+    );
+    let repeated = b"hello wheel! ".repeat(100);
+    write_test_zip(
+        &whl_path,
+        &[
+            (
+                "pkg/file,with,commas.txt",
+                b"hello",
+                CompressionMethod::Stored,
+            ),
+            (
+                "pkg/file\"with\"quotes.txt",
+                b"quotes",
+                CompressionMethod::Deflated,
+            ),
+            ("pkg/deflated.txt", &repeated, CompressionMethod::Deflated),
+            (
+                "special-1.0.dist-info/RECORD",
+                record_csv.as_bytes(),
+                CompressionMethod::Deflated,
+            ),
+        ],
+        None,
+    );
+
+    let record = get_record(&whl_path).unwrap();
+    assert_eq!(
+        record,
+        vec![
+            "pkg/file,with,commas.txt",
+            "pkg/file\"with\"quotes.txt",
+            "pkg/deflated.txt",
+            "special-1.0.dist-info/RECORD",
+        ]
+    );
+
+    let outdir = tmp.path().join("extracted");
+    let opts = ExtractOptions {
+        whl_path: whl_path.clone(),
+        outdir: outdir.clone(),
+        regex_pattern: "pkg/.*".to_string(),
+    };
+    run(&opts).unwrap();
+
+    assert_eq!(
+        fs::read(outdir.join("pkg/file,with,commas.txt")).unwrap(),
+        b"hello"
+    );
+    assert_eq!(
+        fs::read(outdir.join("pkg/file\"with\"quotes.txt")).unwrap(),
+        b"quotes"
+    );
+    assert_eq!(fs::read(outdir.join("pkg/deflated.txt")).unwrap(), repeated);
+    assert!(!outdir.join("special-1.0.dist-info/RECORD").exists());
+}
+
+#[test]
+fn test_empty_match_still_creates_outdir() {
+    let tmp = TempDir::new("empty_match");
+    let whl_path = tmp.path().join("test.whl");
+    create_synthetic_minimal_wheel(&whl_path, CompressionMethod::Stored, None);
+
+    let outdir = tmp.path().join("nested/empty_out_dir");
+    let opts = ExtractOptions {
+        whl_path,
+        outdir: outdir.clone(),
+        regex_pattern: "nonexistent_prefix/.*".to_string(),
+    };
+    run(&opts).unwrap();
+    assert!(outdir.is_dir());
+    assert!(collect_extracted_files(&outdir).is_empty());
+}
+
+#[test]
+fn test_parse_args_and_usage() {
+    let opts2 = parse_args(["foo.whl", "out_dir"]).unwrap();
+    assert_eq!(opts2.whl_path, PathBuf::from("foo.whl"));
+    assert_eq!(opts2.outdir, PathBuf::from("out_dir"));
+    assert_eq!(opts2.regex_pattern, "");
+
+    let opts3 = parse_args(["foo.whl", "out_dir", r"numpy/.*\.h$"]).unwrap();
+    assert_eq!(opts3.whl_path, PathBuf::from("foo.whl"));
+    assert_eq!(opts3.outdir, PathBuf::from("out_dir"));
+    assert_eq!(opts3.regex_pattern, r"numpy/.*\.h$");
+
+    let err0 = parse_args_with_program("my_prog", Vec::<&str>::new()).unwrap_err();
+    assert_eq!(err0, "Usage: my_prog <wheel> <out_dir> [regex_pattern]");
+
+    let err1 = parse_args_with_program("my_prog", ["only_wheel.whl"]).unwrap_err();
+    assert_eq!(err1, "Usage: my_prog <wheel> <out_dir> [regex_pattern]");
+
+    let err4 = parse_args_with_program("my_prog", ["a", "b", "c", "d"]).unwrap_err();
+    assert_eq!(err4, "Usage: my_prog <wheel> <out_dir> [regex_pattern]");
+}
+
+#[test]
+fn test_regex_re_match_semantics_and_complex_patterns() {
+    // 1. Start-anchoring without end-anchoring (Python re.match semantics)
+    let matched = get_files(
+        [
+            "numpy/core/include/numpy/arrayobject.h",
+            "other/numpy/core/include/numpy/arrayobject.h",
+        ],
+        "numpy/core/include/numpy",
+    )
+    .unwrap();
+    assert_eq!(matched, vec!["numpy/core/include/numpy/arrayobject.h"]);
+
+    // 1b. Unanchored alternation must still anchor both branches at start
+    let matched_alt = get_files(["foo/a.py", "bar/b.py", "prefix/bar/b.py"], "foo|bar").unwrap();
+    assert_eq!(matched_alt, vec!["foo/a.py", "bar/b.py"]);
+
+    // 2. Header pattern from tests/whl_filegroup/BUILD.bazel
+    let matched_hdr = get_files(
+        [
+            "tests/whl_filegroup/include/whl_headers/header.h",
+            "tests/whl_filegroup/lib.py",
+        ],
+        r"tests/whl_filegroup/include/.*\.h",
+    )
+    .unwrap();
+    assert_eq!(
+        matched_hdr,
+        vec!["tests/whl_filegroup/include/whl_headers/header.h"]
+    );
+
+    // 3. Character classes, ranges, negation, shorthands, and quantifiers
+    let matched_complex = get_files(
+        [
+            "pkg/mod_1/file_42.h",
+            "lib/abcde/file_0.cpp",
+            "pkg/a/file_42.h",
+            "pkg/abcdefg/file_42.h",
+            "pkg/mod_1/file_xx.h",
+        ],
+        r"^(?:pkg|lib)/[a-z_][a-z0-9_]{2,5}/file_\d+\.[ch](?:pp)?$",
+    )
+    .unwrap();
+    assert_eq!(
+        matched_complex,
+        vec!["pkg/mod_1/file_42.h", "lib/abcde/file_0.cpp"]
+    );
+
+    // 4. Negated character class and word boundaries
+    let matched_neg = get_files(
+        ["pkg/main.py", "pkg/sub/main.py", "pkg/main2.py"],
+        r"[^/]+/\bmain\b\.py$",
+    )
+    .unwrap();
+    assert_eq!(matched_neg, vec!["pkg/main.py"]);
+
+    // 5. Case-insensitive inline flag (?i) and non-greedy quantifiers
+    let matched_ci = get_files(["My_Pkg-1.0.WHL", "My_Pkg-1.0.tar"], r"(?i).*?\.whl$").unwrap();
+    assert_eq!(matched_ci, vec!["My_Pkg-1.0.WHL"]);
+
+    // 6. Character class edge cases: literal ']' first, literal '-' escaped, hex escapes
+    let matched_cls = get_files(["]-abc/", "d"], r"^[]\-a-c\x2f]+$").unwrap();
+    assert_eq!(matched_cls, vec!["]-abc/"]);
+
+    // 7. Pathological nested star pattern completes instantaneously without backtracking
+    let matched_nfa =
+        get_files(["aaaaaaaaaaaaaaaaaaaaaaaaaaaaaac", "aaaaab"], r"^(a*)*b$").unwrap();
+    assert_eq!(matched_nfa, vec!["aaaaab"]);
+
+    // 8. Invalid regex returns error
+    assert!(get_files(["a"], "[unclosed").is_err());
+    assert!(get_files(["a"], "(unclosed").is_err());
+    assert!(get_files(["a"], "a{5,2}").is_err());
+    assert!(get_files(["a"], "[z-a]").is_err());
+}
+
+#[test]
+fn test_zip_with_archive_comment_and_crc_mismatch() {
+    let tmp = TempDir::new("comment_and_crc");
+    let whl_path = tmp.path().join("with_comment.whl");
+    create_synthetic_minimal_wheel(
+        &whl_path,
+        CompressionMethod::Stored,
+        Some("wheel comment!!"),
+    );
+
+    let record = get_record(&whl_path).unwrap();
+    assert_eq!(record.len(), 10);
+
+    // Corrupt a byte inside the first stored entry's payload and verify CRC error detection.
+    let mut bytes = fs::read(&whl_path).unwrap();
+    let needle = b"comma,data\n";
+    let pos = bytes
+        .windows(needle.len())
+        .position(|w| w == needle)
+        .unwrap();
+    bytes[pos] ^= 0xFF;
+    let corrupted_whl = tmp.path().join("corrupted.whl");
+    fs::write(&corrupted_whl, &bytes).unwrap();
+
+    let outdir = tmp.path().join("out_corrupt");
+    let err = extract_files(
+        &corrupted_whl,
+        ["examples/wheel/lib/data,with,commas.txt"],
+        &outdir,
+    )
+    .unwrap_err();
+    assert!(
+        err.to_lowercase().contains("checksum") || err.to_lowercase().contains("crc"),
+        "unexpected error: {}",
+        err
+    );
+}
+
+#[test]
+fn test_cli_binary_subprocess() {
+    let bin_candidates = [
+        "crates/rupyru-box/rupyru-box",
+        "crates/rupyru-box/rupyru-box.exe",
+    ];
+    let Some(bin_path) = bin_candidates.iter().map(Path::new).find(|p| p.exists()) else {
+        return;
+    };
+
+    // 1. Wrong argument count prints Usage to stderr and exits with code 1.
+    let bad_out = std::process::Command::new(bin_path)
+        .arg("extract_wheel_files")
+        .arg("only_one_arg")
+        .output()
+        .unwrap();
+    assert_eq!(bad_out.status.code(), Some(1));
+    let stderr_str = String::from_utf8_lossy(&bad_out.stderr);
+    assert!(
+        stderr_str.contains("Usage:") && stderr_str.contains("<wheel> <out_dir> [regex_pattern]"),
+        "unexpected stderr: {}",
+        stderr_str
+    );
+
+    // 2. Valid 3-arg invocation extracts matching files and exits 0.
+    let tmp = TempDir::new("cli_subproc");
+    let whl_path = tmp.path().join("cli.whl");
+    create_synthetic_minimal_wheel(&whl_path, CompressionMethod::Deflated, None);
+    let outdir = tmp.path().join("extracted");
+
+    let ok_out = std::process::Command::new(bin_path)
+        .arg("extract_wheel_files")
+        .arg(&whl_path)
+        .arg(&outdir)
+        .arg(r"(examples/wheel/lib/.*\.txt$|.*main)")
+        .output()
+        .unwrap();
+    assert!(
+        ok_out.status.success(),
+        "cli failed: {}",
+        String::from_utf8_lossy(&ok_out.stderr)
+    );
+    let extracted = collect_extracted_files(&outdir);
+    let expected: BTreeSet<String> = [
+        "examples/wheel/lib/data,with,commas.txt",
+        "examples/wheel/lib/data.txt",
+        "examples/wheel/main.py",
+    ]
+    .into_iter()
+    .map(String::from)
+    .collect();
+    assert_eq!(extracted, expected);
+}
