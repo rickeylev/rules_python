@@ -17,7 +17,7 @@ _tests = []
 
 # Under bzlmod, MODULE.bazel registers @rules_python_tools//toolchains:all,
 # which points to the unified Rust rupyru-box binary (from source in git, or
-# prebuilt in release archives) when use_rust_tools is "auto" (in dev mode) or
+# prebuilt in release archives) when need_shrubbery is "auto" (in dev mode) or
 # "yes", and falls back to the built-in Python/script tools when "no".
 #
 # In WORKSPACE mode, rules_rust is a stub and the Python fallback is used, so
@@ -32,7 +32,7 @@ _PYTHON_EXE_ZIP_MAKER_SUFFIX = "tools/zipapp/exe_zip_maker_.py"
 _PYTHON_ZIPPER_SUFFIX = "tools/zipapp/zipper_.py"
 _PYTHON_ZIP_MAIN_MAKER_SUFFIX = "tools/zipapp/zip_main_maker_.py"
 _PYTHON_WHEELMAKER_SUFFIX = "tools/wheelmaker"
-_USE_RUST_FLAG = str(Label("//python/private/toolchains:use_rust_tools"))
+_NEED_SHRUBBERY_FLAG = str(Label("//python/private/toolchains:need_shrubbery"))
 
 def _define_py_zipapp_subject(name):
     rt_util.helper_target(
@@ -65,7 +65,7 @@ def _test_py_zipapp_uses_toolchain_rupyru_box(name):
         impl = _test_py_zipapp_uses_toolchain_rupyru_box_impl,
         target = name + "_subject",
         config_settings = {
-            _USE_RUST_FLAG: "yes",
+            _NEED_SHRUBBERY_FLAG: "yes",
         },
         attr_values = {"target_compatible_with": _COMPATIBLE_WITH},
     )
@@ -91,7 +91,7 @@ def _test_py_zipapp_flag_disabled_uses_python_fallbacks(name):
         impl = _test_py_zipapp_flag_disabled_uses_python_fallbacks_impl,
         target = name + "_subject",
         config_settings = {
-            _USE_RUST_FLAG: "no",
+            _NEED_SHRUBBERY_FLAG: "no",
         },
         attr_values = {"target_compatible_with": _COMPATIBLE_WITH},
     )
@@ -109,7 +109,7 @@ def _test_py_zipapp_flag_disabled_uses_python_fallbacks_impl(env, target):
 
 _tests.append(_test_py_zipapp_flag_disabled_uses_python_fallbacks)
 
-def _test_py_wheel_respects_use_rust_tools_flag(name):
+def _test_py_wheel_respects_need_shrubbery_flag(name):
     rt_util.helper_target(
         py_wheel,
         name = name + "_rust",
@@ -118,22 +118,22 @@ def _test_py_wheel_respects_use_rust_tools_flag(name):
     )
     analysis_test(
         name = name,
-        impl = _test_py_wheel_respects_use_rust_tools_flag_impl,
+        impl = _test_py_wheel_respects_need_shrubbery_flag_impl,
         target = name + "_rust",
         config_settings = {
-            _USE_RUST_FLAG: "yes",
+            _NEED_SHRUBBERY_FLAG: "yes",
         },
         attr_values = {"target_compatible_with": _COMPATIBLE_WITH},
     )
 
-def _test_py_wheel_respects_use_rust_tools_flag_impl(env, target):
+def _test_py_wheel_respects_need_shrubbery_flag_impl(env, target):
     action = env.expect.that_target(target).action_named("PyWheel")
     action.argv().contains_predicate(
         matching.str_endswith(_RUST_TOOLS_SUFFIX),
     )
     action.argv().contains("wheelmaker")
 
-_tests.append(_test_py_wheel_respects_use_rust_tools_flag)
+_tests.append(_test_py_wheel_respects_need_shrubbery_flag)
 
 def _test_py_wheel_flag_disabled_uses_python_wheelmaker(name):
     rt_util.helper_target(
@@ -147,7 +147,7 @@ def _test_py_wheel_flag_disabled_uses_python_wheelmaker(name):
         impl = _test_py_wheel_flag_disabled_uses_python_wheelmaker_impl,
         target = name + "_py",
         config_settings = {
-            _USE_RUST_FLAG: "no",
+            _NEED_SHRUBBERY_FLAG: "no",
         },
         attr_values = {"target_compatible_with": _COMPATIBLE_WITH},
     )
