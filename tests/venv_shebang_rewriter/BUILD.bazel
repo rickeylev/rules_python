@@ -1,0 +1,20 @@
+load("@rules_rust//rust:defs.bzl", "rust_test")
+
+package(default_visibility = ["//:__subpackages__"])
+
+licenses(["notice"])
+
+rust_test(
+    name = "venv_shebang_rewriter_test",
+    size = "small",
+    srcs = ["venv_shebang_rewriter_test.rs"],
+    data = [
+        "//crates/rupyru-box",
+    ],
+    env = {
+        "RUPYRU_BOX_BIN": "$(rootpath //crates/rupyru-box)",
+    },
+    deps = [
+        "//crates/venv_shebang_rewriter:venv_shebang_rewriter_lib",
+    ],
+)
