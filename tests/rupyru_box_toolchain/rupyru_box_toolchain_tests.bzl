@@ -29,6 +29,7 @@ _COMPATIBLE_WITH = SUPPORTS_BZLMOD + NOT_WINDOWS
 _RUST_TOOLS_SUFFIX = "crates/rupyru-box/rupyru-box"
 _PYTHON_EXE_ZIP_MAKER_SUFFIX = "tools/zipapp/exe_zip_maker_.py"
 _PYTHON_ZIPPER_SUFFIX = "tools/zipapp/zipper_.py"
+_PYTHON_ZIP_MAIN_MAKER_SUFFIX = "tools/zipapp/zip_main_maker_.py"
 _USE_RUST_FLAG = str(Label("//python/private/toolchains:use_rust_tools"))
 
 def _define_py_zipapp_subject(name):
@@ -71,6 +72,7 @@ def _test_py_zipapp_uses_toolchain_rupyru_box_impl(env, target):
     for mnemonic, subcommand in [
         ("PyZipAppCreateExecutableZip", "exe_zip_maker"),
         ("PyZipAppCreateZip", "zipper"),
+        ("PyZipAppCreateMainPy", "zip_main_maker"),
     ]:
         action = env.expect.that_target(target).action_named(mnemonic)
         action.argv().contains_predicate(
@@ -96,6 +98,7 @@ def _test_py_zipapp_flag_disabled_uses_python_fallbacks_impl(env, target):
     for mnemonic, py_suffix in [
         ("PyZipAppCreateExecutableZip", _PYTHON_EXE_ZIP_MAKER_SUFFIX),
         ("PyZipAppCreateZip", _PYTHON_ZIPPER_SUFFIX),
+        ("PyZipAppCreateMainPy", _PYTHON_ZIP_MAIN_MAKER_SUFFIX),
     ]:
         action = env.expect.that_target(target).action_named(mnemonic)
         action.argv().contains_predicate(
