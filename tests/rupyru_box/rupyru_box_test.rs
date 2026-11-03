@@ -17,7 +17,7 @@ fn temp_test_dir(prefix: &str) -> PathBuf {
 
 #[test]
 fn test_subcommands_registry_sorted_and_complete() {
-    assert_eq!(SUBCOMMANDS.len(), 4);
+    assert_eq!(SUBCOMMANDS.len(), 5);
     let mut sorted = SUBCOMMANDS.to_vec();
     sorted.sort_unstable();
     assert_eq!(SUBCOMMANDS, sorted.as_slice());
@@ -40,6 +40,10 @@ fn test_missing_or_unknown_subcommand_exits_one() {
 fn test_subcommand_arg_parsing_delegation() {
     assert_eq!(run_cli(["rupyru-box", "exe_zip_maker"]), 1);
     assert_eq!(run_cli(["rupyru-box", "exe_zip_maker", "--help"]), 1);
+    assert_eq!(
+        run_cli(["rupyru-box", "py_test_main_validator", "--unknown-flag"]),
+        2
+    );
 }
 
 #[test]
