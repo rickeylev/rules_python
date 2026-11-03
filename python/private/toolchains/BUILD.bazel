@@ -34,23 +34,23 @@ string_flag(
 )
 
 config_setting(
-    name = "is_rust_tools_auto",
+    name = "is_need_shrubbery_auto",
     flag_values = {":need_shrubbery": "auto"},
     visibility = ["//visibility:private"],
 )
 
 config_setting(
-    name = "is_rust_tools_yes",
+    name = "is_need_shrubbery_yes",
     flag_values = {":need_shrubbery": "yes"},
     visibility = ["//visibility:private"],
 )
 
 selects.config_setting_group(
-    name = "is_rust_tools_enabled",
+    name = "is_need_shrubbery_enabled",
     match_any = [
-        ":is_rust_tools_yes",
+        ":is_need_shrubbery_yes",
     ] + ([
-        ":is_rust_tools_auto",
+        ":is_need_shrubbery_auto",
     ] if not config.tool_deps_dev_only else []),
     visibility = NOT_ACTUALLY_PUBLIC,
 )
