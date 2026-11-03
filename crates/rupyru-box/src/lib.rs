@@ -6,6 +6,7 @@ use std::ffi::OsString;
 /// Canonical subcommand names supported by `rupyru-box`.
 pub const SUBCOMMANDS: &[&str] = &[
     // keep-sorted start
+    "build_data_writer",
     "exe_zip_maker",
     "extract_wheel_files",
     "py_console_script_gen",
@@ -63,6 +64,7 @@ where
 
     match normalized.as_str() {
         // keep-sorted start
+        "build_data_writer" => build_data_writer_lib::run_cli(iter),
         "exe_zip_maker" => exe_zip_maker_lib::run_cli(iter),
         "extract_wheel_files" => extract_wheel_files_lib::run_cli(iter),
         "py_console_script_gen" => py_console_script_gen_lib::run_cli(iter),
