@@ -1,13 +1,41 @@
 //! Library supporting creating self-executable zip files.
 
+use std::ffi::OsString;
 use std::fs::{self, File};
 use std::io::{self, BufReader, BufWriter, Read, Write};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use sha2::{Digest, Sha256};
 
 pub const BLOCK_SIZE: usize = 256 * 1024;
 pub const PLACEHOLDER: &[u8] = b"%ZIP_HASH%";
+
+/// Parsed command-line options for `exe_zip_maker`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Options {
+    pub preamble_path: PathBuf,
+    pub zip_path: PathBuf,
+    pub output_path: PathBuf,
+}
+
+/// Parses CLI arguments (excluding `argv[0]` and subcommand name) into [`Options`].
+pub fn parse_args<I, T>(args: I) -> Result<Options, String>
+where
+    I: IntoIterator<Item = T>,
+    T: Into<OsString>,
+{
+    let collected: Vec<OsString> = args.into_iter().map(Into::into).collect();
+    let is_help = collected.iter().any(|arg| arg == "-h" || arg == "--help");
+    if is_help || collected.len() != 3 {
+        return Err("Usage: exe_zip_maker <preamble> <zip> <output>".to_string());
+    }
+
+    Ok(Options {
+        preamble_path: PathBuf::from(&collected[0]),
+        zip_path: PathBuf::from(&collected[1]),
+        output_path: PathBuf::from(&collected[2]),
+    })
+}
 
 /// Replaces all occurrences of `from` with `to` in `src`.
 pub fn replace_bytes(src: &[u8], from: &[u8], to: &[u8]) -> Vec<u8> {
@@ -41,7 +69,7 @@ pub fn compute_file_sha256_hex(path: &Path) -> io::Result<String> {
         hasher.update(&buffer[..n]);
     }
     let digest = hasher.finalize();
-    Ok(format!("{:x}", digest))
+    Ok(digest.iter().map(|b| format!("{b:02x}")).collect())
 }
 
 /// Creates a self-executable zip archive by prepending a preamble to a zip archive
@@ -76,4 +104,29 @@ pub fn create_exe_zip(preamble_path: &Path, zip_path: &Path, output_path: &Path)
     }
 
     Ok(())
+}
+
+/// Parses CLI arguments (excluding `argv[0]` and subcommand name), creates the executable zip,
+/// and returns the process exit code.
+pub fn run_cli<I, T>(args: I) -> i32
+where
+    I: IntoIterator<Item = T>,
+    T: Into<OsString>,
+{
+    let options = match parse_args(args) {
+        Ok(opts) => opts,
+        Err(msg) => {
+            eprintln!("{}", msg);
+            return 1;
+        }
+    };
+    if let Err(err) = create_exe_zip(
+        &options.preamble_path,
+        &options.zip_path,
+        &options.output_path,
+    ) {
+        eprintln!("exe_zip_maker: error: {}", err);
+        return 1;
+    }
+    0
 }
