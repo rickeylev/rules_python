@@ -114,14 +114,53 @@ rust_crates = use_extension(
 
 # keep-sorted start block=yes
 rust_crates.spec(
+    package = "argfile",
+    version = "1.0.0",
+)
+
+# Omit default `simd-unsafe` feature so base64 stays 100% safe Rust.
+rust_crates.spec(
+    default_features = False,
+    features = ["std"],
+    package = "base64",
+    version = "0.23.1",
+)
+rust_crates.spec(
+    package = "csv",
+    version = "1.4.0",
+)
+
+# Use pure-Rust `rust_backend` instead of default C zlib (`miniz_oxide`) so
+# cross-compiled and static musl builds require no C toolchain.
+rust_crates.spec(
     default_features = False,
     features = ["rust_backend"],
     package = "flate2",
     version = "1.1.10",
 )
 rust_crates.spec(
+    package = "lexopt",
+    version = "0.3.2",
+)
+rust_crates.spec(
+    package = "pep440_rs",
+    version = "0.7.3",
+)
+rust_crates.spec(
+    package = "pep508_rs",
+    version = "0.9.2",
+)
+rust_crates.spec(
     package = "regex",
     version = "1.13.1",
+)
+rust_crates.spec(
+    package = "ruff_python_ast",
+    version = "0.0.20",
+)
+rust_crates.spec(
+    package = "ruff_python_parser",
+    version = "0.0.20",
 )
 rust_crates.spec(
     package = "sha2",
@@ -131,7 +170,7 @@ rust_crates.spec(
 # NOTE: zip 9.x added mandatory target-conditional OS deps (getrandom, nix,
 # windows-sys) that fail on powerpc64le-unknown-linux-musl until rules_rust
 # defines a powerpc64le @rules_rust//rust/platform config_setting. Keep on the
-# latest 8.x release until rules_rust supports powerpc64le platform selection.
+# latest 8.x release and disable unused C codec defaults (bzip2, zstd).
 rust_crates.spec(
     default_features = False,
     features = ["deflate-flate2"],
