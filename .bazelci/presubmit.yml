@@ -67,6 +67,10 @@ buildifier:
     ? "--noenable_bzlmod"
     ? "--enable_workspace"
     ? "--test_tag_filters=-integration-test"
+  coverage_flags:
+    ? "--noenable_bzlmod"
+    ? "--enable_workspace"
+    ? "--test_tag_filters=-integration-test"
   build_flags:
     ? "--noenable_bzlmod"
     ? "--enable_workspace"
