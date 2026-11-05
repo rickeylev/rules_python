@@ -211,7 +211,7 @@ bzl_library(
         "//python/private:py_wheel",
         "//python/private:toolchain_types",
         "//python/private:util",
-        "//python/private/toolchains:rupyru_box_toolchain",
+        "//python/private/toolchains:shrubbery_toolchain",
         "@bazel_skylib//rules:native_binary",
     ],
 )

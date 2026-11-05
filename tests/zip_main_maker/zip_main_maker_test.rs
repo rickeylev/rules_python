@@ -1,12 +1,14 @@
 use std::env;
+use std::ffi::OsString;
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::process::ExitCode;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use sha2::{Digest, Sha256};
 use zip_main_maker_lib::{
-    build_substitutions, compute_inputs_hash, expand_args, expand_template, generate_zip_main,
-    parse_args,
+    build_substitutions, compute_inputs_hash, expand_template, generate_zip_main, parse_args,
+    run_cli,
 };
 
 static TEST_COUNTER: AtomicUsize = AtomicUsize::new(0);
@@ -85,15 +87,15 @@ fn test_creates_zip_main() {
 
     fs::write(&manifest_path, format!("{}\n", raw_lines.join("\n"))).unwrap();
 
-    let args = vec![
-        "--template".to_string(),
-        template_path.to_string_lossy().into_owned(),
-        "--output".to_string(),
-        output_path.to_string_lossy().into_owned(),
-        "--substitution".to_string(),
-        "%FOO%=bar".to_string(),
-        "--hash_files_manifest".to_string(),
-        manifest_path.to_string_lossy().into_owned(),
+    let args: Vec<OsString> = vec![
+        "--template".into(),
+        template_path.as_os_str().to_owned(),
+        "--output".into(),
+        output_path.as_os_str().to_owned(),
+        "--substitution".into(),
+        "%FOO%=bar".into(),
+        "--hash_files_manifest".into(),
+        manifest_path.as_os_str().to_owned(),
     ];
 
     let options = parse_args(&args).unwrap();
@@ -244,11 +246,11 @@ fn test_flagfile_and_equals_flags_and_multiple_substitutions() {
         format!("--hash_files_manifest={}", manifest_path.display()),
     ];
 
-    let expanded = expand_args(&args).unwrap();
-    assert_eq!(expanded.len(), 9);
-
     let options = parse_args(&args).unwrap();
-    generate_zip_main(&options).unwrap();
+    assert_eq!(options.template, template_path);
+    assert_eq!(options.output, output_path);
+    assert_eq!(options.hash_files_manifest, manifest_path);
+    assert_eq!(run_cli(&args), ExitCode::SUCCESS);
 
     let expected_hash = compute_inputs_hash(&manifest_path).unwrap();
     let content = fs::read_to_string(&output_path).unwrap();
@@ -358,29 +360,37 @@ fn test_parse_args_errors() {
     assert!(parse_args(["--template=a", "--output=b"]).is_err());
 
     // Invalid substitution without '='
-    assert!(parse_args([
-        "--template=a",
-        "--output=b",
-        "--hash_files_manifest=c",
-        "--substitution=NO_EQUALS",
-    ])
-    .is_err());
+    assert!(
+        parse_args([
+            "--template=a",
+            "--output=b",
+            "--hash_files_manifest=c",
+            "--substitution=NO_EQUALS",
+        ])
+        .is_err()
+    );
 
     // Unknown flag
-    assert!(parse_args([
-        "--template=a",
-        "--output=b",
-        "--hash_files_manifest=c",
-        "--unknown=1",
-    ])
-    .is_err());
+    assert!(
+        parse_args([
+            "--template=a",
+            "--output=b",
+            "--hash_files_manifest=c",
+            "--unknown=1",
+        ])
+        .is_err()
+    );
 
     // Unexpected positional arg
-    assert!(parse_args([
-        "--template=a",
-        "--output=b",
-        "--hash_files_manifest=c",
-        "extra"
-    ])
-    .is_err());
+    assert!(
+        parse_args([
+            "--template=a",
+            "--output=b",
+            "--hash_files_manifest=c",
+            "extra"
+        ])
+        .is_err()
+    );
+
+    assert_eq!(run_cli::<_, &str>([]), ExitCode::FAILURE);
 }

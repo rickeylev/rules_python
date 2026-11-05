@@ -19,9 +19,9 @@ load("//python:py_binary.bzl", "py_binary")
 load("//python/private:bzlmod_enabled.bzl", "BZLMOD_ENABLED")
 load("//python/private:py_package.bzl", "py_package_lib")
 load("//python/private:py_wheel.bzl", _PyWheelInfo = "PyWheelInfo", _py_wheel = "py_wheel")
-load("//python/private:toolchain_types.bzl", "RUPYRU_BOX_TOOLCHAIN_TYPE")
+load("//python/private:toolchain_types.bzl", "SHRUBBERY_TOOLCHAIN_TYPE")
 load("//python/private:util.bzl", "copy_propagating_kwargs")
-load("//python/private/toolchains:rupyru_box_toolchain.bzl", "get_rupyru_box_tool")
+load("//python/private/toolchains:shrubbery_toolchain.bzl", "get_shrubbery_tool")
 
 # Re-export as public API
 PyWheelInfo = _PyWheelInfo
@@ -47,7 +47,7 @@ def _py_wheel_dist_impl(ctx):
     args.add("--name_file", name_file)
     args.add("--output", out.path)
 
-    tool = get_rupyru_box_tool(ctx, "py_wheel_dist", ctx.attr._copier)
+    tool = get_shrubbery_tool(ctx, "py_wheel_dist", ctx.attr._copier)
     ctx.actions.run(
         mnemonic = "PyWheelDistDir",
         executable = tool.files_to_run,
@@ -89,7 +89,7 @@ This also has the advantage that stamping information is included in the wheel's
         ),
     },
     toolchains = [
-        config_common.toolchain_type(RUPYRU_BOX_TOOLCHAIN_TYPE, mandatory = False),
+        config_common.toolchain_type(SHRUBBERY_TOOLCHAIN_TYPE, mandatory = False),
     ],
 )
 

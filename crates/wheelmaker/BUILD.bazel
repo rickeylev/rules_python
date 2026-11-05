@@ -8,8 +8,14 @@ licenses(["notice"])
 rust_library(
     name = "wheelmaker_lib",
     srcs = ["src/lib.rs"],
-    edition = "2021",
+    edition = "2024",
     deps = [
+        "@crates//:argfile",
+        "@crates//:base64",
+        "@crates//:csv",
+        "@crates//:lexopt",
+        "@crates//:pep440_rs",
+        "@crates//:pep508_rs",
         "@crates//:regex",
         "@crates//:sha2",
         "@crates//:zip",

@@ -1,16 +1,18 @@
 use std::collections::HashMap;
 use std::env;
+use std::ffi::OsString;
 use std::fs;
 use std::path::PathBuf;
+use std::process::ExitCode;
 use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::Mutex;
 
 use build_data_writer_lib::{
-    expand_args, parse_args, parse_env_and_args, run, write_build_data, BuildDataOptions,
+    BuildDataOptions, expand_args, parse_env_and_args, run_cli, write_build_data,
 };
 
 static TEST_COUNTER: AtomicUsize = AtomicUsize::new(0);
-static ENV_MUTEX: Mutex<()> = Mutex::new(());
+
+const NO_ARGS: [&str; 0] = [];
 
 fn create_temp_dir(prefix: &str) -> PathBuf {
     let id = TEST_COUNTER.fetch_add(1, Ordering::SeqCst);
@@ -38,26 +40,19 @@ fn test_env_configuration_both_status_files() {
     .unwrap();
     fs::write(&info_file, "BUILD_HOST build-box\nBUILD_USER builder\n").unwrap();
 
-    let mut env_map = HashMap::new();
-    env_map.insert(
-        "OUTPUT".to_string(),
-        output_path.to_string_lossy().into_owned(),
-    );
-    env_map.insert(
-        "TARGET".to_string(),
-        "//tests/build_data:build_data_test".to_string(),
-    );
-    env_map.insert("STAMPED".to_string(), "TRUE".to_string());
-    env_map.insert(
-        "VERSION_FILE".to_string(),
-        version_file.to_string_lossy().into_owned(),
-    );
-    env_map.insert(
-        "INFO_FILE".to_string(),
-        info_file.to_string_lossy().into_owned(),
-    );
+    let env_map: HashMap<&str, OsString> = HashMap::from([
+        ("OUTPUT", output_path.as_os_str().to_owned()),
+        (
+            "TARGET",
+            OsString::from("//tests/build_data:build_data_test"),
+        ),
+        ("STAMPED", OsString::from("TRUE")),
+        ("VERSION_FILE", version_file.as_os_str().to_owned()),
+        ("INFO_FILE", info_file.as_os_str().to_owned()),
+    ]);
 
-    let opts = parse_env_and_args(&[], |k| env_map.get(k).cloned()).unwrap();
+    let opts = parse_env_and_args(NO_ARGS, |k| env_map.get(k).cloned()).unwrap();
+    assert!(opts.stamped);
     write_build_data(&opts).unwrap();
 
     let result = fs::read_to_string(&output_path).unwrap();
@@ -70,20 +65,13 @@ fn test_env_configuration_both_status_files() {
         "BUILD_USER builder\n",
     );
     assert_eq!(result, expected);
-    assert!(result.contains("TARGET "));
-    assert!(result.contains("STAMPED TRUE"));
-    assert!(result.contains("BUILD_HOST "));
-    assert!(result.contains("BUILD_USER "));
-    assert!(result.contains("BUILD_TIMESTAMP "));
-    assert!(result.contains("FORMATTED_DATE "));
 
     let _ = fs::remove_dir_all(&temp_dir);
 }
 
 #[test]
-fn test_process_env_run_end_to_end() {
-    let _guard = ENV_MUTEX.lock().unwrap();
-    let temp_dir = create_temp_dir("proc_env");
+fn test_run_cli_end_to_end() {
+    let temp_dir = create_temp_dir("run_cli");
     let output_path = temp_dir.join("out.build_data.txt");
     let version_file = temp_dir.join("volatile.txt");
     let info_file = temp_dir.join("stable.txt");
@@ -91,26 +79,27 @@ fn test_process_env_run_end_to_end() {
     fs::write(&version_file, "BUILD_TIMESTAMP 42\n").unwrap();
     fs::write(&info_file, "BUILD_USER alice\n").unwrap();
 
-    env::set_var("OUTPUT", &output_path);
-    env::set_var("TARGET", "//pkg:bin");
-    env::set_var("STAMPED", "TRUE");
-    env::set_var("VERSION_FILE", &version_file);
-    env::set_var("INFO_FILE", &info_file);
+    let args = [
+        OsString::from("--output"),
+        output_path.as_os_str().to_owned(),
+        OsString::from("--target"),
+        OsString::from("//pkg:bin"),
+        OsString::from("--stamped"),
+        OsString::from("TRUE"),
+        OsString::from("--version_file"),
+        version_file.as_os_str().to_owned(),
+        OsString::from("--info_file"),
+        info_file.as_os_str().to_owned(),
+    ];
 
-    let run_res = run(&[]);
-
-    env::remove_var("OUTPUT");
-    env::remove_var("TARGET");
-    env::remove_var("STAMPED");
-    env::remove_var("VERSION_FILE");
-    env::remove_var("INFO_FILE");
-
-    run_res.unwrap();
+    assert_eq!(run_cli(args), ExitCode::SUCCESS);
     let content = fs::read_to_string(&output_path).unwrap();
     assert_eq!(
         content,
         "TARGET //pkg:bin\nSTAMPED TRUE\nBUILD_TIMESTAMP 42\nBUILD_USER alice\n"
     );
+
+    assert_eq!(run_cli(["--unknown-flag"]), ExitCode::FAILURE);
 
     let _ = fs::remove_dir_all(&temp_dir);
 }
@@ -126,17 +115,18 @@ fn test_cli_flags_space_and_equals_syntax() {
     fs::write(&info_file, "BUILD_HOST localhost\n").unwrap();
 
     let args = vec![
-        "--output".to_string(),
-        output_path.to_string_lossy().into_owned(),
-        "--target=//my:target".to_string(),
-        "--stamped".to_string(),
-        "FALSE".to_string(),
-        format!("--version_file={}", version_file.to_string_lossy()),
-        "--info_file".to_string(),
-        info_file.to_string_lossy().into_owned(),
+        OsString::from("--output"),
+        output_path.as_os_str().to_owned(),
+        OsString::from("--target=//my:target"),
+        OsString::from("--stamped"),
+        OsString::from("FALSE"),
+        OsString::from(format!("--version_file={}", version_file.display())),
+        OsString::from("--info_file"),
+        info_file.as_os_str().to_owned(),
     ];
 
-    let opts = parse_env_and_args(&args, |_| None).unwrap();
+    let opts = parse_env_and_args(args, |_| None).unwrap();
+    assert!(!opts.stamped);
     write_build_data(&opts).unwrap();
 
     let content = fs::read_to_string(&output_path).unwrap();
@@ -157,25 +147,21 @@ fn test_cli_flags_override_and_supplement_env() {
 
     fs::write(&version_file, "VOLATILE_KEY val\n").unwrap();
 
-    let mut env_map = HashMap::new();
-    env_map.insert(
-        "OUTPUT".to_string(),
-        env_output.to_string_lossy().into_owned(),
-    );
-    env_map.insert("TARGET".to_string(), "//env:target".to_string());
-    env_map.insert("STAMPED".to_string(), "FALSE".to_string());
-    env_map.insert(
-        "VERSION_FILE".to_string(),
-        version_file.to_string_lossy().into_owned(),
-    );
+    let env_map: HashMap<&str, OsString> = HashMap::from([
+        ("OUTPUT", env_output.as_os_str().to_owned()),
+        ("TARGET", OsString::from("//env:target")),
+        ("STAMPED", OsString::from("FALSE")),
+        ("VERSION_FILE", version_file.as_os_str().to_owned()),
+    ]);
 
     let args = vec![
-        "--output".to_string(),
-        cli_output.to_string_lossy().into_owned(),
-        "--stamped=TRUE".to_string(),
+        OsString::from("--output"),
+        cli_output.as_os_str().to_owned(),
+        OsString::from("--stamped=TRUE"),
     ];
 
-    let opts = parse_env_and_args(&args, |k| env_map.get(k).cloned()).unwrap();
+    let opts = parse_env_and_args(args, |k| env_map.get(k).cloned()).unwrap();
+    assert!(opts.stamped);
     write_build_data(&opts).unwrap();
 
     assert!(!env_output.exists());
@@ -189,6 +175,25 @@ fn test_cli_flags_override_and_supplement_env() {
 }
 
 #[test]
+fn test_stamped_boolean_parsing_variants() {
+    for truthy in ["TRUE", "true", "1"] {
+        let opts =
+            parse_env_and_args(["--output=/tmp/out.txt", "--stamped", truthy], |_| None).unwrap();
+        assert!(opts.stamped, "expected true for {truthy}");
+    }
+
+    for falsy in ["FALSE", "false", "0", ""] {
+        let opts =
+            parse_env_and_args(["--output=/tmp/out.txt", "--stamped", falsy], |_| None).unwrap();
+        assert!(!opts.stamped, "expected false for {falsy}");
+    }
+
+    let err =
+        parse_env_and_args(["--output=/tmp/out.txt", "--stamped=maybe"], |_| None).unwrap_err();
+    assert!(err.contains("STAMPED/--stamped"), "unexpected error: {err}");
+}
+
+#[test]
 fn test_empty_or_unset_version_and_info_files() {
     let temp_dir = create_temp_dir("empty_unset");
     let output_path = temp_dir.join("unstamped.txt");
@@ -199,7 +204,7 @@ fn test_empty_or_unset_version_and_info_files() {
     let opts = BuildDataOptions {
         output: output_path.clone(),
         target: "//foo:bar".to_string(),
-        stamped: "FALSE".to_string(),
+        stamped: false,
         version_file: None,
         info_file: None,
     };
@@ -210,17 +215,15 @@ fn test_empty_or_unset_version_and_info_files() {
     );
 
     // Case 2: VERSION_FILE and INFO_FILE set to empty strings in env
-    let mut env_map = HashMap::new();
-    env_map.insert(
-        "OUTPUT".to_string(),
-        output_path.to_string_lossy().into_owned(),
-    );
-    env_map.insert("TARGET".to_string(), "//foo:baz".to_string());
-    env_map.insert("STAMPED".to_string(), "TRUE".to_string());
-    env_map.insert("VERSION_FILE".to_string(), "".to_string());
-    env_map.insert("INFO_FILE".to_string(), "".to_string());
+    let env_map: HashMap<&str, OsString> = HashMap::from([
+        ("OUTPUT", output_path.as_os_str().to_owned()),
+        ("TARGET", OsString::from("//foo:baz")),
+        ("STAMPED", OsString::from("TRUE")),
+        ("VERSION_FILE", OsString::new()),
+        ("INFO_FILE", OsString::new()),
+    ]);
 
-    let parsed = parse_env_and_args(&[], |k| env_map.get(k).cloned()).unwrap();
+    let parsed = parse_env_and_args(NO_ARGS, |k| env_map.get(k).cloned()).unwrap();
     assert_eq!(parsed.version_file, None);
     assert_eq!(parsed.info_file, None);
     write_build_data(&parsed).unwrap();
@@ -233,8 +236,8 @@ fn test_empty_or_unset_version_and_info_files() {
     let opts_empty_file = BuildDataOptions {
         output: output_path.clone(),
         target: "//foo:qux".to_string(),
-        stamped: "TRUE".to_string(),
-        version_file: Some(empty_file.clone()),
+        stamped: true,
+        version_file: Some(empty_file),
         info_file: None,
     };
     write_build_data(&opts_empty_file).unwrap();
@@ -260,7 +263,7 @@ fn test_status_files_without_trailing_newline() {
     let opts = BuildDataOptions {
         output: output_path.clone(),
         target: "//a:b".to_string(),
-        stamped: "TRUE".to_string(),
+        stamped: true,
         version_file: Some(version_file),
         info_file: Some(info_file),
     };
@@ -283,7 +286,7 @@ fn test_truncates_existing_output_and_creates_parent_dirs() {
     let opts1 = BuildDataOptions {
         output: output_path.clone(),
         target: "//first:target_with_long_previous_content".to_string(),
-        stamped: "TRUE".to_string(),
+        stamped: true,
         version_file: None,
         info_file: None,
     };
@@ -292,7 +295,7 @@ fn test_truncates_existing_output_and_creates_parent_dirs() {
     let opts2 = BuildDataOptions {
         output: output_path.clone(),
         target: "//second:short".to_string(),
-        stamped: "FALSE".to_string(),
+        stamped: false,
         version_file: None,
         info_file: None,
     };
@@ -305,7 +308,7 @@ fn test_truncates_existing_output_and_creates_parent_dirs() {
 }
 
 #[test]
-fn test_flagfile_expansion() {
+fn test_flagfile_expansion_and_blank_lines_and_bare_at() {
     let temp_dir = create_temp_dir("flagfile");
     let output_path = temp_dir.join("out.txt");
     let flagfile = temp_dir.join("params.txt");
@@ -313,13 +316,13 @@ fn test_flagfile_expansion() {
     fs::write(
         &flagfile,
         format!(
-            "--output\n{}\n--target=//flag:file\n--stamped=TRUE\n",
-            output_path.to_string_lossy()
+            "--output\n{}\n\n--target=//flag:file\n--stamped=TRUE\n\n",
+            output_path.display()
         ),
     )
     .unwrap();
 
-    let raw_args = vec![format!("@{}", flagfile.to_string_lossy())];
+    let raw_args = vec![format!("@{}", flagfile.display())];
     let expanded = expand_args(&raw_args).unwrap();
     assert_eq!(expanded.len(), 4);
 
@@ -329,28 +332,30 @@ fn test_flagfile_expansion() {
     let content = fs::read_to_string(&output_path).unwrap();
     assert_eq!(content, "TARGET //flag:file\nSTAMPED TRUE\n");
 
+    assert!(expand_args(["@"]).is_err());
+
     let _ = fs::remove_dir_all(&temp_dir);
 }
 
 #[test]
 fn test_missing_output_error_handling() {
-    let _guard = ENV_MUTEX.lock().unwrap();
-    env::remove_var("OUTPUT");
-
     // Missing from both env and CLI
-    let err = parse_args(&[]).unwrap_err();
-    assert!(err.contains("OUTPUT"), "unexpected error: {}", err);
+    let err = parse_env_and_args(NO_ARGS, |_| None).unwrap_err();
+    assert!(err.contains("OUTPUT"), "unexpected error: {err}");
+
+    // Empty OUTPUT env var also fails
+    let err_empty_env =
+        parse_env_and_args(NO_ARGS, |k| (k == "OUTPUT").then(OsString::new)).unwrap_err();
+    assert!(
+        err_empty_env.contains("OUTPUT"),
+        "unexpected error: {err_empty_env}"
+    );
 
     // Explicitly empty --output="" overrides env and fails
-    let mut env_map = HashMap::new();
-    env_map.insert("OUTPUT".to_string(), "/tmp/some_path.txt".to_string());
-    let err2 =
-        parse_env_and_args(&["--output=".to_string()], |k| env_map.get(k).cloned()).unwrap_err();
-    assert!(err2.contains("OUTPUT"), "unexpected error: {}", err2);
-
-    // Direct call to write_build_data with empty output path fails
-    let bad_opts = BuildDataOptions::default();
-    assert!(write_build_data(&bad_opts).is_err());
+    let env_map: HashMap<&str, OsString> =
+        HashMap::from([("OUTPUT", OsString::from("/tmp/some_path.txt"))]);
+    let err2 = parse_env_and_args(["--output="], |k| env_map.get(k).cloned()).unwrap_err();
+    assert!(err2.contains("OUTPUT"), "unexpected error: {err2}");
 }
 
 #[test]
@@ -359,18 +364,18 @@ fn test_invalid_cli_args_and_missing_status_file_errors() {
     let output_path = temp_dir.join("out.txt");
 
     // Unknown flag
-    let err_unknown = parse_env_and_args(&["--unknown-flag".to_string()], |_| None).unwrap_err();
+    let err_unknown = parse_env_and_args(["--unknown-flag"], |_| None).unwrap_err();
     assert!(err_unknown.contains("unexpected argument"));
 
     // Flag missing value
-    let err_missing_val = parse_env_and_args(&["--output".to_string()], |_| None).unwrap_err();
+    let err_missing_val = parse_env_and_args(["--output"], |_| None).unwrap_err();
     assert!(err_missing_val.contains("requires a value"));
 
     // Nonexistent VERSION_FILE fails on write_build_data
     let opts = BuildDataOptions {
         output: output_path,
         target: "//t:t".to_string(),
-        stamped: "TRUE".to_string(),
+        stamped: true,
         version_file: Some(temp_dir.join("does_not_exist.txt")),
         info_file: None,
     };

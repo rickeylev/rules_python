@@ -9,10 +9,11 @@ rust_test(
     size = "small",
     srcs = ["venv_shebang_rewriter_test.rs"],
     data = [
-        "//crates/rupyru-box",
+        "//crates/shrubbery",
     ],
+    edition = "2024",
     env = {
-        "RUPYRU_BOX_BIN": "$(rootpath //crates/rupyru-box)",
+        "SHRUBBERY_BIN": "$(rootpath //crates/shrubbery)",
     },
     deps = [
         "//crates/venv_shebang_rewriter:venv_shebang_rewriter_lib",

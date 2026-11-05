@@ -2,12 +2,12 @@
 
 load("//python/private:attributes.bzl", "WINDOWS_CONSTRAINTS_PLAIN_ATTRS")
 load("//python/private:common.bzl", "is_windows_platform")
-load("//python/private:toolchain_types.bzl", "RUPYRU_BOX_TOOLCHAIN_TYPE")
-load("//python/private/toolchains:rupyru_box_toolchain.bzl", "get_rupyru_box_tool")
+load("//python/private:toolchain_types.bzl", "SHRUBBERY_TOOLCHAIN_TYPE")
+load("//python/private/toolchains:shrubbery_toolchain.bzl", "get_shrubbery_tool")
 
 def _gen_wheel_record_impl(ctx):
     is_windows = is_windows_platform(ctx)
-    tool = get_rupyru_box_tool(
+    tool = get_shrubbery_tool(
         ctx,
         "wheel_record_rewriter",
         ctx.attr._wheel_record_rewriter,
@@ -93,6 +93,6 @@ gen_wheel_record = rule(
         ),
     },
     toolchains = [
-        config_common.toolchain_type(RUPYRU_BOX_TOOLCHAIN_TYPE, mandatory = False),
+        config_common.toolchain_type(SHRUBBERY_TOOLCHAIN_TYPE, mandatory = False),
     ],
 )

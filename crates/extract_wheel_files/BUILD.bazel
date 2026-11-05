@@ -8,8 +8,10 @@ licenses(["notice"])
 rust_library(
     name = "extract_wheel_files_lib",
     srcs = ["src/lib.rs"],
-    edition = "2021",
+    edition = "2024",
     deps = [
+        "@crates//:csv",
+        "@crates//:lexopt",
         "@crates//:regex",
         "@crates//:zip",
     ],

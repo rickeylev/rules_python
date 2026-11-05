@@ -18,9 +18,9 @@ load("//python/private:common_labels.bzl", "labels")
 load("//python/private:py_executable_info.bzl", "PyExecutableInfo")
 load("//python/private:py_internal.bzl", "py_internal")
 load("//python/private:py_runtime_info.bzl", "PyRuntimeInfo")
-load("//python/private:toolchain_types.bzl", "EXEC_TOOLS_TOOLCHAIN_TYPE", "LAUNCHER_MAKER_TOOLCHAIN_TYPE", "RUPYRU_BOX_TOOLCHAIN_TYPE")
+load("//python/private:toolchain_types.bzl", "EXEC_TOOLS_TOOLCHAIN_TYPE", "LAUNCHER_MAKER_TOOLCHAIN_TYPE", "SHRUBBERY_TOOLCHAIN_TYPE")
 load("//python/private:transition_labels.bzl", "TRANSITION_LABELS")
-load("//python/private/toolchains:rupyru_box_toolchain.bzl", "get_rupyru_box_tool")
+load("//python/private/toolchains:shrubbery_toolchain.bzl", "get_shrubbery_tool")
 
 def _is_symlink(f):
     if hasattr(f, "is_symlink"):
@@ -67,7 +67,7 @@ def _create_zipapp_main_py(ctx, py_runtime, py_executable, stage2_bootstrap, run
     inputs.add(py_runtime.zip_main_template)
     _build_manifest(ctx, hash_files_manifest, runfiles, explicit_symlinks, inputs)
 
-    zip_main_maker = get_rupyru_box_tool(
+    zip_main_maker = get_shrubbery_tool(
         ctx,
         "zip_main_maker",
         ctx.attr._zip_main_maker,
@@ -183,7 +183,7 @@ def _create_zip(ctx, py_runtime, py_executable, stage2_bootstrap):
     is_windows = is_windows_platform(ctx)
     zipper_args.add("\\" if is_windows else "/", format = "--target-platform-pathsep=%s")
 
-    zipper = get_rupyru_box_tool(ctx, "zipper", ctx.attr._zipper)
+    zipper = get_shrubbery_tool(ctx, "zipper", ctx.attr._zipper)
     actions_run(
         ctx,
         executable = zipper.executable,
@@ -234,7 +234,7 @@ def _create_self_executable_zip(ctx, preamble, zip_file):
     args.add(preamble)
     args.add(zip_file)
     args.add(pyz)
-    exe_zip_maker = get_rupyru_box_tool(
+    exe_zip_maker = get_shrubbery_tool(
         ctx,
         "exe_zip_maker",
         ctx.attr._exe_zip_maker,
@@ -413,7 +413,7 @@ Whether the output should be an executable zip file.
 
 _TOOLCHAINS = [
     EXEC_TOOLS_TOOLCHAIN_TYPE,
-    config_common.toolchain_type(RUPYRU_BOX_TOOLCHAIN_TYPE, mandatory = False),
+    config_common.toolchain_type(SHRUBBERY_TOOLCHAIN_TYPE, mandatory = False),
 ] + ([LAUNCHER_MAKER_TOOLCHAIN_TYPE] if rp_config.bazel_9_or_later else [])
 
 _COMMON_RULE_DOC = """

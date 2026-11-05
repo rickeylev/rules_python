@@ -19,6 +19,6 @@ bzl_library(
     srcs = ["whl_filegroup.bzl"],
     deps = [
         "//python/private:toolchain_types",
-        "//python/private/toolchains:rupyru_box_toolchain",
+        "//python/private/toolchains:shrubbery_toolchain",
     ],
 )

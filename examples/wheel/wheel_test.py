@@ -528,15 +528,24 @@ Tag: cp38-abi3-{os_string}_{arch}
                     if line.startswith(b"Requires-Dist:"):
                         requires.append(line.decode("utf-8").strip())
 
-            self.assertEqual(
-                [
-                    "Requires-Dist: tomli>=2.0.0",
-                    "Requires-Dist: starlark",
-                    "Requires-Dist: pyyaml!=6.0.1,>=6.0.0; extra == 'example'",
-                    'Requires-Dist: toml; ((python_version == "3.11" or python_version == "3.12") and python_version != "3.8") and extra == \'example\'',
-                    'Requires-Dist: wheel; (python_version == "3.11" or python_version == "3.12") and extra == \'example\'',
-                ],
+            self.assertIn(
                 requires,
+                [
+                    [
+                        "Requires-Dist: tomli>=2.0.0",
+                        "Requires-Dist: starlark",
+                        "Requires-Dist: pyyaml!=6.0.1,>=6.0.0; extra == 'example'",
+                        'Requires-Dist: toml; ((python_version == "3.11" or python_version == "3.12") and python_version != "3.8") and extra == \'example\'',
+                        'Requires-Dist: wheel; (python_version == "3.11" or python_version == "3.12") and extra == \'example\'',
+                    ],
+                    [
+                        "Requires-Dist: tomli>=2.0.0",
+                        "Requires-Dist: starlark",
+                        "Requires-Dist: pyyaml!=6.0.1,>=6.0.0; extra == 'example'",
+                        "Requires-Dist: toml; python_full_version >= '3.11' and python_full_version < '3.13' and extra == 'example'",
+                        "Requires-Dist: wheel; python_full_version >= '3.11' and python_full_version < '3.13' and extra == 'example'",
+                    ],
+                ],
             )
 
     def test_empty_requires_file(self):
@@ -597,16 +606,26 @@ Tag: cp38-abi3-{os_string}_{arch}
                         requires.append(line.decode("utf-8").strip())
 
             print(requires)
-            self.assertEqual(
-                [
-                    "Requires-Dist: tomli>=2.0.0",
-                    "Requires-Dist: starlark",
-                    'Requires-Dist: pytest; python_version != "3.8"',
-                    "Requires-Dist: pyyaml!=6.0.1,>=6.0.0; extra == 'example'",
-                    'Requires-Dist: toml; ((python_version == "3.11" or python_version == "3.12") and python_version != "3.8") and extra == \'example\'',
-                    'Requires-Dist: wheel; (python_version == "3.11" or python_version == "3.12") and extra == \'example\'',
-                ],
+            self.assertIn(
                 requires,
+                [
+                    [
+                        "Requires-Dist: tomli>=2.0.0",
+                        "Requires-Dist: starlark",
+                        'Requires-Dist: pytest; python_version != "3.8"',
+                        "Requires-Dist: pyyaml!=6.0.1,>=6.0.0; extra == 'example'",
+                        'Requires-Dist: toml; ((python_version == "3.11" or python_version == "3.12") and python_version != "3.8") and extra == \'example\'',
+                        'Requires-Dist: wheel; (python_version == "3.11" or python_version == "3.12") and extra == \'example\'',
+                    ],
+                    [
+                        "Requires-Dist: tomli>=2.0.0",
+                        "Requires-Dist: starlark",
+                        "Requires-Dist: pytest; python_full_version != '3.8.*'",
+                        "Requires-Dist: pyyaml!=6.0.1,>=6.0.0; extra == 'example'",
+                        "Requires-Dist: toml; python_full_version >= '3.11' and python_full_version < '3.13' and extra == 'example'",
+                        "Requires-Dist: wheel; python_full_version >= '3.11' and python_full_version < '3.13' and extra == 'example'",
+                    ],
+                ],
             )
 
     def test_requires_dist_depends_on_extras(self):
@@ -656,11 +675,12 @@ Tag: cp38-abi3-{os_string}_{arch}
                         requires.append(line.decode("utf-8").strip())
 
             print(requires)
-            self.assertEqual(
-                [
-                    "Requires-Dist: extra_requires[example]==0.0.1",
-                ],
+            self.assertIn(
                 requires,
+                [
+                    ["Requires-Dist: extra_requires[example]==0.0.1"],
+                    ["Requires-Dist: extra-requires[example]==0.0.1"],
+                ],
             )
 
     def test_data_files_installed_in_folder(self):

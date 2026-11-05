@@ -563,7 +563,7 @@ bzl_library(
         ":toolchain_types",
         ":transition_labels",
         ":venv_runfiles",
-        "//python/private/toolchains:rupyru_box_toolchain",
+        "//python/private/toolchains:shrubbery_toolchain",
         "@bazel_skylib//lib:dicts",
         "@bazel_skylib//lib:paths",
         "@bazel_skylib//lib:structs",
@@ -737,7 +737,7 @@ bzl_library(
         ":toolchain_types",
         ":transition_labels",
         ":version",
-        "//python/private/toolchains:rupyru_box_toolchain",
+        "//python/private/toolchains:shrubbery_toolchain",
     ],
 )
 
@@ -947,7 +947,7 @@ bzl_library(
     srcs = ["py_console_script_gen.bzl"],
     deps = [
         ":toolchain_types",
-        "//python/private/toolchains:rupyru_box_toolchain",
+        "//python/private/toolchains:shrubbery_toolchain",
     ],
 )
 

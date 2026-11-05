@@ -1,15 +1,15 @@
 use std::env;
 use std::fs;
 use std::path::PathBuf;
-use std::process::Command;
+use std::process::{Command, ExitCode};
 
-use rupyru_box_lib::{run_cli, SUBCOMMANDS};
+use shrubbery_lib::{SUBCOMMANDS, run_cli};
 
 fn temp_test_dir(prefix: &str) -> PathBuf {
     let base = env::var_os("TEST_TMPDIR")
         .map(PathBuf::from)
         .unwrap_or_else(env::temp_dir);
-    let dir = base.join(format!("rupyru_box_{}_{}", prefix, std::process::id()));
+    let dir = base.join(format!("shrubbery_{}_{}", prefix, std::process::id()));
     let _ = fs::remove_dir_all(&dir);
     fs::create_dir_all(&dir).unwrap();
     dir
@@ -25,33 +25,37 @@ fn test_subcommands_registry_sorted_and_complete() {
 
 #[test]
 fn test_help_flags_exit_zero() {
-    assert_eq!(run_cli(["rupyru-box", "--help"]), 0);
-    assert_eq!(run_cli(["rupyru-box", "-h"]), 0);
-    assert_eq!(run_cli(["rupyru-box", "help"]), 0);
+    assert_eq!(run_cli(["shrubbery", "--help"]), ExitCode::SUCCESS);
+    assert_eq!(run_cli(["shrubbery", "-h"]), ExitCode::SUCCESS);
+    assert_eq!(run_cli(["shrubbery", "help"]), ExitCode::SUCCESS);
 }
 
 #[test]
 fn test_missing_or_unknown_subcommand_exits_one() {
-    assert_eq!(run_cli(["rupyru-box"]), 1);
-    assert_eq!(run_cli(["rupyru-box", "does_not_exist"]), 1);
+    assert_eq!(run_cli(["shrubbery"]), ExitCode::FAILURE);
+    assert_eq!(run_cli(["shrubbery", "does_not_exist"]), ExitCode::FAILURE);
+    assert_eq!(run_cli(["shrubbery", "--unknown-flag"]), ExitCode::FAILURE);
 }
 
 #[test]
 fn test_subcommand_arg_parsing_delegation() {
-    assert_eq!(run_cli(["rupyru-box", "exe_zip_maker"]), 1);
-    assert_eq!(run_cli(["rupyru-box", "exe_zip_maker", "--help"]), 1);
+    assert_eq!(run_cli(["shrubbery", "exe_zip_maker"]), ExitCode::FAILURE);
     assert_eq!(
-        run_cli(["rupyru-box", "venv_shebang_rewriter", "only_one"]),
-        1
+        run_cli(["shrubbery", "exe_zip_maker", "--help"]),
+        ExitCode::FAILURE
     );
     assert_eq!(
-        run_cli(["rupyru-box", "py_test_main_validator", "--unknown-flag"]),
-        2
+        run_cli(["shrubbery", "venv_shebang_rewriter", "only_one"]),
+        ExitCode::FAILURE
+    );
+    assert_eq!(
+        run_cli(["shrubbery", "py_test_main_validator", "--unknown-flag"]),
+        ExitCode::from(2)
     );
 }
 
 #[test]
-fn test_subcommand_hyphen_normalization_and_forwarding() {
+fn test_subcommand_forwarding_and_hyphen_rejection() {
     let dir = temp_test_dir("dispatch");
     let preamble = dir.join("preamble.sh");
     let zip_in = dir.join("in.zip");
@@ -67,33 +71,32 @@ fn test_subcommand_hyphen_normalization_and_forwarding() {
 
     assert_eq!(
         run_cli([
-            "rupyru-box",
+            "shrubbery",
             "exe_zip_maker",
             preamble.to_str().unwrap(),
             zip_in.to_str().unwrap(),
             out_underscore.to_str().unwrap(),
         ]),
-        0
+        ExitCode::SUCCESS
     );
+    assert!(out_underscore.exists());
+
     assert_eq!(
         run_cli([
-            "rupyru-box",
+            "shrubbery",
             "exe-zip-maker",
             preamble.to_str().unwrap(),
             zip_in.to_str().unwrap(),
             out_hyphen.to_str().unwrap(),
         ]),
-        0
+        ExitCode::FAILURE
     );
-    assert_eq!(
-        fs::read(&out_underscore).unwrap(),
-        fs::read(&out_hyphen).unwrap()
-    );
+    assert!(!out_hyphen.exists());
 }
 
 #[test]
 fn test_cli_binary_subprocess() {
-    let Some(bin_rel) = env::var_os("RUPYRU_BOX_BIN") else {
+    let Some(bin_rel) = env::var_os("SHRUBBERY_BIN") else {
         return;
     };
     let bin_path = PathBuf::from(&bin_rel);
@@ -112,8 +115,12 @@ fn test_cli_binary_subprocess() {
     let help_out = Command::new(&resolved).arg("--help").output().unwrap();
     assert_eq!(help_out.status.code(), Some(0));
     let stdout = String::from_utf8_lossy(&help_out.stdout);
+    assert!(
+        stdout.contains("A nice, two-level effect"),
+        "missing Monty Python header in help: {stdout}"
+    );
     for sub in SUBCOMMANDS {
-        assert!(stdout.contains(sub), "missing {} in help: {}", sub, stdout);
+        assert!(stdout.contains(sub), "missing {sub} in help: {stdout}");
     }
 
     let bad_out = Command::new(&resolved)

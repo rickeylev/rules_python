@@ -6,9 +6,9 @@ package(default_visibility = ["//:__subpackages__"])
 licenses(["notice"])
 
 rust_library(
-    name = "rupyru_box_lib",
+    name = "shrubbery_lib",
     srcs = ["src/lib.rs"],
-    edition = "2021",
+    edition = "2024",
     deps = [
         "//crates/build_data_writer:build_data_writer_lib",
         "//crates/exe_zip_maker:exe_zip_maker_lib",
@@ -21,15 +21,16 @@ rust_library(
         "//crates/wheelmaker:wheelmaker_lib",
         "//crates/zip_main_maker:zip_main_maker_lib",
         "//crates/zipper:zipper_lib",
+        "@crates//:lexopt",
     ],
 )
 
 rust_binary(
-    name = "rupyru-box",
+    name = "shrubbery",
     srcs = ["src/main.rs"],
-    edition = "2021",
+    edition = "2024",
     visibility = ["//visibility:public"],
-    deps = [":rupyru_box_lib"],
+    deps = [":shrubbery_lib"],
 )
 
 distribution_filegroup(

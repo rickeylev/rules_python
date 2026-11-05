@@ -1,11 +1,12 @@
 use std::env;
 use std::fs;
 use std::path::PathBuf;
+use std::process::ExitCode;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use py_test_main_validator_lib::{
-    format_error, module_runs_something_str, module_runs_tests_bytes, module_runs_tests_str,
-    parse_args, run, validate_test_main, ValidatorOptions,
+    ValidatorOptions, format_error, module_runs_something_str, module_runs_tests_bytes,
+    module_runs_tests_str, parse_args, run, run_cli, validate_test_main,
 };
 
 static COUNTER: AtomicUsize = AtomicUsize::new(0);
@@ -640,7 +641,7 @@ fn test_cli_passing_test_main_writes_empty_output() {
         &mut stderr,
     );
 
-    assert_eq!(code, 0);
+    assert_eq!(code, ExitCode::SUCCESS);
     assert!(stderr.is_empty());
     assert_eq!(fs::read_to_string(&out).unwrap(), "");
 }
@@ -668,7 +669,7 @@ fn test_cli_inert_test_main_fails_with_exact_error_and_no_output() {
         &mut stderr,
     );
 
-    assert_eq!(code, 1);
+    assert_eq!(code, ExitCode::FAILURE);
     assert!(!out.exists(), "output file must not be written on failure");
     let stderr_str = String::from_utf8(stderr).unwrap();
     let expected = format!(
@@ -695,7 +696,7 @@ fn test_cli_syntax_error_warns_writes_output_and_exits_zero() {
     };
 
     let code = validate_test_main(&opts, &mut stderr).unwrap();
-    assert_eq!(code, 0);
+    assert_eq!(code, ExitCode::SUCCESS);
     assert_eq!(fs::read_to_string(&out).unwrap(), "");
     let stderr_str = String::from_utf8(stderr).unwrap();
     assert!(
@@ -731,7 +732,7 @@ fn test_cli_flagfile_and_label_fallback() {
 
     let mut stderr = Vec::new();
     let code = validate_test_main(&parsed, &mut stderr).unwrap();
-    assert_eq!(code, 1);
+    assert_eq!(code, ExitCode::FAILURE);
     let stderr_str = String::from_utf8(stderr).unwrap();
     // When `--label` is empty, `target` falls back to `src_name`.
     assert!(stderr_str.starts_with("py_test target pkg/inert.py will not run any tests.\n"));
@@ -828,7 +829,7 @@ fn test_nested_tuple_and_list_unpacking_targets() {
         ],
         &mut stderr,
     );
-    assert_eq!(code, 1);
+    assert_eq!(code, ExitCode::FAILURE);
     assert!(!out.exists());
 
     // CLI exits 0 on active top-level nested unpacking.
@@ -851,7 +852,7 @@ fn test_nested_tuple_and_list_unpacking_targets() {
         ],
         &mut stderr,
     );
-    assert_eq!(code, 0);
+    assert_eq!(code, ExitCode::SUCCESS);
     assert!(out.exists());
 }
 
@@ -876,4 +877,33 @@ fn test_fstring_backslash_before_braces() {
         module_runs_tests_str("def test_win_path():\n    pass\np = rf\"C:\\{run_tests()}\"\n"),
         Ok(true)
     );
+}
+
+#[test]
+fn test_pep263_coding_cookies_and_run_cli_exit_codes() {
+    // Line 1 & line 2 Latin-1 coding cookies with non-UTF-8 bytes.
+    assert_eq!(
+        module_runs_tests_bytes(b"# -*- coding: latin-1 -*-\ndef test_f():\n    s = '\xe9'\n"),
+        Ok(false)
+    );
+    assert_eq!(
+        module_runs_tests_bytes(
+            b"#!/usr/bin/env python3\n# vim: set fileencoding=iso-8859-1 :\ndef test_f():\n    s = '\xe9'\nunittest.main()\n"
+        ),
+        Ok(true)
+    );
+
+    // ASCII coding cookie rejects non-ASCII bytes.
+    assert!(module_runs_tests_bytes(b"# coding: ascii\nx = '\xe9'\n").is_err());
+
+    // UTF-8 BOM conflicting with non-UTF-8 coding cookie is a SyntaxError.
+    assert!(module_runs_tests_bytes(b"\xef\xbb\xbf# coding: latin-1\nx = 1\n").is_err());
+
+    // Unknown encoding cookie is a SyntaxError.
+    assert!(module_runs_tests_bytes(b"# coding: made_up_encoding_xyz\nx = 1\n").is_err());
+
+    // Invalid CLI arguments return exit code 2 matching argparse.
+    let mut stderr = Vec::new();
+    assert_eq!(run::<_, &str>([], &mut stderr), ExitCode::from(2));
+    assert_eq!(run_cli(["--unknown-flag"]), ExitCode::from(2));
 }

@@ -8,7 +8,14 @@ licenses(["notice"])
 rust_library(
     name = "py_test_main_validator_lib",
     srcs = ["src/lib.rs"],
-    edition = "2021",
+    edition = "2024",
+    deps = [
+        "@crates//:argfile",
+        "@crates//:lexopt",
+        "@crates//:regex",
+        "@crates//:ruff_python_ast",
+        "@crates//:ruff_python_parser",
+    ],
 )
 
 distribution_filegroup(

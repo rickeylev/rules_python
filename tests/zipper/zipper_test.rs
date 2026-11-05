@@ -3,10 +3,13 @@ use std::env;
 use std::fs::{self, File};
 use std::io::Read;
 use std::path::{Path, PathBuf};
+use std::process::ExitCode;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use zip::{CompressionMethod, DateTime, ZipArchive};
-use zipper_lib::{convert_symlink_target, create_zip, parse_args, relative_path, ZipOptions};
+use zipper_lib::{
+    ZipOptions, convert_symlink_target, create_zip, parse_args, relative_path, run_cli,
+};
 
 static TEST_COUNTER: AtomicUsize = AtomicUsize::new(0);
 
@@ -623,6 +626,17 @@ fn test_parse_args_cli() {
     assert!(parse_args(["only_one_arg"]).is_err());
     assert!(parse_args(["a", "b", "--legacy-external-runfiles=2"]).is_err());
     assert!(parse_args(["a", "b", "--unknown-flag"]).is_err());
+    assert_eq!(run_cli(["only_one_arg"]), ExitCode::FAILURE);
+
+    let tmp = TempDir::new("run_cli_ok");
+    let manifest_path = tmp.path().join("manifest.txt");
+    let output_zip = tmp.path().join("output.zip");
+    fs::write(&manifest_path, "rf-empty|empty.py\n").unwrap();
+    assert_eq!(
+        run_cli([manifest_path.as_os_str(), output_zip.as_os_str()]),
+        ExitCode::SUCCESS
+    );
+    assert!(output_zip.exists());
 }
 
 #[cfg(unix)]
@@ -666,10 +680,12 @@ fn test_symlink_extraction() {
     }
 
     let link_path = extract_dir.join("runfiles/my_ws/path/to/link");
-    assert!(fs::symlink_metadata(&link_path)
-        .unwrap()
-        .file_type()
-        .is_symlink());
+    assert!(
+        fs::symlink_metadata(&link_path)
+            .unwrap()
+            .file_type()
+            .is_symlink()
+    );
     assert_eq!(
         fs::read_link(&link_path).unwrap(),
         PathBuf::from("../../target/path")
@@ -677,10 +693,12 @@ fn test_symlink_extraction() {
     assert_eq!(fs::read_to_string(&link_path).unwrap(), "target content");
 
     let link2_path = extract_dir.join("runfiles/my_ws/same_dir_link");
-    assert!(fs::symlink_metadata(&link2_path)
-        .unwrap()
-        .file_type()
-        .is_symlink());
+    assert!(
+        fs::symlink_metadata(&link2_path)
+            .unwrap()
+            .file_type()
+            .is_symlink()
+    );
     assert_eq!(
         fs::read_link(&link2_path).unwrap(),
         PathBuf::from("same_dir_target")

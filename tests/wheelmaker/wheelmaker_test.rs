@@ -3,14 +3,15 @@ use std::env;
 use std::fs;
 use std::io::{Cursor, Read};
 use std::path::{Path, PathBuf};
+use std::process::ExitCode;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use sha2::{Digest, Sha256};
 use wheelmaker_lib::{
-    arcname_from, build_wheel, commonpath, escape_filename_distribution_name,
-    escape_filename_segment, get_new_requirement_line, normalize_package_name, normalize_pep440,
-    parse_args, quote_filename, resolve_argument_stamp, run, serialize_digest, WhlFile,
-    REGULAR_FILE_UNIX_MODE,
+    REGULAR_FILE_UNIX_MODE, WhlFile, arcname_from, build_wheel, commonpath,
+    escape_filename_distribution_name, escape_filename_segment, get_new_requirement_line,
+    normalize_package_name, normalize_pep440, parse_args, resolve_argument_stamp, run, run_cli,
+    serialize_digest,
 };
 use zip::{CompressionMethod, DateTime, ZipArchive};
 
@@ -115,8 +116,12 @@ fn assert_reproducible_metadata(entries: &[ParsedZipEntry], expected_method: Com
 }
 
 #[test]
-fn test_quote_all_filenames() {
-    let whl_true = WhlFile::new(
+fn test_record_csv_quoting() {
+    let mut sha_a = Sha256::new();
+    sha_a.update(b"a");
+    let digest_a = serialize_digest(&sha_a.finalize());
+
+    let mut whl_true = WhlFile::new(
         Cursor::new(Vec::new()),
         "test-1.0.0",
         Vec::new(),
@@ -124,13 +129,17 @@ fn test_quote_all_filenames() {
         true,
         true,
     );
-    assert_eq!(whl_true.quote_filename("foo/bar.py"), "\"foo/bar.py\"");
+    whl_true.add_string("foo/bar.py", b"a").unwrap();
+    whl_true.add_string("foo,bar/baz.py", b"a").unwrap();
+    let record_true = whl_true.add_recordfile().unwrap();
     assert_eq!(
-        whl_true.quote_filename("foo,bar/baz.py"),
-        "\"foo,bar/baz.py\""
+        record_true,
+        format!(
+            "\"foo/bar.py\",{digest_a},1\n\"foo,bar/baz.py\",{digest_a},1\n\"test-1.0.0.dist-info/RECORD\",,\n"
+        )
     );
 
-    let whl_false = WhlFile::new(
+    let mut whl_false = WhlFile::new(
         Cursor::new(Vec::new()),
         "test-1.0.0",
         Vec::new(),
@@ -138,18 +147,16 @@ fn test_quote_all_filenames() {
         true,
         false,
     );
-    assert_eq!(whl_false.quote_filename("foo/bar.py"), "foo/bar.py");
+    whl_false.add_string("foo/bar.py", b"a").unwrap();
+    whl_false.add_string("foo,bar/baz.py", b"a").unwrap();
+    whl_false.add_string("/leading/slash.py", b"a").unwrap();
+    whl_false.add_string("has\"quote.py", b"a").unwrap();
+    let record_false = whl_false.add_recordfile().unwrap();
     assert_eq!(
-        whl_false.quote_filename("foo,bar/baz.py"),
-        "\"foo,bar/baz.py\""
-    );
-    assert_eq!(
-        quote_filename("/leading/slash.py", false),
-        "leading/slash.py"
-    );
-    assert_eq!(
-        quote_filename("has\"quote.py", false),
-        "\"has\"\"quote.py\""
+        record_false,
+        format!(
+            "foo/bar.py,{digest_a},1\n\"foo,bar/baz.py\",{digest_a},1\nleading/slash.py,{digest_a},1\n\"has\"\"quote.py\",{digest_a},1\ntest-1.0.0.dist-info/RECORD,,\n"
+        )
     );
 }
 
@@ -269,7 +276,7 @@ fn test_get_new_requirement_line() {
     );
     assert_eq!(
         get_new_requirement_line("requests>=2.0", "extra=='dev'").unwrap(),
-        "Requires-Dist: requests>=2.0; extra=='dev'"
+        "Requires-Dist: requests>=2.0; extra == 'dev'"
     );
     assert_eq!(
         get_new_requirement_line(
@@ -281,11 +288,11 @@ fn test_get_new_requirement_line() {
     );
     assert_eq!(
         get_new_requirement_line("requests>=2.0; python_version>='3.6'", "").unwrap(),
-        "Requires-Dist: requests>=2.0; python_version >= \"3.6\""
+        "Requires-Dist: requests>=2.0; python_full_version >= '3.6'"
     );
     assert_eq!(
         get_new_requirement_line("requests>=2.0; python_version>='3.6'", "extra=='dev'").unwrap(),
-        "Requires-Dist: requests>=2.0; (python_version >= \"3.6\") and extra=='dev'"
+        "Requires-Dist: requests>=2.0; python_full_version >= '3.6' and extra == 'dev'"
     );
     assert_eq!(
         get_new_requirement_line("pyyaml>=6.0.0,!=6.0.1", "extra == 'example'").unwrap(),
@@ -297,7 +304,7 @@ fn test_get_new_requirement_line() {
             "extra == 'example'"
         )
         .unwrap(),
-        "Requires-Dist: toml; ((python_version == \"3.11\" or python_version == \"3.12\") and python_version != \"3.8\") and extra == 'example'"
+        "Requires-Dist: toml; python_full_version >= '3.11' and python_full_version < '3.13' and extra == 'example'"
     );
     assert_eq!(
         get_new_requirement_line(
@@ -305,11 +312,11 @@ fn test_get_new_requirement_line() {
             "extra == 'example'"
         )
         .unwrap(),
-        "Requires-Dist: wheel; (python_version == \"3.11\" or python_version == \"3.12\") and extra == 'example'"
+        "Requires-Dist: wheel; python_full_version >= '3.11' and python_full_version < '3.13' and extra == 'example'"
     );
     assert_eq!(
         get_new_requirement_line("extra_requires[example]==0.0.1", "").unwrap(),
-        "Requires-Dist: extra_requires[example]==0.0.1"
+        "Requires-Dist: extra-requires[example]==0.0.1"
     );
     assert_eq!(
         get_new_requirement_line(
@@ -317,7 +324,7 @@ fn test_get_new_requirement_line() {
             ""
         )
         .unwrap(),
-        "Requires-Dist: baz~=1.2.3; extra == \"test-extra\" or \"dev-extra\" == extra"
+        "Requires-Dist: baz~=1.2.3; extra == 'dev-extra' or extra == 'test-extra'"
     );
     assert_eq!(
         get_new_requirement_line(
@@ -325,7 +332,7 @@ fn test_get_new_requirement_line() {
             "extra == 'dev.extra'"
         )
         .unwrap(),
-        "Requires-Dist: baz~=1.2.3; (extra == \"test-extra\" or \"dev-extra\" == extra) and extra == 'dev.extra'"
+        "Requires-Dist: baz~=1.2.3; extra == 'dev-extra'"
     );
 }
 
@@ -494,7 +501,7 @@ fn test_end_to_end_customized_wheel_and_record() {
             "Requires-Dist: starlark\n",
             "Provides-Extra: example\n",
             "Requires-Dist: pyyaml!=6.0.1,>=6.0.0; extra == 'example'\n",
-            "Requires-Dist: toml; ((python_version == \"3.11\" or python_version == \"3.12\") and python_version != \"3.8\") and extra == 'example'\n",
+            "Requires-Dist: toml; python_full_version >= '3.11' and python_full_version < '3.13' and extra == 'example'\n",
             "Version: 0.0.1rc1+ubuntu.r7\n\n",
             "This is a sample description of a wheel.\n",
         )
@@ -565,6 +572,10 @@ fn test_stamping_and_empty_requires_and_no_compress() {
     .unwrap();
 
     run([format!("@{}", flagfile.display())]).unwrap();
+    assert_eq!(
+        run_cli([format!("@{}", flagfile.display())]),
+        ExitCode::SUCCESS
+    );
 
     assert_eq!(
         fs::read_to_string(&name_file).unwrap(),
@@ -660,7 +671,7 @@ fn test_build_tag_and_inline_requires_and_commonpath() {
         concat!(
             "Metadata-Version: 2.1\n",
             "Name: Demo-Pkg\n",
-            "Requires-Dist: six!=1.16.1,>=1.16.0; (python_version >= \"3.8\") and extra == 'dev'\n",
+            "Requires-Dist: six!=1.16.1,>=1.16.0; python_full_version >= '3.8' and extra == 'dev'\n",
             "Provides-Extra: dev\n",
             "Requires-Dist: pytest>=7.0; extra == 'dev'\n",
             "Version: 1.0.0\n\n",

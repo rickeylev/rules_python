@@ -5,121 +5,13 @@ use std::ffi::OsString;
 use std::fs::{self, File};
 use std::io::{self, Read};
 use std::path::{Path, PathBuf};
+use std::process::ExitCode;
 
+use lexopt::prelude::*;
 use sha2::{Digest, Sha256};
 
 pub const BLOCK_SIZE: usize = 256 * 1024;
 pub const APP_HASH_PLACEHOLDER: &str = "%APP_HASH%";
-
-/// Parsed command-line options for `zip_main_maker`.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Options {
-    pub template: PathBuf,
-    pub output: PathBuf,
-    pub substitutions: Vec<(String, String)>,
-    pub hash_files_manifest: PathBuf,
-}
-
-/// Expands `@flagfile` arguments recursively, matching `argparse` with `fromfile_prefix_chars="@"`.
-pub fn expand_args<I, S>(args: I) -> Result<Vec<String>, String>
-where
-    I: IntoIterator<Item = S>,
-    S: AsRef<str>,
-{
-    let mut expanded = Vec::new();
-    for arg in args {
-        let s = arg.as_ref();
-        if let Some(path) = s.strip_prefix('@') {
-            if path.is_empty() {
-                expanded.push(s.to_string());
-                continue;
-            }
-            let content = fs::read_to_string(path)
-                .map_err(|e| format!("failed to read flagfile '{}': {}", path, e))?;
-            let normalized = content.replace("\r\n", "\n").replace('\r', "\n");
-            let sub_lines: Vec<&str> = normalized.lines().collect();
-            let sub_expanded = expand_args(sub_lines)?;
-            expanded.extend(sub_expanded);
-        } else {
-            expanded.push(s.to_string());
-        }
-    }
-    Ok(expanded)
-}
-
-fn parse_substitution(raw: &str) -> Result<(String, String), String> {
-    let (key, val) = raw
-        .split_once('=')
-        .ok_or_else(|| format!("invalid --substitution value (expected KEY=VALUE): {}", raw))?;
-    Ok((key.to_string(), val.to_string()))
-}
-
-/// Parses command-line arguments (excluding `argv[0]`) into `Options`.
-pub fn parse_args<I, S>(args: I) -> Result<Options, String>
-where
-    I: IntoIterator<Item = S>,
-    S: AsRef<str>,
-{
-    let expanded = expand_args(args)?;
-    let mut template: Option<PathBuf> = None;
-    let mut output: Option<PathBuf> = None;
-    let mut substitutions: Vec<(String, String)> = Vec::new();
-    let mut hash_files_manifest: Option<PathBuf> = None;
-
-    let mut iter = expanded.into_iter();
-    while let Some(arg) = iter.next() {
-        if arg == "-h" || arg == "--help" {
-            return Err(
-                "Usage: zip_main_maker --template <path> --output <path> [--substitution <K=V> ...] --hash_files_manifest <path>"
-                    .to_string(),
-            );
-        } else if let Some(val) = arg.strip_prefix("--template=") {
-            template = Some(PathBuf::from(val));
-        } else if arg == "--template" {
-            let val = iter
-                .next()
-                .ok_or_else(|| "missing value for --template".to_string())?;
-            template = Some(PathBuf::from(val));
-        } else if let Some(val) = arg.strip_prefix("--output=") {
-            output = Some(PathBuf::from(val));
-        } else if arg == "--output" {
-            let val = iter
-                .next()
-                .ok_or_else(|| "missing value for --output".to_string())?;
-            output = Some(PathBuf::from(val));
-        } else if let Some(val) = arg.strip_prefix("--substitution=") {
-            substitutions.push(parse_substitution(val)?);
-        } else if arg == "--substitution" {
-            let val = iter
-                .next()
-                .ok_or_else(|| "missing value for --substitution".to_string())?;
-            substitutions.push(parse_substitution(&val)?);
-        } else if let Some(val) = arg.strip_prefix("--hash_files_manifest=") {
-            hash_files_manifest = Some(PathBuf::from(val));
-        } else if arg == "--hash_files_manifest" {
-            let val = iter
-                .next()
-                .ok_or_else(|| "missing value for --hash_files_manifest".to_string())?;
-            hash_files_manifest = Some(PathBuf::from(val));
-        } else if arg.starts_with('-') {
-            return Err(format!("unknown option: {}", arg));
-        } else {
-            return Err(format!("unexpected positional argument: {}", arg));
-        }
-    }
-
-    let template = template.ok_or_else(|| "missing required argument: --template".to_string())?;
-    let output = output.ok_or_else(|| "missing required argument: --output".to_string())?;
-    let hash_files_manifest = hash_files_manifest
-        .ok_or_else(|| "missing required argument: --hash_files_manifest".to_string())?;
-
-    Ok(Options {
-        template,
-        output,
-        substitutions,
-        hash_files_manifest,
-    })
-}
 
 /// Computes the SHA-256 hex digest of the application inputs listed in `manifest_path`.
 pub fn compute_inputs_hash(manifest_path: &Path) -> io::Result<String> {
@@ -146,9 +38,8 @@ pub fn compute_inputs_hash(manifest_path: &Path) -> io::Result<String> {
             continue;
         }
 
-        let parts: Vec<&str> = rest.split('|').collect();
-        let is_symlink_str = parts[0];
-        let path = parts[parts.len() - 1];
+        let is_symlink_str = rest.split_once('|').map_or(rest, |(first, _)| first);
+        let path = rest.rsplit_once('|').map_or(rest, |(_, last)| last);
 
         let is_symlink = if is_symlink_str == "-1" {
             !Path::new(path).exists()
@@ -205,10 +96,10 @@ pub fn expand_template(
         content = content.replace(key.as_str(), val.as_str());
     }
 
-    if let Some(parent) = output_path.parent() {
-        if !parent.as_os_str().is_empty() {
-            fs::create_dir_all(parent)?;
-        }
+    if let Some(parent) = output_path.parent()
+        && !parent.as_os_str().is_empty()
+    {
+        fs::create_dir_all(parent)?;
     }
 
     fs::write(output_path, content)
@@ -221,27 +112,102 @@ pub fn generate_zip_main(options: &Options) -> io::Result<()> {
     expand_template(&options.template, &options.output, &substitutions)
 }
 
-/// Parses CLI arguments (excluding `argv[0]` and subcommand name), generates `__main__.py`, and
-/// returns the process exit code.
-pub fn run_cli<I, T>(args: I) -> i32
+/// Parsed command-line options for `zip_main_maker`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Options {
+    pub template: PathBuf,
+    pub output: PathBuf,
+    pub substitutions: Vec<(String, String)>,
+    pub hash_files_manifest: PathBuf,
+}
+
+fn parse_substitution(raw: &str) -> Result<(String, String), String> {
+    let (key, val) = raw
+        .split_once('=')
+        .ok_or_else(|| format!("invalid --substitution value (expected KEY=VALUE): {raw}"))?;
+    Ok((key.to_string(), val.to_string()))
+}
+
+/// Parses command-line arguments (excluding `argv[0]`) into `Options`.
+pub fn parse_args<I, T>(args: I) -> Result<Options, String>
 where
     I: IntoIterator<Item = T>,
     T: Into<OsString>,
 {
-    let str_args: Vec<String> = args
-        .into_iter()
-        .map(|a| a.into().to_string_lossy().into_owned())
-        .collect();
-    let options = match parse_args(&str_args) {
+    let expanded = argfile::expand_args_from(
+        args.into_iter().map(Into::into),
+        argfile::parse_fromfile,
+        argfile::PREFIX,
+    )
+    .map_err(|e| format!("failed to read flagfile: {e}"))?;
+
+    let mut template: Option<PathBuf> = None;
+    let mut output: Option<PathBuf> = None;
+    let mut substitutions: Vec<(String, String)> = Vec::new();
+    let mut hash_files_manifest: Option<PathBuf> = None;
+
+    let mut parser = lexopt::Parser::from_args(expanded);
+    while let Some(arg) = parser.next().map_err(|e| e.to_string())? {
+        match arg {
+            Short('h') | Long("help") => {
+                return Err("Usage: zip_main_maker --template <path> --output <path> \
+                     [--substitution <K=V> ...] --hash_files_manifest <path>"
+                    .to_string());
+            }
+            Long("template") => {
+                let val = parser.value().map_err(|e| e.to_string())?;
+                template = Some(PathBuf::from(val));
+            }
+            Long("output") => {
+                let val = parser.value().map_err(|e| e.to_string())?;
+                output = Some(PathBuf::from(val));
+            }
+            Long("substitution") => {
+                let sub = parser
+                    .value()
+                    .map_err(|e| e.to_string())?
+                    .parse_with(parse_substitution)
+                    .map_err(|e| e.to_string())?;
+                substitutions.push(sub);
+            }
+            Long("hash_files_manifest") => {
+                let val = parser.value().map_err(|e| e.to_string())?;
+                hash_files_manifest = Some(PathBuf::from(val));
+            }
+            _ => return Err(arg.unexpected().to_string()),
+        }
+    }
+
+    let template = template.ok_or_else(|| "missing required argument: --template".to_string())?;
+    let output = output.ok_or_else(|| "missing required argument: --output".to_string())?;
+    let hash_files_manifest = hash_files_manifest
+        .ok_or_else(|| "missing required argument: --hash_files_manifest".to_string())?;
+
+    Ok(Options {
+        template,
+        output,
+        substitutions,
+        hash_files_manifest,
+    })
+}
+
+/// Parses CLI arguments (excluding `argv[0]` and subcommand name), generates `__main__.py`, and
+/// returns the process exit code.
+pub fn run_cli<I, T>(args: I) -> ExitCode
+where
+    I: IntoIterator<Item = T>,
+    T: Into<OsString>,
+{
+    let options = match parse_args(args) {
         Ok(opts) => opts,
         Err(msg) => {
-            eprintln!("zip_main_maker: error: {}", msg);
-            return 1;
+            eprintln!("zip_main_maker: error: {msg}");
+            return ExitCode::FAILURE;
         }
     };
     if let Err(err) = generate_zip_main(&options) {
-        eprintln!("zip_main_maker: error: {}", err);
-        return 1;
+        eprintln!("zip_main_maker: error: {err}");
+        return ExitCode::FAILURE;
     }
-    0
+    ExitCode::SUCCESS
 }

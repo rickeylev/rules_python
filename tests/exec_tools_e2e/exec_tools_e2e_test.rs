@@ -113,7 +113,7 @@ fn subcommand_for_bin_env(bin_env: &str) -> &'static str {
 }
 
 fn run_tool(bin_env: &str, args: &[&str], envs: &[(&str, &str)]) -> CmdResult {
-    let bin = resolve_runfile("RUPYRU_BOX_BIN");
+    let bin = resolve_runfile("SHRUBBERY_BIN");
     let subcommand = subcommand_for_bin_env(bin_env);
     let mut cmd = Command::new(&bin);
     cmd.arg(subcommand);
@@ -671,9 +671,11 @@ fn tier1_f4_01_basic_uncompressed_wheel_and_name_file() {
     );
 
     let entries = read_zip_entries(&out_whl);
-    assert!(entries
-        .iter()
-        .all(|e| e.compression == CompressionMethod::Stored));
+    assert!(
+        entries
+            .iter()
+            .all(|e| e.compression == CompressionMethod::Stored)
+    );
     let map = read_zip_map(&out_whl);
     assert_eq!(
         map.get("my_pkg/__init__.py").unwrap(),
@@ -772,10 +774,12 @@ fn tier1_f4_03_pep440_version_and_pep508_requires_normalization() {
     .unwrap();
     assert!(metadata_str.contains("Version: 1.2.0a3.dev4\n"));
     assert!(metadata_str.contains(
-        "Requires-Dist: requests[security,socks]!=2.29.0,>=2.28.0; python_version >= \"3.8\"\n"
+        "Requires-Dist: requests[security,socks]!=2.29.0,>=2.28.0; python_full_version >= '3.8'\n"
     ));
-    assert!(metadata_str
-        .contains("Requires-Dist: pytest>=7.0; (os_name == \"posix\") and extra == 'dev'\n"));
+    assert!(
+        metadata_str
+            .contains("Requires-Dist: pytest>=7.0; os_name == 'posix' and extra == 'dev'\n")
+    );
     assert!(metadata_str.ends_with("\n\n# My Cool Package\n\n"));
 }
 
@@ -1187,8 +1191,7 @@ fn tier1_f7_01_unix_shebang_rewrite_and_executable_mode() {
         &[],
     );
     assert_eq!(res.code, 0, "stderr: {}", res.stderr);
-    let expected =
-        "#!/bin/sh\n'''exec' \"$(dirname \"$0\")/python3\" \"$0\" \"$@\"\n' '''\nimport sys\nprint(sys.argv)\n";
+    let expected = "#!/bin/sh\n'''exec' \"$(dirname \"$0\")/python3\" \"$0\" \"$@\"\n' '''\nimport sys\nprint(sys.argv)\n";
     assert_eq!(fs::read_to_string(&out).unwrap(), expected);
     #[cfg(unix)]
     {
@@ -1341,7 +1344,7 @@ fn tier1_f8_03_quoted_csv_record_lines_unix_and_windows() {
     assert_eq!(r_unix.code, 0, "stderr: {}", r_unix.stderr);
     assert_eq!(
         fs::read_to_string(&out_unix).unwrap(),
-        "\"pkg/a,b.py\",sha256=111,10\n\"../../../bin/my_cli\",sha256=222,20\n\"../../../include/a,b.h\",sha256=333,30\n"
+        "\"pkg/a,b.py\",sha256=111,10\n../../../bin/my_cli,sha256=222,20\n\"../../../include/a,b.h\",sha256=333,30\n"
     );
 
     let r_win = run_tool(
@@ -1358,7 +1361,7 @@ fn tier1_f8_03_quoted_csv_record_lines_unix_and_windows() {
     assert_eq!(r_win.code, 0, "stderr: {}", r_win.stderr);
     assert_eq!(
         fs::read_to_string(&out_win).unwrap(),
-        "\"pkg/a,b.py\",sha256=111,10\n\"../../Scripts/my_cli.bat\",sha256=222,20\n\"../../Include/a,b.h\",sha256=333,30\n"
+        "\"pkg/a,b.py\",sha256=111,10\n../../Scripts/my_cli.bat,sha256=222,20\n\"../../Include/a,b.h\",sha256=333,30\n"
     );
 }
 
@@ -1551,15 +1554,15 @@ fn tier1_f9_05_flagfile_and_status_file_without_trailing_newline() {
 
 #[test]
 fn tier1_f10_01_all_eleven_rust_tool_binaries_present_and_executable() {
-    let p = resolve_runfile("RUPYRU_BOX_BIN");
+    let p = resolve_runfile("SHRUBBERY_BIN");
     assert!(
         p.exists(),
-        "unified rupyru-box binary does not exist at {:?}",
+        "unified shrubbery binary does not exist at {:?}",
         p
     );
     assert!(
         p.is_file(),
-        "unified rupyru-box binary is not a regular file"
+        "unified shrubbery binary is not a regular file"
     );
 
     let help_out = Command::new(&p).arg("--help").output().unwrap();
@@ -1580,7 +1583,7 @@ fn tier1_f10_01_all_eleven_rust_tool_binaries_present_and_executable() {
     ] {
         assert!(
             help_stdout.contains(subcommand),
-            "rupyru-box --help missing subcommand {}: {}",
+            "shrubbery --help missing subcommand {}: {}",
             subcommand,
             help_stdout
         );
@@ -1624,7 +1627,7 @@ fn tier1_f10_02_crate_distribution_filegroups_contain_sources_and_build_files() 
         }
     }
 
-    let bin_files = resolve_runfiles_list("DIST_RUPYRU_BOX");
+    let bin_files = resolve_runfiles_list("DIST_SHRUBBERY");
     let bin_paths: Vec<String> = bin_files
         .iter()
         .map(|p| p.to_string_lossy().replace('\\', "/"))
@@ -1632,7 +1635,7 @@ fn tier1_f10_02_crate_distribution_filegroups_contain_sources_and_build_files() 
     for expected_suffix in ["BUILD.bazel", "src/lib.rs", "src/main.rs"] {
         assert!(
             bin_paths.iter().any(|s| s.ends_with(expected_suffix)),
-            "rupyru-box distribution missing {}: {:?}",
+            "shrubbery distribution missing {}: {:?}",
             expected_suffix,
             bin_paths
         );
@@ -1965,7 +1968,7 @@ fn tier2_f2_03_malformed_manifest_line_missing_tab_fields_rejected() {
     assert_ne!(r2.code, 0);
     assert!(
         r2.stderr
-            .contains("unexpected positional argument: unexpected_positional_arg"),
+            .contains("unexpected argument \"unexpected_positional_arg\""),
         "stderr: {}",
         r2.stderr
     );
@@ -2061,9 +2064,10 @@ fn tier2_f3_01_empty_or_comments_only_main_module_fails_with_exit_1() {
         &[],
     );
     assert_eq!(r1.code, 1, "stderr: {}", r1.stderr);
-    assert!(r1
-        .stderr
-        .contains("py_test target //pkg:def_only_test will not run any tests."));
+    assert!(
+        r1.stderr
+            .contains("py_test target //pkg:def_only_test will not run any tests.")
+    );
     assert!(
         !out1.exists(),
         "output file must not be created on validation failure"
@@ -2173,9 +2177,10 @@ fn tier2_f3_04_null_byte_or_non_utf8_source_emits_warning_and_exits_zero() {
         &[],
     );
     assert_eq!(r1.code, 0, "stderr: {}", r1.stderr);
-    assert!(r1
-        .stderr
-        .contains("WARNING: py_test main validator could not parse pkg/nul.py:"));
+    assert!(
+        r1.stderr
+            .contains("WARNING: py_test main validator could not parse pkg/nul.py:")
+    );
     assert!(out1.exists());
 
     let r2 = run_tool(
@@ -2193,9 +2198,10 @@ fn tier2_f3_04_null_byte_or_non_utf8_source_emits_warning_and_exits_zero() {
         &[],
     );
     assert_eq!(r2.code, 0, "stderr: {}", r2.stderr);
-    assert!(r2
-        .stderr
-        .contains("WARNING: py_test main validator could not parse pkg/bad_utf8.py:"));
+    assert!(
+        r2.stderr
+            .contains("WARNING: py_test main validator could not parse pkg/bad_utf8.py:")
+    );
     assert!(out2.exists());
 }
 
@@ -2297,8 +2303,7 @@ fn tier2_f4_03_incompatible_abi_typo_or_unknown_flag_rejected() {
     );
     assert_eq!(res.code, 1);
     assert!(
-        res.stderr
-            .contains("unrecognized argument: --incompatible_Abi"),
+        res.stderr.contains("invalid option '--incompatible_Abi'"),
         "stderr: {}",
         res.stderr
     );
@@ -2848,7 +2853,7 @@ fn tier2_f8_01_empty_record_and_blank_lines_handled_cleanly() {
         &[],
     );
     assert_eq!(r2.code, 0);
-    assert_eq!(fs::read_to_string(&out_blank).unwrap(), "\n\n");
+    assert_eq!(fs::read_to_string(&out_blank).unwrap(), "");
 }
 
 #[test]
@@ -3063,7 +3068,10 @@ fn tier2_f9_05_nested_flagfiles_and_default_target_and_stamped_values() {
         ],
     );
     assert_eq!(res.code, 0, "stderr: {}", res.stderr);
-    assert_eq!(fs::read_to_string(&out).unwrap(), "TARGET \nSTAMPED \n");
+    assert_eq!(
+        fs::read_to_string(&out).unwrap(),
+        "TARGET \nSTAMPED FALSE\n"
+    );
 }
 
 // --- F10 & F11: Starlark Rules, Distribution & Companion Tool Boundaries (5 tests) ---
@@ -3602,9 +3610,11 @@ fn tier3_pipeline_07_wheelmaker_to_extract_to_venv_shebang_and_record_rewriter()
         &[],
     );
     assert_eq!(r3.code, 0, "stderr: {}", r3.stderr);
-    assert!(fs::read_to_string(&win_script)
-        .unwrap()
-        .contains("\"%~dp0pythonw.exe\""));
+    assert!(
+        fs::read_to_string(&win_script)
+            .unwrap()
+            .contains("\"%~dp0pythonw.exe\"")
+    );
 
     let record_in = extracted.join("gui_pkg-0.5.dist-info/RECORD");
     let record_out = td
@@ -3622,9 +3632,11 @@ fn tier3_pipeline_07_wheelmaker_to_extract_to_venv_shebang_and_record_rewriter()
         &[],
     );
     assert_eq!(r4.code, 0, "stderr: {}", r4.stderr);
-    assert!(fs::read_to_string(&record_out)
-        .unwrap()
-        .contains("../../Scripts/runner.bat,sha256="));
+    assert!(
+        fs::read_to_string(&record_out)
+            .unwrap()
+            .contains("../../Scripts/runner.bat,sha256=")
+    );
 }
 
 #[test]
@@ -3959,9 +3971,11 @@ fn tier3_pipeline_12_py_test_main_validator_gates_wheelmaker_and_py_wheel_dist()
         &[],
     );
     assert_eq!(r_dist.code, 0);
-    assert!(dist_dir
-        .join("validated_suite-1.0.0-py3-none-any.whl")
-        .exists());
+    assert!(
+        dist_dir
+            .join("validated_suite-1.0.0-py3-none-any.whl")
+            .exists()
+    );
 }
 
 // ============================================================================

@@ -1,11 +1,11 @@
 """Implementation of whl_filegroup rule."""
 
-load("//python/private:toolchain_types.bzl", "RUPYRU_BOX_TOOLCHAIN_TYPE")
-load("//python/private/toolchains:rupyru_box_toolchain.bzl", "get_rupyru_box_tool")
+load("//python/private:toolchain_types.bzl", "SHRUBBERY_TOOLCHAIN_TYPE")
+load("//python/private/toolchains:shrubbery_toolchain.bzl", "get_shrubbery_tool")
 
 def _whl_filegroup_impl(ctx):
     out_dir = ctx.actions.declare_directory(ctx.attr.name)
-    tool = get_rupyru_box_tool(
+    tool = get_shrubbery_tool(
         ctx,
         "extract_wheel_files",
         ctx.attr._extract_wheel_files_tool,
@@ -71,6 +71,6 @@ from the already extracted whl file.
         ),
     },
     toolchains = [
-        config_common.toolchain_type(RUPYRU_BOX_TOOLCHAIN_TYPE, mandatory = False),
+        config_common.toolchain_type(SHRUBBERY_TOOLCHAIN_TYPE, mandatory = False),
     ],
 )

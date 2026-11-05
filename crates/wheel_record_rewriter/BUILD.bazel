@@ -8,7 +8,11 @@ licenses(["notice"])
 rust_library(
     name = "wheel_record_rewriter_lib",
     srcs = ["src/lib.rs"],
-    edition = "2021",
+    edition = "2024",
+    deps = [
+        "@crates//:csv",
+        "@crates//:lexopt",
+    ],
 )
 
 distribution_filegroup(

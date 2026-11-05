@@ -454,7 +454,7 @@ bzl_library(
         "//python/private:py_info",
         "//python/private:rule_builders",
         "//python/private:toolchain_types",
-        "//python/private/toolchains:rupyru_box_toolchain",
+        "//python/private/toolchains:shrubbery_toolchain",
     ],
 )
 
@@ -504,7 +504,7 @@ bzl_library(
         "//python/private:attributes",
         "//python/private:common",
         "//python/private:toolchain_types",
-        "//python/private/toolchains:rupyru_box_toolchain",
+        "//python/private/toolchains:shrubbery_toolchain",
     ],
 )
 

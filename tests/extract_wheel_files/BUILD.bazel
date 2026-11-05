@@ -9,9 +9,10 @@ rust_test(
     size = "small",
     srcs = ["extract_wheel_files_test.rs"],
     data = [
-        "//crates/rupyru-box",
+        "//crates/shrubbery",
         "//examples/wheel:minimal_with_py_package",
     ],
+    edition = "2024",
     deps = [
         "//crates/extract_wheel_files:extract_wheel_files_lib",
         "@crates//:zip",

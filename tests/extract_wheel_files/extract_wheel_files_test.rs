@@ -1,12 +1,14 @@
-use std::collections::BTreeSet;
+use std::collections::HashSet;
 use std::env;
 use std::fs::{self, File};
 use std::io::Write;
 use std::path::{Path, PathBuf};
+use std::process::ExitCode;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use extract_wheel_files_lib::{
-    extract_files, get_files, get_record, parse_args, parse_args_with_program, run, ExtractOptions,
+    ExtractOptions, compile_pattern, extract_files, get_files, get_record, parse_args,
+    parse_args_with_program, parse_record, run, run_cli,
 };
 use zip::write::SimpleFileOptions;
 use zip::{CompressionMethod, ZipWriter};
@@ -67,8 +69,8 @@ fn write_test_zip(
 }
 
 /// Recursively collects all regular files under `dir` as relative POSIX paths.
-fn collect_extracted_files(dir: &Path) -> BTreeSet<String> {
-    let mut out = BTreeSet::new();
+fn collect_extracted_files(dir: &Path) -> HashSet<String> {
+    let mut out = HashSet::new();
     let mut stack = vec![dir.to_path_buf()];
     while let Some(curr) = stack.pop() {
         if let Ok(entries) = fs::read_dir(&curr) {
@@ -157,6 +159,27 @@ fn create_synthetic_minimal_wheel(
 }
 
 #[test]
+fn test_parse_record_csv_edge_cases() {
+    let csv_bytes = concat!(
+        "\"pkg/file,with,commas.txt\",sha256=111,5\r\n",
+        "\r\n",
+        "\"pkg/file\"\"with\"\"quotes.txt\",sha256=222,6\n",
+        "pkg/single_column_flexible\n",
+        "pkg-1.0.dist-info/RECORD,,\r\n",
+    );
+    let paths = parse_record(csv_bytes.as_bytes()).unwrap();
+    assert_eq!(
+        paths,
+        vec![
+            "pkg/file,with,commas.txt",
+            "pkg/file\"with\"quotes.txt",
+            "pkg/single_column_flexible",
+            "pkg-1.0.dist-info/RECORD",
+        ]
+    );
+}
+
+#[test]
 fn test_get_wheel_record() {
     let expected = vec![
         "examples/wheel/lib/data,with,commas.txt",
@@ -193,8 +216,8 @@ fn test_get_files_with_pattern_and_empty() {
     let record = get_record(&whl_path).unwrap();
 
     // Pattern from tests/whl_filegroup/extract_wheel_files_test.py
-    let pattern = r"(examples/wheel/lib/.*\.txt$|.*main)";
-    let files = get_files(&record, pattern).unwrap();
+    let regex = compile_pattern(r"(examples/wheel/lib/.*\.txt$|.*main)").unwrap();
+    let files = get_files(&record, &regex);
     let expected = vec![
         "examples/wheel/lib/data,with,commas.txt",
         "examples/wheel/lib/data.txt",
@@ -203,7 +226,8 @@ fn test_get_files_with_pattern_and_empty() {
     assert_eq!(files, expected);
 
     // Empty pattern matches all files in RECORD
-    let all_files = get_files(&record, "").unwrap();
+    let empty_regex = compile_pattern("").unwrap();
+    let all_files = get_files(&record, &empty_regex);
     assert_eq!(all_files, record);
 }
 
@@ -214,7 +238,7 @@ fn test_extract_files() {
         "examples/wheel/lib/data.txt",
         "examples/wheel/main.py",
     ];
-    let expected_set: BTreeSet<String> = files.iter().map(|s| s.to_string()).collect();
+    let expected_set: HashSet<String> = files.iter().map(|s| (*s).to_string()).collect();
 
     let example_wheel = Path::new(EXAMPLE_WHEEL_REL_PATH);
     if example_wheel.exists() {
@@ -356,7 +380,7 @@ fn test_csv_quoted_paths_and_deflated_entries() {
     let opts = ExtractOptions {
         whl_path: whl_path.clone(),
         outdir: outdir.clone(),
-        regex_pattern: "pkg/.*".to_string(),
+        regex: compile_pattern("pkg/.*").unwrap(),
     };
     run(&opts).unwrap();
 
@@ -382,7 +406,7 @@ fn test_empty_match_still_creates_outdir() {
     let opts = ExtractOptions {
         whl_path,
         outdir: outdir.clone(),
-        regex_pattern: "nonexistent_prefix/.*".to_string(),
+        regex: compile_pattern("nonexistent_prefix/.*").unwrap(),
     };
     run(&opts).unwrap();
     assert!(outdir.is_dir());
@@ -394,12 +418,13 @@ fn test_parse_args_and_usage() {
     let opts2 = parse_args(["foo.whl", "out_dir"]).unwrap();
     assert_eq!(opts2.whl_path, PathBuf::from("foo.whl"));
     assert_eq!(opts2.outdir, PathBuf::from("out_dir"));
-    assert_eq!(opts2.regex_pattern, "");
+    assert!(opts2.regex.is_match("anything/at/all.py"));
 
     let opts3 = parse_args(["foo.whl", "out_dir", r"numpy/.*\.h$"]).unwrap();
     assert_eq!(opts3.whl_path, PathBuf::from("foo.whl"));
     assert_eq!(opts3.outdir, PathBuf::from("out_dir"));
-    assert_eq!(opts3.regex_pattern, r"numpy/.*\.h$");
+    assert!(opts3.regex.is_match("numpy/core/api.h"));
+    assert!(!opts3.regex.is_match("other/numpy/core/api.h"));
 
     let err0 = parse_args_with_program("my_prog", Vec::<&str>::new()).unwrap_err();
     assert_eq!(err0, "Usage: my_prog <wheel> <out_dir> [regex_pattern]");
@@ -409,42 +434,48 @@ fn test_parse_args_and_usage() {
 
     let err4 = parse_args_with_program("my_prog", ["a", "b", "c", "d"]).unwrap_err();
     assert_eq!(err4, "Usage: my_prog <wheel> <out_dir> [regex_pattern]");
+
+    let err_bad_regex = parse_args(["foo.whl", "out_dir", "[unclosed"]).unwrap_err();
+    assert!(err_bad_regex.contains("Invalid regex"));
 }
 
 #[test]
 fn test_regex_re_match_semantics_and_complex_patterns() {
+    let filter = |entries: &[&str], pat: &str| {
+        let re = compile_pattern(pat).unwrap();
+        get_files(entries, &re)
+    };
+
     // 1. Start-anchoring without end-anchoring (Python re.match semantics)
-    let matched = get_files(
-        [
+    let matched = filter(
+        &[
             "numpy/core/include/numpy/arrayobject.h",
             "other/numpy/core/include/numpy/arrayobject.h",
         ],
         "numpy/core/include/numpy",
-    )
-    .unwrap();
+    );
     assert_eq!(matched, vec!["numpy/core/include/numpy/arrayobject.h"]);
 
     // 1b. Unanchored alternation must still anchor both branches at start
-    let matched_alt = get_files(["foo/a.py", "bar/b.py", "prefix/bar/b.py"], "foo|bar").unwrap();
+    let matched_alt = filter(&["foo/a.py", "bar/b.py", "prefix/bar/b.py"], "foo|bar");
     assert_eq!(matched_alt, vec!["foo/a.py", "bar/b.py"]);
 
     // 2. Header pattern from tests/whl_filegroup/BUILD.bazel
-    let matched_hdr = get_files(
-        [
+    let matched_hdr = filter(
+        &[
             "tests/whl_filegroup/include/whl_headers/header.h",
             "tests/whl_filegroup/lib.py",
         ],
         r"tests/whl_filegroup/include/.*\.h",
-    )
-    .unwrap();
+    );
     assert_eq!(
         matched_hdr,
         vec!["tests/whl_filegroup/include/whl_headers/header.h"]
     );
 
     // 3. Character classes, ranges, negation, shorthands, and quantifiers
-    let matched_complex = get_files(
-        [
+    let matched_complex = filter(
+        &[
             "pkg/mod_1/file_42.h",
             "lib/abcde/file_0.cpp",
             "pkg/a/file_42.h",
@@ -452,39 +483,36 @@ fn test_regex_re_match_semantics_and_complex_patterns() {
             "pkg/mod_1/file_xx.h",
         ],
         r"^(?:pkg|lib)/[a-z_][a-z0-9_]{2,5}/file_\d+\.[ch](?:pp)?$",
-    )
-    .unwrap();
+    );
     assert_eq!(
         matched_complex,
         vec!["pkg/mod_1/file_42.h", "lib/abcde/file_0.cpp"]
     );
 
     // 4. Negated character class and word boundaries
-    let matched_neg = get_files(
-        ["pkg/main.py", "pkg/sub/main.py", "pkg/main2.py"],
+    let matched_neg = filter(
+        &["pkg/main.py", "pkg/sub/main.py", "pkg/main2.py"],
         r"[^/]+/\bmain\b\.py$",
-    )
-    .unwrap();
+    );
     assert_eq!(matched_neg, vec!["pkg/main.py"]);
 
     // 5. Case-insensitive inline flag (?i) and non-greedy quantifiers
-    let matched_ci = get_files(["My_Pkg-1.0.WHL", "My_Pkg-1.0.tar"], r"(?i).*?\.whl$").unwrap();
+    let matched_ci = filter(&["My_Pkg-1.0.WHL", "My_Pkg-1.0.tar"], r"(?i).*?\.whl$");
     assert_eq!(matched_ci, vec!["My_Pkg-1.0.WHL"]);
 
     // 6. Character class edge cases: literal ']' first, literal '-' escaped, hex escapes
-    let matched_cls = get_files(["]-abc/", "d"], r"^[]\-a-c\x2f]+$").unwrap();
+    let matched_cls = filter(&["]-abc/", "d"], r"^[]\-a-c\x2f]+$");
     assert_eq!(matched_cls, vec!["]-abc/"]);
 
     // 7. Pathological nested star pattern completes instantaneously without backtracking
-    let matched_nfa =
-        get_files(["aaaaaaaaaaaaaaaaaaaaaaaaaaaaaac", "aaaaab"], r"^(a*)*b$").unwrap();
+    let matched_nfa = filter(&["aaaaaaaaaaaaaaaaaaaaaaaaaaaaaac", "aaaaab"], r"^(a*)*b$");
     assert_eq!(matched_nfa, vec!["aaaaab"]);
 
-    // 8. Invalid regex returns error
-    assert!(get_files(["a"], "[unclosed").is_err());
-    assert!(get_files(["a"], "(unclosed").is_err());
-    assert!(get_files(["a"], "a{5,2}").is_err());
-    assert!(get_files(["a"], "[z-a]").is_err());
+    // 8. Invalid regex returns error at compile_pattern / parse_args time
+    assert!(compile_pattern("[unclosed").is_err());
+    assert!(compile_pattern("(unclosed").is_err());
+    assert!(compile_pattern("a{5,2}").is_err());
+    assert!(compile_pattern("[z-a]").is_err());
 }
 
 #[test]
@@ -520,22 +548,44 @@ fn test_zip_with_archive_comment_and_crc_mismatch() {
     .unwrap_err();
     assert!(
         err.to_lowercase().contains("checksum") || err.to_lowercase().contains("crc"),
-        "unexpected error: {}",
-        err
+        "unexpected error: {err}"
     );
 }
 
 #[test]
-fn test_cli_binary_subprocess() {
+fn test_run_cli_and_subprocess() {
+    let tmp = TempDir::new("cli_direct");
+    let whl_path = tmp.path().join("cli.whl");
+    create_synthetic_minimal_wheel(&whl_path, CompressionMethod::Deflated, None);
+    let outdir = tmp.path().join("extracted_direct");
+
+    assert_eq!(run_cli(["only_one_arg"]), ExitCode::FAILURE);
+    assert_eq!(
+        run_cli([
+            whl_path.as_os_str(),
+            outdir.as_os_str(),
+            std::ffi::OsStr::new(r"(examples/wheel/lib/.*\.txt$|.*main)"),
+        ]),
+        ExitCode::SUCCESS
+    );
+    let expected: HashSet<String> = [
+        "examples/wheel/lib/data,with,commas.txt",
+        "examples/wheel/lib/data.txt",
+        "examples/wheel/main.py",
+    ]
+    .into_iter()
+    .map(String::from)
+    .collect();
+    assert_eq!(collect_extracted_files(&outdir), expected);
+
     let bin_candidates = [
-        "crates/rupyru-box/rupyru-box",
-        "crates/rupyru-box/rupyru-box.exe",
+        "crates/shrubbery/shrubbery",
+        "crates/shrubbery/shrubbery.exe",
     ];
     let Some(bin_path) = bin_candidates.iter().map(Path::new).find(|p| p.exists()) else {
         return;
     };
 
-    // 1. Wrong argument count prints Usage to stderr and exits with code 1.
     let bad_out = std::process::Command::new(bin_path)
         .arg("extract_wheel_files")
         .arg("only_one_arg")
@@ -545,36 +595,6 @@ fn test_cli_binary_subprocess() {
     let stderr_str = String::from_utf8_lossy(&bad_out.stderr);
     assert!(
         stderr_str.contains("Usage:") && stderr_str.contains("<wheel> <out_dir> [regex_pattern]"),
-        "unexpected stderr: {}",
-        stderr_str
+        "unexpected stderr: {stderr_str}"
     );
-
-    // 2. Valid 3-arg invocation extracts matching files and exits 0.
-    let tmp = TempDir::new("cli_subproc");
-    let whl_path = tmp.path().join("cli.whl");
-    create_synthetic_minimal_wheel(&whl_path, CompressionMethod::Deflated, None);
-    let outdir = tmp.path().join("extracted");
-
-    let ok_out = std::process::Command::new(bin_path)
-        .arg("extract_wheel_files")
-        .arg(&whl_path)
-        .arg(&outdir)
-        .arg(r"(examples/wheel/lib/.*\.txt$|.*main)")
-        .output()
-        .unwrap();
-    assert!(
-        ok_out.status.success(),
-        "cli failed: {}",
-        String::from_utf8_lossy(&ok_out.stderr)
-    );
-    let extracted = collect_extracted_files(&outdir);
-    let expected: BTreeSet<String> = [
-        "examples/wheel/lib/data,with,commas.txt",
-        "examples/wheel/lib/data.txt",
-        "examples/wheel/main.py",
-    ]
-    .into_iter()
-    .map(String::from)
-    .collect();
-    assert_eq!(extracted, expected);
 }

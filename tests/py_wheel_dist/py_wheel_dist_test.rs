@@ -1,9 +1,13 @@
 use std::env;
+use std::ffi::OsStr;
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::process::ExitCode;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-use py_wheel_dist_lib::{create_wheel_dist, parse_args, run, validate_wheel_name, Options};
+use py_wheel_dist_lib::{
+    Options, create_wheel_dist, parse_args, run, run_cli, validate_wheel_name,
+};
 
 static COUNTER: AtomicUsize = AtomicUsize::new(0);
 
@@ -80,7 +84,7 @@ fn test_parse_args_flagfile() {
     let flagfile = tmp.path().join("args.params");
     fs::write(
         &flagfile,
-        "--wheel\nmy_wheel.whl\n--name_file=my_name.txt\n--output\nout_dir\n",
+        "--wheel\n\nmy_wheel.whl\n--name_file=my_name.txt\n\n--output\nout_dir\n",
     )
     .unwrap();
 
@@ -123,13 +127,13 @@ fn test_parse_args_mixed_flagfile_and_overrides() {
 #[test]
 fn test_parse_args_missing_required_flags() {
     let err_no_wheel = parse_args(&["--name_file", "a", "--output", "b"]).unwrap_err();
-    assert!(err_no_wheel.contains("--wheel"), "got: {}", err_no_wheel);
+    assert!(err_no_wheel.contains("--wheel"), "got: {err_no_wheel}");
 
     let err_no_name = parse_args(&["--wheel", "a", "--output", "b"]).unwrap_err();
-    assert!(err_no_name.contains("--name_file"), "got: {}", err_no_name);
+    assert!(err_no_name.contains("--name_file"), "got: {err_no_name}");
 
     let err_no_out = parse_args(&["--wheel", "a", "--name_file", "b"]).unwrap_err();
-    assert!(err_no_out.contains("--output"), "got: {}", err_no_out);
+    assert!(err_no_out.contains("--output"), "got: {err_no_out}");
 }
 
 #[test]
@@ -141,6 +145,11 @@ fn test_parse_args_missing_flag_values_and_unknown_args() {
     assert!(parse_args(&["--name_file="]).is_err());
     assert!(parse_args(&["--output="]).is_err());
     assert!(parse_args(&["--unknown", "val"]).is_err());
+    let bogus_err = parse_args(&["--bogus-flag=123"]).unwrap_err();
+    assert!(
+        bogus_err.contains("unexpected argument: --bogus-flag=123"),
+        "got: {bogus_err}"
+    );
     assert!(parse_args(&["positional_arg"]).is_err());
     assert!(parse_args(&["@"]).is_err());
     assert!(parse_args(&["@nonexistent_flagfile_path_12345"]).is_err());
@@ -195,6 +204,20 @@ fn test_copy_wheel_into_new_and_existing_output_directory() {
     let second_path = create_wheel_dist(&wheel_path, &name_file_path, &out_dir).unwrap();
     assert_eq!(second_path, out_dir.join("my_pkg-0.2.0-py3-none-any.whl"));
     assert_eq!(fs::read(&second_path).unwrap(), updated_bytes);
+
+    // 3. Verify run_cli returns ExitCode::SUCCESS and ExitCode::FAILURE.
+    assert_eq!(
+        run_cli([
+            OsStr::new("--wheel"),
+            wheel_path.as_os_str(),
+            OsStr::new("--name_file"),
+            name_file_path.as_os_str(),
+            OsStr::new("--output"),
+            out_dir.as_os_str(),
+        ]),
+        ExitCode::SUCCESS
+    );
+    assert_eq!(run_cli(["--unknown"]), ExitCode::FAILURE);
 }
 
 #[test]

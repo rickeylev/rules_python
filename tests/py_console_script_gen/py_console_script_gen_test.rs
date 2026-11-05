@@ -1,9 +1,13 @@
 use std::env;
+use std::ffi::OsString;
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::process::ExitCode;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-use py_console_script_gen_lib::{parse_args, run, run_with_options};
+use py_console_script_gen_lib::{
+    parse_args, parse_console_scripts, run, run_cli, run_with_options,
+};
 
 static TEST_COUNTER: AtomicUsize = AtomicUsize::new(0);
 
@@ -15,10 +19,8 @@ impl TempDir {
     fn new(prefix: &str) -> Self {
         let id = TEST_COUNTER.fetch_add(1, Ordering::SeqCst);
         let path = env::temp_dir().join(format!(
-            "py_console_script_gen_test_{}_{}_{}",
-            prefix,
+            "py_console_script_gen_test_{prefix}_{}_{id}",
             std::process::id(),
-            id
         ));
         let _ = fs::remove_dir_all(&path);
         fs::create_dir_all(&path).unwrap();
@@ -169,15 +171,15 @@ fn test_empty_console_script_flag_falls_back_to_guess() {
     fs::write(&entry_points, "[console_scripts]\nmy-tool = pkg.mod:main\n").unwrap();
     let out = tmp.path().join("out.py");
 
-    let args = vec![
-        "--console-script".to_string(),
-        "".to_string(),
-        "--console-script-guess".to_string(),
-        "my-tool".to_string(),
-        "--shebang".to_string(),
-        "".to_string(),
-        entry_points.to_string_lossy().into_owned(),
-        out.to_string_lossy().into_owned(),
+    let args: Vec<OsString> = vec![
+        OsString::from("--console-script"),
+        OsString::from(""),
+        OsString::from("--console-script-guess"),
+        OsString::from("my-tool"),
+        OsString::from("--shebang"),
+        OsString::from(""),
+        entry_points.as_os_str().to_owned(),
+        out.as_os_str().to_owned(),
     ];
     let opts = parse_args(&args).unwrap();
     assert_eq!(opts.console_script, None);
@@ -200,14 +202,15 @@ fn test_equals_flag_syntax_and_flagfile() {
     fs::write(
         &flagfile,
         format!(
-            "--console-script=\n--console-script-guess=cli\n--shebang=#!/usr/bin/python3\n{}\n{}\n",
+            "--console-script\n\n--console-script-guess=cli\n--shebang=#!/usr/bin/python3\n{}\n{}\n",
             entry_points.display(),
             out.display()
         ),
     )
     .unwrap();
 
-    let opts = parse_args(&[format!("@{}", flagfile.display())]).unwrap();
+    let opts = parse_args([format!("@{}", flagfile.display())]).unwrap();
+    assert_eq!(opts.console_script, None);
     run_with_options(&opts).unwrap();
 
     let got = fs::read_to_string(&out).unwrap();
@@ -254,6 +257,34 @@ MyTool = trailing.mod:func
 }
 
 #[test]
+fn test_parse_console_scripts_edge_cases() {
+    assert_eq!(parse_console_scripts(""), None);
+    assert_eq!(
+        parse_console_scripts("[console_scripts]\nempty_val = \n   indented = ignored:fn\n"),
+        None
+    );
+
+    let parsed = parse_console_scripts(
+        "\
+[ console_scripts ]
+alpha = pkg.a:first
+  continuation_line_ignored
+alpha = pkg.a:override
+beta : pkg.b:run
+empty_ignored =   
+",
+    )
+    .expect("expected non-empty console_scripts");
+
+    assert_eq!(parsed.len(), 2);
+    assert_eq!(
+        parsed.get("alpha").map(String::as_str),
+        Some("pkg.a:override")
+    );
+    assert_eq!(parsed.get("beta").map(String::as_str), Some("pkg.b:run"));
+}
+
+#[test]
 fn test_nested_class_attribute_entry_point() {
     let tmp = TempDir::new("nested_attr");
     let entry_points = tmp.path().join("entry_points.txt");
@@ -272,15 +303,17 @@ fn test_nested_class_attribute_entry_point() {
 
 #[test]
 fn test_cli_parse_errors_and_double_dash() {
-    assert!(parse_args(&["--help"]).is_err());
-    assert!(parse_args(&["entry_points.txt", "out.py"]).is_err());
-    assert!(parse_args(&["--console-script-guess=foo", "only_one_positional"]).is_err());
-    assert!(parse_args(&["--console-script-guess=foo", "--unknown-flag", "a", "b"]).is_err());
-    assert!(parse_args(&["--console-script"]).is_err());
-    assert!(parse_args(&["--console-script-guess"]).is_err());
-    assert!(parse_args(&["--shebang"]).is_err());
+    assert!(parse_args(["--help"]).is_err());
+    assert!(parse_args(["-h"]).is_err());
+    assert!(parse_args(["@"]).is_err());
+    assert!(parse_args(["entry_points.txt", "out.py"]).is_err());
+    assert!(parse_args(["--console-script-guess=foo", "only_one_positional"]).is_err());
+    assert!(parse_args(["--console-script-guess=foo", "--unknown-flag", "a", "b"]).is_err());
+    assert!(parse_args(["--console-script"]).is_err());
+    assert!(parse_args(["--console-script-guess"]).is_err());
+    assert!(parse_args(["--shebang"]).is_err());
 
-    let opts = parse_args(&[
+    let opts = parse_args([
         "--console-script-guess=foo",
         "--",
         "-dash_entry_points.txt",
@@ -289,4 +322,23 @@ fn test_cli_parse_errors_and_double_dash() {
     .unwrap();
     assert_eq!(opts.entry_points, PathBuf::from("-dash_entry_points.txt"));
     assert_eq!(opts.out, PathBuf::from("-dash_out.py"));
+}
+
+#[test]
+fn test_run_cli_exit_codes() {
+    let tmp = TempDir::new("run_cli");
+    let entry_points = tmp.path().join("entry_points.txt");
+    fs::write(&entry_points, "[console_scripts]\ncli = pkg.cli:main\n").unwrap();
+    let out = tmp.path().join("cli_out.py");
+
+    let code_ok = run_cli([
+        OsString::from("--console-script-guess=cli"),
+        entry_points.as_os_str().to_owned(),
+        out.as_os_str().to_owned(),
+    ]);
+    assert_eq!(code_ok, ExitCode::SUCCESS);
+    assert!(out.exists());
+
+    let code_err = run_cli(["--unknown-flag"]);
+    assert_eq!(code_err, ExitCode::FAILURE);
 }

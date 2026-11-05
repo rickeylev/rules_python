@@ -1,10 +1,11 @@
 use std::env;
 use std::fs;
 use std::path::PathBuf;
+use std::process::ExitCode;
 
 use exe_zip_maker_lib::{
-    compute_file_sha256_hex, create_exe_zip, parse_args, replace_bytes, run_cli, Options,
-    PLACEHOLDER,
+    Options, PLACEHOLDER, compute_file_sha256_hex, create_exe_zip, parse_args, replace_bytes,
+    run_cli,
 };
 
 #[test]
@@ -169,6 +170,8 @@ fn test_parse_args_and_run_cli() {
     assert!(parse_args(["only_one"]).is_err());
     assert!(parse_args(["a", "b", "c", "d"]).is_err());
     assert!(parse_args(["--help", "b", "c"]).is_err());
+    assert!(parse_args(["--unknown", "b", "c"]).is_err());
+    assert!(parse_args(["", "b.zip", "c.pyz"]).is_err());
 
     let temp_dir = env::temp_dir().join(format!("exe_zip_cli_{}", std::process::id()));
     fs::create_dir_all(&temp_dir).unwrap();
@@ -178,14 +181,14 @@ fn test_parse_args_and_run_cli() {
     fs::write(&preamble_path, b"#!/bin/sh\n# %ZIP_HASH%\n").unwrap();
     fs::write(&zip_path, b"PK\x03\x04dummy").unwrap();
 
-    assert_eq!(run_cli(["missing_args"]), 1);
+    assert_eq!(run_cli(["missing_args"]), ExitCode::FAILURE);
     assert_eq!(
         run_cli([
             preamble_path.as_os_str(),
             zip_path.as_os_str(),
             output_path.as_os_str(),
         ]),
-        0
+        ExitCode::SUCCESS
     );
     assert!(output_path.exists());
 

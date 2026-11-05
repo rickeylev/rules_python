@@ -5,9 +5,11 @@ use std::ffi::OsString;
 use std::fs::{self, File, Metadata};
 use std::io::{self, BufWriter, Seek, Write};
 use std::path::{Path, PathBuf};
+use std::process::ExitCode;
 
+use lexopt::prelude::*;
 use zip::write::SimpleFileOptions;
-use zip::{CompressionMethod, DateTime, ZipWriter, ZIP64_BYTES_THR};
+use zip::{CompressionMethod, DateTime, ZIP64_BYTES_THR, ZipWriter};
 
 pub const BLOCK_SIZE: usize = 256 * 1024;
 
@@ -22,25 +24,26 @@ pub enum EntryType {
     Symlink,
 }
 
+/// Symlink handling mode parsed from a zipper manifest entry.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SymlinkMode {
+    /// `"0"`: store as regular file unless the source itself is a relative symlink.
+    Follow,
+    /// `"1"`: store as symlink by reading the link target on disk.
+    Symlink,
+    /// `"-1"`: infer symlink mode (`Symlink` if dangling on disk, else `Follow`).
+    Auto,
+    /// Direct symlink entry (`symlink|<rf_path>|<link_to_rf_path>`).
+    Direct,
+}
+
 /// A parsed line from a zipper manifest.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ManifestEntry {
     pub entry_type: EntryType,
-    pub is_symlink_str: String,
+    pub symlink_mode: SymlinkMode,
     pub zip_path: String,
     pub content_path: Option<String>,
-}
-
-/// Configuration options for creating a zip archive.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ZipOptions {
-    pub manifest_path: PathBuf,
-    pub output_zip: PathBuf,
-    pub compress_level: u32,
-    pub workspace_name: String,
-    pub legacy_external_runfiles: bool,
-    pub runfiles_dir: String,
-    pub platform_pathsep: String,
 }
 
 /// Joins path components with `/`.
@@ -55,8 +58,8 @@ pub fn get_zip_runfiles_path(
     legacy_external_runfiles: bool,
     runfiles_dir: &str,
 ) -> String {
-    let rel = if legacy_external_runfiles && path.starts_with("external/") {
-        path["external/".len()..].to_string()
+    let rel = if legacy_external_runfiles && let Some(stripped) = path.strip_prefix("external/") {
+        stripped.to_string()
     } else if let Some(stripped) = path.strip_prefix("../") {
         stripped.to_string()
     } else {
@@ -72,11 +75,11 @@ fn normalize_components(path: &str) -> Vec<&str> {
             continue;
         }
         if part == ".." {
-            if let Some(&last) = out.last() {
-                if last != ".." {
-                    out.pop();
-                    continue;
-                }
+            if let Some(&last) = out.last()
+                && last != ".."
+            {
+                out.pop();
+                continue;
             }
             out.push("..");
         } else {
@@ -87,9 +90,9 @@ fn normalize_components(path: &str) -> Vec<&str> {
 }
 
 fn posix_dirname(path: &str) -> &str {
-    match path.rfind(['/', '\\']) {
-        Some(0) => "/",
-        Some(idx) => &path[..idx],
+    match path.rsplit_once(['/', '\\']) {
+        Some(("", _)) => "/",
+        Some((dir, _)) => dir,
         None => "",
     }
 }
@@ -133,6 +136,23 @@ pub fn normalize_zip_path(path: &str) -> String {
     path.replace('\\', "/")
 }
 
+fn parse_symlink_mode(raw: &str, line_idx: usize, line: &str) -> io::Result<SymlinkMode> {
+    match raw {
+        "0" => Ok(SymlinkMode::Follow),
+        "1" => Ok(SymlinkMode::Symlink),
+        "-1" => Ok(SymlinkMode::Auto),
+        _ => Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            format!(
+                "Error: Invalid symlink mode '{}' at line {}: {}",
+                raw,
+                line_idx + 1,
+                line
+            ),
+        )),
+    }
+}
+
 /// Parses a single line of a manifest file.
 pub fn parse_entry(
     line: &str,
@@ -152,13 +172,13 @@ pub fn parse_entry(
     let entry = match (type_str, parts.as_slice()) {
         ("regular", [_, is_symlink_str, zip_path, content_path]) => ManifestEntry {
             entry_type: EntryType::Regular,
-            is_symlink_str: (*is_symlink_str).to_string(),
+            symlink_mode: parse_symlink_mode(is_symlink_str, line_idx, line)?,
             zip_path: (*zip_path).to_string(),
             content_path: Some((*content_path).to_string()),
         },
         ("rf-empty", [_, runfile_path]) => ManifestEntry {
             entry_type: EntryType::RfEmpty,
-            is_symlink_str: "0".to_string(),
+            symlink_mode: SymlinkMode::Follow,
             zip_path: get_zip_runfiles_path(
                 runfile_path,
                 workspace_name,
@@ -169,7 +189,7 @@ pub fn parse_entry(
         },
         ("rf-file", [_, is_symlink_str, runfile_path, content_path]) => ManifestEntry {
             entry_type: EntryType::RfFile,
-            is_symlink_str: (*is_symlink_str).to_string(),
+            symlink_mode: parse_symlink_mode(is_symlink_str, line_idx, line)?,
             zip_path: get_zip_runfiles_path(
                 runfile_path,
                 workspace_name,
@@ -180,13 +200,13 @@ pub fn parse_entry(
         },
         ("rf-symlink", [_, is_symlink_str, runfile_path, content_path]) => ManifestEntry {
             entry_type: EntryType::RfSymlink,
-            is_symlink_str: (*is_symlink_str).to_string(),
+            symlink_mode: parse_symlink_mode(is_symlink_str, line_idx, line)?,
             zip_path: unix_join(&[runfiles_dir, workspace_name, runfile_path]),
             content_path: Some((*content_path).to_string()),
         },
         ("rf-root-symlink", [_, is_symlink_str, runfile_path, content_path]) => ManifestEntry {
             entry_type: EntryType::RfRootSymlink,
-            is_symlink_str: (*is_symlink_str).to_string(),
+            symlink_mode: parse_symlink_mode(is_symlink_str, line_idx, line)?,
             zip_path: unix_join(&[runfiles_dir, runfile_path]),
             content_path: Some((*content_path).to_string()),
         },
@@ -196,7 +216,7 @@ pub fn parse_entry(
             let content_path = relative_path(&link_to, posix_dirname(&zip_path));
             ManifestEntry {
                 entry_type: EntryType::Symlink,
-                is_symlink_str: "2".to_string(),
+                symlink_mode: SymlinkMode::Direct,
                 zip_path,
                 content_path: Some(content_path),
             }
@@ -239,8 +259,7 @@ pub fn read_manifest(
                 return Err(io::Error::new(
                     e.kind(),
                     format!(
-                        "{}\nError processing line {}: {}",
-                        e,
+                        "{e}\nError processing line {}: {}",
                         line_idx + 1,
                         line.trim()
                     ),
@@ -251,16 +270,8 @@ pub fn read_manifest(
 
     // Sort symlink entries first so they have precedence, then sort by zip path.
     entries.sort_by(|a, b| {
-        let a_prio = if a.entry_type == EntryType::Symlink {
-            0
-        } else {
-            1
-        };
-        let b_prio = if b.entry_type == EntryType::Symlink {
-            0
-        } else {
-            1
-        };
+        let a_prio = usize::from(a.entry_type != EntryType::Symlink);
+        let b_prio = usize::from(b.entry_type != EntryType::Symlink);
         a.zip_path.cmp(&b.zip_path).then(a_prio.cmp(&b_prio))
     });
 
@@ -284,13 +295,24 @@ fn is_abs_path(path: &Path) -> bool {
 /// Determines whether `content_path` should be stored as a symlink and returns its target.
 pub fn source_symlink_target(
     content_path: &Path,
-    is_symlink_str: &str,
+    symlink_mode: SymlinkMode,
 ) -> io::Result<Option<String>> {
-    if is_symlink_str == "1" {
+    let resolved_mode = match symlink_mode {
+        SymlinkMode::Auto => {
+            if fs::metadata(content_path).is_err() {
+                SymlinkMode::Symlink
+            } else {
+                SymlinkMode::Follow
+            }
+        }
+        other => other,
+    };
+
+    if resolved_mode == SymlinkMode::Symlink {
         let target = fs::read_link(content_path)?;
         return Ok(Some(target.to_string_lossy().into_owned()));
     }
-    if is_symlink_str != "0" || !is_symlink_path(content_path) {
+    if resolved_mode != SymlinkMode::Follow || !is_symlink_path(content_path) {
         return Ok(None);
     }
 
@@ -376,22 +398,12 @@ fn write_entry<W: Write + Seek>(
     let content_path_str = entry.content_path.as_deref().ok_or_else(|| {
         io::Error::new(
             io::ErrorKind::InvalidData,
-            format!("Missing content_path for entry {}", zip_path),
+            format!("Missing content_path for entry {zip_path}"),
         )
     })?;
     let content_path = Path::new(content_path_str);
 
-    let effective_is_symlink = if entry.is_symlink_str == "-1" {
-        if fs::metadata(content_path).is_err() {
-            "1"
-        } else {
-            "0"
-        }
-    } else {
-        entry.is_symlink_str.as_str()
-    };
-
-    if let Some(symlink_target) = source_symlink_target(content_path, effective_is_symlink)? {
+    if let Some(symlink_target) = source_symlink_target(content_path, entry.symlink_mode)? {
         let target = convert_symlink_target(&symlink_target, platform_pathsep);
         zf.add_symlink(&zip_path, target, symlink_file_options())
             .map_err(io::Error::from)?;
@@ -418,10 +430,10 @@ pub fn create_zip(options: &ZipOptions) -> io::Result<()> {
         &options.runfiles_dir,
     )?;
 
-    if let Some(parent) = options.output_zip.parent() {
-        if !parent.as_os_str().is_empty() {
-            fs::create_dir_all(parent)?;
-        }
+    if let Some(parent) = options.output_zip.parent()
+        && !parent.as_os_str().is_empty()
+    {
+        fs::create_dir_all(parent)?;
     }
 
     let out_file = BufWriter::with_capacity(BLOCK_SIZE, File::create(&options.output_zip)?);
@@ -442,99 +454,100 @@ pub fn create_zip(options: &ZipOptions) -> io::Result<()> {
     inner.flush()
 }
 
+/// Configuration options for creating a zip archive.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ZipOptions {
+    pub manifest_path: PathBuf,
+    pub output_zip: PathBuf,
+    pub compress_level: u32,
+    pub workspace_name: String,
+    pub legacy_external_runfiles: bool,
+    pub runfiles_dir: String,
+    pub platform_pathsep: String,
+}
+
+fn parse_legacy_external_runfiles(val: &str) -> Result<bool, String> {
+    match val {
+        "0" => Ok(false),
+        "1" => Ok(true),
+        other => Err(format!(
+            "invalid --legacy-external-runfiles value (expected 0 or 1): {other}"
+        )),
+    }
+}
+
 /// Parses command-line arguments (excluding `argv[0]`) into `ZipOptions`.
-pub fn parse_args<I, S>(args: I) -> Result<ZipOptions, String>
+pub fn parse_args<I, T>(args: I) -> Result<ZipOptions, String>
 where
-    I: IntoIterator<Item = S>,
-    S: AsRef<str>,
+    I: IntoIterator<Item = T>,
+    T: Into<OsString>,
 {
-    let mut positional = Vec::new();
+    let mut positional: Vec<PathBuf> = Vec::new();
     let mut compress_level: u32 = 0;
     let mut workspace_name = String::new();
     let mut legacy_external_runfiles = false;
     let mut runfiles_dir = "runfiles".to_string();
     let mut platform_pathsep = std::path::MAIN_SEPARATOR_STR.to_string();
 
-    let mut iter = args.into_iter();
-    while let Some(arg_item) = iter.next() {
-        let arg = arg_item.as_ref();
-        if arg == "-h" || arg == "--help" {
-            return Err("Usage: zipper [OPTIONS] <manifest> <output>".to_string());
-        } else if let Some(val) = arg.strip_prefix("--compression=") {
-            compress_level = val
-                .parse::<u32>()
-                .map_err(|_| format!("invalid --compression value: {}", val))?;
-        } else if arg == "--compression" {
-            let val = iter
-                .next()
-                .ok_or_else(|| "missing value for --compression".to_string())?;
-            compress_level = val
-                .as_ref()
-                .parse::<u32>()
-                .map_err(|_| format!("invalid --compression value: {}", val.as_ref()))?;
-        } else if let Some(val) = arg.strip_prefix("--workspace-name=") {
-            workspace_name = val.to_string();
-        } else if arg == "--workspace-name" {
-            let val = iter
-                .next()
-                .ok_or_else(|| "missing value for --workspace-name".to_string())?;
-            workspace_name = val.as_ref().to_string();
-        } else if let Some(val) = arg.strip_prefix("--legacy-external-runfiles=") {
-            legacy_external_runfiles = match val {
-                "0" => false,
-                "1" => true,
-                _ => {
-                    return Err(format!(
-                        "invalid --legacy-external-runfiles value (expected 0 or 1): {}",
-                        val
-                    ))
-                }
-            };
-        } else if arg == "--legacy-external-runfiles" {
-            let val = iter
-                .next()
-                .ok_or_else(|| "missing value for --legacy-external-runfiles".to_string())?;
-            legacy_external_runfiles = match val.as_ref() {
-                "0" => false,
-                "1" => true,
-                other => {
-                    return Err(format!(
-                        "invalid --legacy-external-runfiles value (expected 0 or 1): {}",
-                        other
-                    ))
-                }
-            };
-        } else if let Some(val) = arg.strip_prefix("--runfiles-dir=") {
-            runfiles_dir = val.to_string();
-        } else if arg == "--runfiles-dir" {
-            let val = iter
-                .next()
-                .ok_or_else(|| "missing value for --runfiles-dir".to_string())?;
-            runfiles_dir = val.as_ref().to_string();
-        } else if let Some(val) = arg.strip_prefix("--target-platform-pathsep=") {
-            platform_pathsep = val.to_string();
-        } else if arg == "--target-platform-pathsep" {
-            let val = iter
-                .next()
-                .ok_or_else(|| "missing value for --target-platform-pathsep".to_string())?;
-            platform_pathsep = val.as_ref().to_string();
-        } else if arg.starts_with('-') {
-            return Err(format!("unknown option: {}", arg));
-        } else {
-            positional.push(arg.to_string());
+    let mut parser = lexopt::Parser::from_args(args);
+    while let Some(arg) = parser.next().map_err(|e| e.to_string())? {
+        match arg {
+            Short('h') | Long("help") => {
+                return Err("Usage: zipper [OPTIONS] <manifest> <output>".to_string());
+            }
+            Long("compression") => {
+                compress_level = parser
+                    .value()
+                    .map_err(|e| e.to_string())?
+                    .parse::<u32>()
+                    .map_err(|e| e.to_string())?;
+            }
+            Long("workspace-name") => {
+                workspace_name = parser
+                    .value()
+                    .map_err(|e| e.to_string())?
+                    .string()
+                    .map_err(|e| e.to_string())?;
+            }
+            Long("legacy-external-runfiles") => {
+                legacy_external_runfiles = parser
+                    .value()
+                    .map_err(|e| e.to_string())?
+                    .parse_with(parse_legacy_external_runfiles)
+                    .map_err(|e| e.to_string())?;
+            }
+            Long("runfiles-dir") => {
+                runfiles_dir = parser
+                    .value()
+                    .map_err(|e| e.to_string())?
+                    .string()
+                    .map_err(|e| e.to_string())?;
+            }
+            Long("target-platform-pathsep") => {
+                platform_pathsep = parser
+                    .value()
+                    .map_err(|e| e.to_string())?
+                    .string()
+                    .map_err(|e| e.to_string())?;
+            }
+            Value(val) => {
+                positional.push(PathBuf::from(val));
+            }
+            _ => return Err(arg.unexpected().to_string()),
         }
     }
 
-    if positional.len() != 2 {
-        return Err(format!(
-            "expected 2 positional arguments (<manifest> <output>), got {}",
-            positional.len()
-        ));
-    }
+    let [manifest_path, output_zip]: [PathBuf; 2] =
+        positional.try_into().map_err(|v: Vec<_>| {
+            format!(
+                "expected 2 positional arguments (<manifest> <output>), got {}",
+                v.len()
+            )
+        })?;
 
     Ok(ZipOptions {
-        manifest_path: PathBuf::from(&positional[0]),
-        output_zip: PathBuf::from(&positional[1]),
+        manifest_path,
+        output_zip,
         compress_level,
         workspace_name,
         legacy_external_runfiles,
@@ -545,29 +558,24 @@ where
 
 /// Parses CLI arguments (excluding `argv[0]` and subcommand name), creates the zip archive, and
 /// returns the process exit code.
-pub fn run_cli<I, T>(args: I) -> i32
+pub fn run_cli<I, T>(args: I) -> ExitCode
 where
     I: IntoIterator<Item = T>,
     T: Into<OsString>,
 {
-    let str_args: Vec<String> = args
-        .into_iter()
-        .map(|a| a.into().to_string_lossy().into_owned())
-        .collect();
-    let options = match parse_args(&str_args) {
+    let options = match parse_args(args) {
         Ok(opts) => opts,
         Err(msg) => {
-            eprintln!("zipper: error: {}", msg);
-            return 1;
+            eprintln!("zipper: error: {msg}");
+            return ExitCode::FAILURE;
         }
     };
     if let Err(err) = create_zip(&options) {
         eprintln!(
-            "zipper: error creating zip {}: {}",
-            options.output_zip.display(),
-            err
+            "zipper: error creating zip {}: {err}",
+            options.output_zip.display()
         );
-        return 1;
+        return ExitCode::FAILURE;
     }
-    0
+    ExitCode::SUCCESS
 }

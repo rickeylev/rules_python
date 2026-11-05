@@ -1,68 +1,30 @@
 //! Library for building deterministic Python `.whl` archives (PEP 427).
 
-use std::collections::{BTreeMap, HashMap};
+use std::collections::HashMap;
 use std::ffi::OsString;
 use std::fs::{self, File};
 use std::io::{self, BufWriter, Read, Seek, Write};
 use std::path::{Path, PathBuf};
+use std::process::ExitCode;
+use std::str::FromStr;
 use std::sync::LazyLock;
 
+use base64::Engine as _;
 use regex::Regex;
 use sha2::{Digest, Sha256};
 use zip::write::SimpleFileOptions;
-use zip::{CompressionMethod, DateTime, ZipWriter, ZIP64_BYTES_THR};
+use zip::{CompressionMethod, DateTime, ZIP64_BYTES_THR, ZipWriter};
 
 pub const BLOCK_SIZE: usize = 256 * 1024;
 
 /// Permissions `-rwxrwxrwx` with regular file bit (`0o777 | 0o100000`).
 pub const REGULAR_FILE_UNIX_MODE: u32 = 0o100777;
 
-const URLSAFE_B64_ALPHABET: &[u8; 64] =
-    b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
-
 static RE_ESCAPE_SEGMENT: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"[^\w\d.]+").expect("valid escape segment regex"));
 
 static RE_PACKAGE_NAME: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"[-_.]+").expect("valid package name regex"));
-
-static RE_PEP440_VERSION: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(
-        r"(?xi)
-        ^\s*
-        v?
-        (?:
-            (?:(?P<epoch>[0-9]+)!)?
-            (?P<release>[0-9]+(?:\.[0-9]+)*)
-            (?P<pre>
-                [-_\.]?
-                (?P<pre_l>alpha|a|beta|b|preview|pre|c|rc)
-                [-_\.]?
-                (?P<pre_n>[0-9]+)?
-            )?
-            (?P<post>
-                (?:-(?P<post_n1>[0-9]+))
-                |
-                (?:
-                    [-_\.]?
-                    (?P<post_l>post|rev|r)
-                    [-_\.]?
-                    (?P<post_n2>[0-9]+)?
-                )
-            )?
-            (?P<dev>
-                [-_\.]?
-                (?P<dev_l>dev)
-                [-_\.]?
-                (?P<dev_n>[0-9]+)?
-            )?
-        )
-        (?:\+(?P<local>[a-z0-9]+(?:[-_\.][a-z0-9]+)*))?
-        \s*$
-        ",
-    )
-    .expect("valid PEP 440 version regex")
-});
 
 static RE_LOCAL_SANITIZE: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"[^a-z0-9]+").expect("valid local sanitize regex"));
@@ -72,33 +34,6 @@ static RE_BRACE_PLACEHOLDER: LazyLock<Regex> =
 
 static RE_METADATA_NAME: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"(?m)^Name: .*$").expect("valid metadata Name regex"));
-
-/// Command-line options for `wheelmaker`.
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
-pub struct WheelOptions {
-    pub name: String,
-    pub version: String,
-    pub build_tag: String,
-    pub python_tag: String,
-    pub abi: String,
-    pub platform: String,
-    pub out: Option<PathBuf>,
-    pub no_compress: bool,
-    pub name_file: Option<PathBuf>,
-    pub strip_path_prefix: Vec<String>,
-    pub path_prefix: String,
-    pub metadata_file: Option<PathBuf>,
-    pub description_file: Option<PathBuf>,
-    pub description_content_type: Option<String>,
-    pub entry_points_file: Option<PathBuf>,
-    pub input_file: Vec<String>,
-    pub input_file_list: Vec<PathBuf>,
-    pub extra_distinfo_file: Vec<String>,
-    pub data_files: Vec<String>,
-    pub volatile_status_file: Option<PathBuf>,
-    pub stable_status_file: Option<PathBuf>,
-    pub extra_requires_file: Vec<String>,
-}
 
 /// Returns the common prefix components between `path1` and `path2`.
 pub fn commonpath(path1: &str, path2: &str) -> String {
@@ -129,87 +64,11 @@ pub fn escape_filename_distribution_name(name: &str) -> String {
     normalize_package_name(name).replace('-', "_")
 }
 
-fn strip_leading_zeros(digits: &str) -> &str {
-    let trimmed = digits.trim_start_matches('0');
-    if trimmed.is_empty() {
-        "0"
-    } else {
-        trimmed
-    }
-}
-
-/// Strictly parses and normalizes a PEP 440 version string, matching `str(packaging.version.Version(version))`.
+/// Strictly parses and normalizes a PEP 440 version string.
 pub fn try_normalize_pep440(version: &str) -> Result<String, String> {
-    let caps = RE_PEP440_VERSION
-        .captures(version)
-        .ok_or_else(|| format!("Invalid version: '{}'", version))?;
-
-    let mut out = String::new();
-
-    if let Some(ep) = caps.name("epoch") {
-        let ep_norm = strip_leading_zeros(ep.as_str());
-        if ep_norm != "0" {
-            out.push_str(ep_norm);
-            out.push('!');
-        }
-    }
-
-    let release = caps.name("release").expect("release group required");
-    let rel_norm: Vec<&str> = release
-        .as_str()
-        .split('.')
-        .map(strip_leading_zeros)
-        .collect();
-    out.push_str(&rel_norm.join("."));
-
-    if let Some(pre_l) = caps.name("pre_l") {
-        let norm_l = match pre_l.as_str().to_ascii_lowercase().as_str() {
-            "alpha" | "a" => "a",
-            "beta" | "b" => "b",
-            "c" | "pre" | "preview" | "rc" => "rc",
-            _ => unreachable!("constrained by RE_PEP440_VERSION"),
-        };
-        let pre_n = caps
-            .name("pre_n")
-            .map_or("0", |m| strip_leading_zeros(m.as_str()));
-        out.push_str(norm_l);
-        out.push_str(pre_n);
-    }
-
-    if caps.name("post").is_some() {
-        let post_n = caps
-            .name("post_n1")
-            .or_else(|| caps.name("post_n2"))
-            .map_or("0", |m| strip_leading_zeros(m.as_str()));
-        out.push_str(".post");
-        out.push_str(post_n);
-    }
-
-    if caps.name("dev_l").is_some() {
-        let dev_n = caps
-            .name("dev_n")
-            .map_or("0", |m| strip_leading_zeros(m.as_str()));
-        out.push_str(".dev");
-        out.push_str(dev_n);
-    }
-
-    if let Some(local) = caps.name("local") {
-        let parts: Vec<String> = local
-            .as_str()
-            .split(['.', '_', '-'])
-            .map(|seg| {
-                if seg.bytes().all(|b| b.is_ascii_digit()) {
-                    strip_leading_zeros(seg).to_string()
-                } else {
-                    seg.to_ascii_lowercase()
-                }
-            })
-            .collect();
-        out.push('+');
-        out.push_str(&parts.join("."));
-    }
-
-    Ok(out)
+    pep440_rs::Version::from_str(version.trim())
+        .map(|ver| ver.to_string())
+        .map_err(|err| err.to_string())
 }
 
 /// Normalizes a version string according to PEP 440, with fallback for `{PLACEHOLDER}` stamps.
@@ -228,7 +87,7 @@ pub fn normalize_pep440(version: &str) -> String {
     let candidate = if sanitized.is_empty() {
         substituted.into_owned()
     } else {
-        format!("{}{}{}", substituted, delimiter, sanitized)
+        format!("{substituted}{delimiter}{sanitized}")
     };
     if let Ok(norm) = try_normalize_pep440(&candidate) {
         return norm;
@@ -237,7 +96,7 @@ pub fn normalize_pep440(version: &str) -> String {
     let fallback = if sanitized.is_empty() {
         "0".to_string()
     } else {
-        format!("0+{}", sanitized)
+        format!("0+{sanitized}")
     };
     try_normalize_pep440(&fallback).unwrap_or_else(|_| "0".to_string())
 }
@@ -255,337 +114,80 @@ pub fn arcname_from(
     }
     for prefix in strip_path_prefixes {
         if let Some(stripped) = normalized_arcname.strip_prefix(prefix.as_str()) {
-            return format!("{}{}", add_path_prefix, stripped);
+            return format!("{add_path_prefix}{stripped}");
         }
     }
-    format!("{}{}", add_path_prefix, normalized_arcname)
-}
-
-/// Encodes `bytes` using URL-safe base64 without trailing `=` padding.
-pub fn urlsafe_b64encode_nopad(bytes: &[u8]) -> String {
-    let mut out = String::with_capacity((bytes.len() * 4).div_ceil(3));
-    let mut chunks = bytes.chunks_exact(3);
-    for chunk in &mut chunks {
-        let b0 = chunk[0] as usize;
-        let b1 = chunk[1] as usize;
-        let b2 = chunk[2] as usize;
-        out.push(URLSAFE_B64_ALPHABET[b0 >> 2] as char);
-        out.push(URLSAFE_B64_ALPHABET[((b0 & 0x03) << 4) | (b1 >> 4)] as char);
-        out.push(URLSAFE_B64_ALPHABET[((b1 & 0x0F) << 2) | (b2 >> 6)] as char);
-        out.push(URLSAFE_B64_ALPHABET[b2 & 0x3F] as char);
-    }
-    let rem = chunks.remainder();
-    if rem.len() == 1 {
-        let b0 = rem[0] as usize;
-        out.push(URLSAFE_B64_ALPHABET[b0 >> 2] as char);
-        out.push(URLSAFE_B64_ALPHABET[(b0 & 0x03) << 4] as char);
-    } else if rem.len() == 2 {
-        let b0 = rem[0] as usize;
-        let b1 = rem[1] as usize;
-        out.push(URLSAFE_B64_ALPHABET[b0 >> 2] as char);
-        out.push(URLSAFE_B64_ALPHABET[((b0 & 0x03) << 4) | (b1 >> 4)] as char);
-        out.push(URLSAFE_B64_ALPHABET[(b1 & 0x0F) << 2] as char);
-    }
-    out
+    format!("{add_path_prefix}{normalized_arcname}")
 }
 
 /// Formats a raw 32-byte SHA-256 digest as `sha256=<urlsafe_b64_nopad>`.
 pub fn serialize_digest(sha256_bytes: &[u8]) -> String {
-    format!("sha256={}", urlsafe_b64encode_nopad(sha256_bytes))
-}
-
-/// Quotes a filename for the `RECORD` file using CSV rules (`QUOTE_ALL` or `QUOTE_MINIMAL`).
-pub fn quote_filename(filename: &str, quote_all_filenames: bool) -> String {
-    let filename = filename.trim_start_matches('/');
-    let needs_quotes = quote_all_filenames
-        || filename.contains(',')
-        || filename.contains('"')
-        || filename.contains('\n')
-        || filename.contains('\r');
-    if needs_quotes {
-        format!("\"{}\"", filename.replace('"', "\"\""))
-    } else {
-        filename.to_string()
-    }
+    format!(
+        "sha256={}",
+        base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(sha256_bytes)
+    )
 }
 
 /// Collects input `(package_path, real_path)` pairs into a deduplicated map.
-pub fn get_files_to_package(input_files: &[(String, String)]) -> BTreeMap<String, String> {
-    let mut files = BTreeMap::new();
+pub fn get_files_to_package(input_files: &[(String, PathBuf)]) -> HashMap<String, PathBuf> {
+    let mut files = HashMap::with_capacity(input_files.len());
     for (package_path, real_path) in input_files {
         files.insert(package_path.clone(), real_path.clone());
     }
     files
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-enum MarkerToken {
-    LParen,
-    RParen,
-    Ident(String),
-    Str(String),
-    Op(String),
-    And,
-    Or,
-}
-
-fn tokenize_marker(marker: &str) -> Result<Vec<MarkerToken>, String> {
-    let mut tokens = Vec::new();
-    let chars: Vec<char> = marker.chars().collect();
-    let mut i = 0;
-    while i < chars.len() {
-        let c = chars[i];
-        if c.is_whitespace() {
-            i += 1;
-            continue;
-        }
-        if c == '(' {
-            tokens.push(MarkerToken::LParen);
-            i += 1;
-            continue;
-        }
-        if c == ')' {
-            tokens.push(MarkerToken::RParen);
-            i += 1;
-            continue;
-        }
-        if c == '\'' || c == '"' {
-            let quote = c;
-            i += 1;
-            let mut val = String::new();
-            let mut closed = false;
-            while i < chars.len() {
-                if chars[i] == quote {
-                    closed = true;
-                    i += 1;
-                    break;
-                }
-                val.push(chars[i]);
-                i += 1;
-            }
-            if !closed {
-                return Err(format!("Unclosed quote in marker: {}", marker));
-            }
-            tokens.push(MarkerToken::Str(val));
-            continue;
-        }
-        let rem: String = chars[i..].iter().collect();
-        let mut matched_op = None;
-        for op in ["===", "~=", "==", "!=", "<=", ">=", "<", ">"] {
-            if rem.starts_with(op) {
-                matched_op = Some(op);
-                break;
-            }
-        }
-        if let Some(op) = matched_op {
-            tokens.push(MarkerToken::Op(op.to_string()));
-            i += op.len();
-            continue;
-        }
-        if c.is_ascii_alphanumeric() || c == '_' || c == '.' || c == '-' {
-            let start = i;
-            while i < chars.len()
-                && (chars[i].is_ascii_alphanumeric()
-                    || chars[i] == '_'
-                    || chars[i] == '.'
-                    || chars[i] == '-')
-            {
-                i += 1;
-            }
-            let word: String = chars[start..i].iter().collect();
-            match word.as_str() {
-                "and" => tokens.push(MarkerToken::And),
-                "or" => tokens.push(MarkerToken::Or),
-                "in" => tokens.push(MarkerToken::Op("in".to_string())),
-                "not" => {
-                    while i < chars.len() && chars[i].is_whitespace() {
-                        i += 1;
-                    }
-                    let rem_after: String = chars[i..].iter().collect();
-                    if rem_after.starts_with("in")
-                        && !rem_after[2..]
-                            .chars()
-                            .next()
-                            .is_some_and(|ch| ch.is_ascii_alphanumeric() || ch == '_')
-                    {
-                        i += 2;
-                        tokens.push(MarkerToken::Op("not in".to_string()));
-                    } else {
-                        return Err(format!("Unexpected 'not' in marker: {}", marker));
-                    }
-                }
-                _ => tokens.push(MarkerToken::Ident(word)),
-            }
-            continue;
-        }
-        return Err(format!(
-            "Unexpected character '{}' in marker: {}",
-            c, marker
-        ));
+fn format_requirement(req: &pep508_rs::Requirement<pep508_rs::VerbatimUrl>) -> String {
+    let mut out = format!("Requires-Dist: {}", req.name);
+    if !req.extras.is_empty() {
+        let mut extras: Vec<String> = req.extras.iter().map(ToString::to_string).collect();
+        extras.sort_unstable();
+        extras.dedup();
+        out.push('[');
+        out.push_str(&extras.join(","));
+        out.push(']');
     }
-    Ok(tokens)
-}
-
-fn normalize_marker(marker: &str) -> Result<String, String> {
-    let tokens = tokenize_marker(marker)?;
-    if tokens.is_empty() {
-        return Err("Empty marker".to_string());
-    }
-    let mut out = String::new();
-    for (idx, tok) in tokens.iter().enumerate() {
-        match tok {
-            MarkerToken::LParen => out.push('('),
-            MarkerToken::RParen => out.push(')'),
-            MarkerToken::Ident(id) => out.push_str(id),
-            MarkerToken::Str(val) => {
-                let is_extra_rhs = idx >= 2
-                    && matches!(tokens.get(idx - 1), Some(MarkerToken::Op(_)))
-                    && matches!(tokens.get(idx - 2), Some(MarkerToken::Ident(id)) if id == "extra");
-                let is_extra_lhs = matches!(tokens.get(idx + 1), Some(MarkerToken::Op(_)))
-                    && matches!(tokens.get(idx + 2), Some(MarkerToken::Ident(id)) if id == "extra");
-                let formatted = if is_extra_rhs || is_extra_lhs {
-                    normalize_package_name(val)
+    let mut is_url = false;
+    if let Some(ref version_or_url) = req.version_or_url {
+        match version_or_url {
+            pep508_rs::VersionOrUrl::VersionSpecifier(specs) => {
+                let mut spec_strs: Vec<String> = specs.iter().map(ToString::to_string).collect();
+                spec_strs.sort_unstable();
+                spec_strs.dedup();
+                out.push_str(&spec_strs.join(","));
+            }
+            pep508_rs::VersionOrUrl::Url(url) => {
+                is_url = true;
+                out.push_str(" @ ");
+                if let Some(given) = url.given() {
+                    out.push_str(given);
                 } else {
-                    val.clone()
-                };
-                out.push('"');
-                out.push_str(&formatted);
-                out.push('"');
-            }
-            MarkerToken::Op(op) => {
-                out.push(' ');
-                out.push_str(op);
-                out.push(' ');
-            }
-            MarkerToken::And => out.push_str(" and "),
-            MarkerToken::Or => out.push_str(" or "),
-        }
-    }
-    Ok(out)
-}
-
-fn find_unquoted_semicolon(s: &str) -> Option<usize> {
-    let mut in_quote: Option<char> = None;
-    for (idx, c) in s.char_indices() {
-        if let Some(q) = in_quote {
-            if c == q {
-                in_quote = None;
-            }
-        } else if c == '\'' || c == '"' {
-            in_quote = Some(c);
-        } else if c == ';' {
-            return Some(idx);
-        }
-    }
-    None
-}
-
-fn normalize_specifier_set(spec_str: &str) -> Result<String, String> {
-    let mut s = spec_str.trim();
-    if s.starts_with('(') && s.ends_with(')') {
-        s = s[1..s.len() - 1].trim();
-    }
-    if s.is_empty() {
-        return Ok(String::new());
-    }
-    let mut specs = Vec::new();
-    for part in s.split(',') {
-        let part = part.trim();
-        if part.is_empty() {
-            continue;
-        }
-        let mut matched = None;
-        for op in ["===", "~=", "==", "!=", "<=", ">=", "<", ">"] {
-            if let Some(rest) = part.strip_prefix(op) {
-                matched = Some((op, rest.trim()));
-                break;
+                    out.push_str(&url.to_string());
+                }
             }
         }
-        let (op, ver) = matched.ok_or_else(|| format!("Invalid version specifier: '{}'", part))?;
-        if ver.is_empty() {
-            return Err(format!("Missing version in specifier: '{}'", part));
-        }
-        specs.push(format!("{}{}", op, ver));
     }
-    specs.sort();
-    specs.dedup();
-    Ok(specs.join(","))
+    if let Some(marker) = req.marker.contents() {
+        if is_url {
+            out.push_str(&format!(" ; {marker}"));
+        } else {
+            out.push_str(&format!("; {marker}"));
+        }
+    }
+    out
 }
 
 /// Formats a PEP 508 requirement text into a normalized `Requires-Dist` metadata line.
 pub fn get_new_requirement_line(reqs_text: &str, extra: &str) -> Result<String, String> {
-    let s = reqs_text.trim();
-    if s.is_empty() {
-        return Err("Empty requirement".to_string());
+    let mut req = pep508_rs::Requirement::<pep508_rs::VerbatimUrl>::from_str(reqs_text.trim())
+        .map_err(|err| err.to_string())?;
+    let extra_trimmed = extra.trim();
+    if !extra_trimmed.is_empty() {
+        let extra_tree =
+            pep508_rs::MarkerTree::from_str(extra_trimmed).map_err(|err| err.to_string())?;
+        req.marker.and(extra_tree);
     }
-
-    let (before_marker, marker_part) = if let Some(semi_idx) = find_unquoted_semicolon(s) {
-        (&s[..semi_idx], Some(s[semi_idx + 1..].trim()))
-    } else {
-        (s, None)
-    };
-
-    let before_marker = before_marker.trim();
-    let name_len = before_marker
-        .chars()
-        .take_while(|c| c.is_ascii_alphanumeric() || *c == '-' || *c == '_' || *c == '.')
-        .map(|c| c.len_utf8())
-        .sum::<usize>();
-    if name_len == 0 {
-        return Err(format!("Invalid requirement name in '{}'", reqs_text));
-    }
-    let name = &before_marker[..name_len];
-    let mut rest = before_marker[name_len..].trim_start();
-
-    let req_extra_deps = if rest.starts_with('[') {
-        let close_idx = rest
-            .find(']')
-            .ok_or_else(|| format!("Unclosed extras bracket in '{}'", reqs_text))?;
-        let extras_inner = &rest[1..close_idx];
-        let mut extras: Vec<&str> = extras_inner
-            .split(',')
-            .map(|e| e.trim())
-            .filter(|e| !e.is_empty())
-            .collect();
-        extras.sort_unstable();
-        extras.dedup();
-        rest = rest[close_idx + 1..].trim_start();
-        if extras.is_empty() {
-            String::new()
-        } else {
-            format!("[{}]", extras.join(","))
-        }
-    } else {
-        String::new()
-    };
-
-    let req_spec = if let Some(after_at) = rest.strip_prefix('@') {
-        let url = after_at.trim();
-        if url.is_empty() {
-            return Err(format!("Empty URL in requirement '{}'", reqs_text));
-        }
-        format!(" @ {}", url)
-    } else {
-        normalize_specifier_set(rest)?
-    };
-
-    let base = format!("Requires-Dist: {}{}{}", name, req_extra_deps, req_spec);
-    let normalized_marker = match marker_part {
-        Some(m) if !m.is_empty() => Some(normalize_marker(m)?),
-        _ => None,
-    };
-
-    if let Some(marker) = normalized_marker {
-        if !extra.is_empty() {
-            Ok(format!("{}; ({}) and {}", base, marker, extra))
-        } else {
-            Ok(format!("{}; {}", base, marker))
-        }
-    } else if !extra.is_empty() {
-        Ok(format!("{}; {}", base, extra))
-    } else {
-        Ok(base)
-    }
+    Ok(format_requirement(&req))
 }
 
 /// Resolves `{KEY}` workspace status stamps in `argument` using pre-read status lines.
@@ -599,7 +201,7 @@ pub fn resolve_stamp_with_lines(argument: &str, status_lines: &[String]) -> Stri
             Some((k, v)) => (k, v),
             None => (line.as_str(), ""),
         };
-        let stamp = format!("{{{}}}", key);
+        let stamp = format!("{{{key}}}");
         resolved = resolved.replace(&stamp, value);
     }
     resolved
@@ -616,9 +218,23 @@ pub fn resolve_argument_stamp(
     let lines: Vec<String> = volatile_text
         .lines()
         .chain(stable_text.lines())
-        .map(|l| l.to_string())
+        .map(ToString::to_string)
         .collect();
     Ok(resolve_stamp_with_lines(argument, &lines))
+}
+
+fn csv_quote_always(field: &str) -> io::Result<String> {
+    let mut wtr = csv::WriterBuilder::new()
+        .has_headers(false)
+        .terminator(csv::Terminator::Any(b'\n'))
+        .quote_style(csv::QuoteStyle::Always)
+        .from_writer(Vec::new());
+    wtr.write_record([field]).map_err(io::Error::other)?;
+    let mut bytes = wtr.into_inner().map_err(io::Error::other)?;
+    if bytes.last() == Some(&b'\n') {
+        bytes.pop();
+    }
+    String::from_utf8(bytes).map_err(|err| io::Error::new(io::ErrorKind::InvalidData, err))
 }
 
 /// Low-level `.whl` archive writer tracking `RECORD` entries, mirroring `_WhlFile` in `wheelmaker.py`.
@@ -653,15 +269,11 @@ impl<W: Write + Seek> WhlFile<W> {
     }
 
     pub fn distinfo_path(&self, basename: &str) -> String {
-        format!("{}.dist-info/{}", self.distribution_prefix, basename)
+        format!("{}.dist-info/{basename}", self.distribution_prefix)
     }
 
     pub fn data_path(&self, basename: &str) -> String {
-        format!("{}.data/{}", self.distribution_prefix, basename)
-    }
-
-    pub fn quote_filename(&self, filename: &str) -> String {
-        quote_filename(filename, self.quote_all_filenames)
+        format!("{}.data/{basename}", self.distribution_prefix)
     }
 
     fn clean_zip_arcname(filename: &str) -> &str {
@@ -686,12 +298,17 @@ impl<W: Write + Seek> WhlFile<W> {
             let mut entries = Vec::new();
             for entry in fs::read_dir(real_filename)? {
                 let entry = entry?;
-                let file_name = entry.file_name().to_string_lossy().into_owned();
+                let file_name = entry.file_name().into_string().map_err(|name| {
+                    io::Error::new(
+                        io::ErrorKind::InvalidData,
+                        format!("non-UTF-8 filename in input directory: {name:?}"),
+                    )
+                })?;
                 entries.push((file_name, entry.path()));
             }
             entries.sort_by(|a, b| a.0.cmp(&b.0));
             for (file_name, path) in entries {
-                let child_pkg = format!("{}/{}", package_filename, file_name);
+                let child_pkg = format!("{package_filename}/{file_name}");
                 self.add_file(&child_pkg, &path)?;
             }
             return Ok(());
@@ -748,17 +365,35 @@ impl<W: Write + Seek> WhlFile<W> {
 
     pub fn add_recordfile(&mut self) -> io::Result<String> {
         let record_path = self.distinfo_path("RECORD");
-        let mut lines = Vec::with_capacity(self.record.len() + 1);
-        for (fname, digest, size) in &self.record {
-            lines.push(format!(
-                "{},{},{}",
-                self.quote_filename(fname),
-                digest,
-                size
-            ));
-        }
-        lines.push(format!("{},,", self.quote_filename(&record_path)));
-        let contents = format!("{}\n", lines.join("\n"));
+        let contents = if self.quote_all_filenames {
+            let mut out = String::new();
+            for (fname, digest, size) in &self.record {
+                let quoted = csv_quote_always(fname.trim_start_matches('/'))?;
+                out.push_str(&format!("{quoted},{digest},{size}\n"));
+            }
+            let quoted_record = csv_quote_always(record_path.trim_start_matches('/'))?;
+            out.push_str(&format!("{quoted_record},,\n"));
+            out
+        } else {
+            let mut wtr = csv::WriterBuilder::new()
+                .has_headers(false)
+                .terminator(csv::Terminator::Any(b'\n'))
+                .quote_style(csv::QuoteStyle::Necessary)
+                .from_writer(Vec::new());
+            for (fname, digest, size) in &self.record {
+                wtr.write_record([
+                    fname.trim_start_matches('/'),
+                    digest.as_str(),
+                    size.as_str(),
+                ])
+                .map_err(io::Error::other)?;
+            }
+            wtr.write_record([record_path.trim_start_matches('/'), "", ""])
+                .map_err(io::Error::other)?;
+            let bytes = wtr.into_inner().map_err(io::Error::other)?;
+            String::from_utf8(bytes)
+                .map_err(|err| io::Error::new(io::ErrorKind::InvalidData, err))?
+        };
         self.add_string(&record_path, contents.as_bytes())?;
         Ok(contents)
     }
@@ -802,8 +437,7 @@ impl WheelMaker {
     ) -> Self {
         let norm_version = normalize_pep440(version);
         let wheelname_fragment_distribution_name = escape_filename_distribution_name(name);
-        let distribution_prefix =
-            format!("{}-{}", wheelname_fragment_distribution_name, norm_version);
+        let distribution_prefix = format!("{wheelname_fragment_distribution_name}-{norm_version}");
         Self {
             name: name.to_string(),
             version: norm_version,
@@ -860,11 +494,11 @@ impl WheelMaker {
     }
 
     pub fn distinfo_path(&self, basename: &str) -> String {
-        format!("{}.dist-info/{}", self.distribution_prefix, basename)
+        format!("{}.dist-info/{basename}", self.distribution_prefix)
     }
 
     pub fn data_path(&self, basename: &str) -> String {
-        format!("{}.data/{}", self.distribution_prefix, basename)
+        format!("{}.data/{basename}", self.distribution_prefix)
     }
 
     pub fn wheelfile_contents(&self) -> String {
@@ -874,17 +508,16 @@ impl WheelMaker {
             "false"
         };
         let mut contents = format!(
-            "Wheel-Version: 1.0\nGenerator: bazel-wheelmaker 1.0\nRoot-Is-Purelib: {}\n",
-            purelib
+            "Wheel-Version: 1.0\nGenerator: bazel-wheelmaker 1.0\nRoot-Is-Purelib: {purelib}\n"
         );
         for tag in self.disttags() {
-            contents.push_str(&format!("Tag: {}\n", tag));
+            contents.push_str(&format!("Tag: {tag}\n"));
         }
         contents
     }
 
     pub fn format_metadata(&self, metadata: &str, name: &str, description: Option<&str>) -> String {
-        let replacement = format!("Name: {}", name);
+        let replacement = format!("Name: {name}");
         let mut out = RE_METADATA_NAME
             .replace_all(metadata, regex::NoExpand(&replacement))
             .into_owned();
@@ -909,17 +542,6 @@ impl WheelMaker {
     }
 }
 
-fn parse_file_pairs(items: &[String]) -> Result<Vec<(String, String)>, String> {
-    let mut pairs = Vec::with_capacity(items.len());
-    for item in items {
-        let (left, right) = item
-            .split_once(';')
-            .ok_or_else(|| format!("expected 'target;real_path' pair, got '{}'", item))?;
-        pairs.push((left.to_string(), right.to_string()));
-    }
-    Ok(pairs)
-}
-
 fn read_text_universal_newlines(path: &Path) -> io::Result<String> {
     let raw = fs::read_to_string(path)?;
     Ok(raw.replace("\r\n", "\n"))
@@ -931,7 +553,7 @@ pub fn expand_metadata_requires(
     extra_requires_map: &HashMap<String, String>,
 ) -> io::Result<String> {
     let mut result = metadata.to_string();
-    let lines: Vec<String> = metadata.lines().map(|l| l.to_string()).collect();
+    let lines: Vec<String> = metadata.lines().map(ToString::to_string).collect();
 
     for meta_line in lines {
         let Some(after_prefix) = meta_line.strip_prefix("Requires-Dist: ") else {
@@ -995,12 +617,9 @@ pub fn expand_metadata_requires(
 
 /// Builds the wheel archive and optional `--name_file` according to `options`.
 pub fn build_wheel(options: &WheelOptions) -> io::Result<()> {
-    let mut input_files = parse_file_pairs(&options.input_file)
-        .map_err(|e| io::Error::new(io::ErrorKind::InvalidInput, e))?;
-    let mut extra_distinfo_file = parse_file_pairs(&options.extra_distinfo_file)
-        .map_err(|e| io::Error::new(io::ErrorKind::InvalidInput, e))?;
-    let mut data_files = parse_file_pairs(&options.data_files)
-        .map_err(|e| io::Error::new(io::ErrorKind::InvalidInput, e))?;
+    let mut input_files = options.input_file.clone();
+    let mut extra_distinfo_file = options.extra_distinfo_file.clone();
+    let mut data_files = options.data_files.clone();
 
     for list_path in &options.input_file_list {
         let content = read_text_universal_newlines(list_path)?;
@@ -1018,29 +637,22 @@ pub fn build_wheel(options: &WheelOptions) -> io::Result<()> {
                     ),
                 )
             })?;
-            input_files.push((pkg.to_string(), real.to_string()));
+            input_files.push((pkg.to_string(), PathBuf::from(real)));
         }
     }
 
     let all_files = get_files_to_package(&input_files);
+    let mut sorted_files: Vec<(String, PathBuf)> = all_files.into_iter().collect();
+    sorted_files.sort_unstable_by(|a, b| a.0.cmp(&b.0));
 
     let mut status_lines = Vec::new();
-    if let (Some(ref volatile_path), Some(ref stable_path)) =
-        (&options.volatile_status_file, &options.stable_status_file)
-    {
+    if let Some(ref volatile_path) = options.volatile_status_file {
         let volatile_text = read_text_universal_newlines(volatile_path)?;
+        status_lines.extend(volatile_text.lines().map(ToString::to_string));
+    }
+    if let Some(ref stable_path) = options.stable_status_file {
         let stable_text = read_text_universal_newlines(stable_path)?;
-        status_lines.extend(volatile_text.lines().map(|s| s.to_string()));
-        status_lines.extend(stable_text.lines().map(|s| s.to_string()));
-    } else {
-        if let Some(ref volatile_path) = options.volatile_status_file {
-            let volatile_text = read_text_universal_newlines(volatile_path)?;
-            status_lines.extend(volatile_text.lines().map(|s| s.to_string()));
-        }
-        if let Some(ref stable_path) = options.stable_status_file {
-            let stable_text = read_text_universal_newlines(stable_path)?;
-            status_lines.extend(stable_text.lines().map(|s| s.to_string()));
-        }
+        status_lines.extend(stable_text.lines().map(ToString::to_string));
     }
 
     let (name, version, build_tag) = if !status_lines.is_empty() {
@@ -1071,16 +683,16 @@ pub fn build_wheel(options: &WheelOptions) -> io::Result<()> {
     );
 
     let out_path = maker.filename();
-    if let Some(parent) = out_path.parent() {
-        if !parent.as_os_str().is_empty() {
-            fs::create_dir_all(parent)?;
-        }
+    if let Some(parent) = out_path.parent()
+        && !parent.as_os_str().is_empty()
+    {
+        fs::create_dir_all(parent)?;
     }
     let out_file = BufWriter::with_capacity(BLOCK_SIZE, File::create(&out_path)?);
     let mut whl = maker.open_whlfile(out_file);
 
-    for (package_filename, real_filename) in &all_files {
-        whl.add_file(package_filename, Path::new(real_filename))?;
+    for (package_filename, real_filename) in &sorted_files {
+        whl.add_file(package_filename, real_filename)?;
     }
 
     let wheel_contents = maker.wheelfile_contents();
@@ -1100,17 +712,8 @@ pub fn build_wheel(options: &WheelOptions) -> io::Result<()> {
         raw_metadata = resolve_stamp_with_lines(&raw_metadata, &status_lines);
     }
 
-    let mut extra_requires_map = HashMap::new();
-    for item in &options.extra_requires_file {
-        if let Some((file, extra_opt)) = item.split_once(';') {
-            let formatted_extra = if extra_opt.trim().starts_with("extra") {
-                extra_opt.trim().to_string()
-            } else {
-                format!("extra == '{}'", extra_opt.trim())
-            };
-            extra_requires_map.insert(file.trim().to_string(), formatted_extra);
-        }
-    }
+    let extra_requires_map: HashMap<String, String> =
+        options.extra_requires_file.iter().cloned().collect();
 
     let expanded_metadata = expand_metadata_requires(&raw_metadata, &extra_requires_map)?;
     let final_metadata = maker.format_metadata(&expanded_metadata, &name, description.as_deref());
@@ -1120,24 +723,24 @@ pub fn build_wheel(options: &WheelOptions) -> io::Result<()> {
         whl.add_file(&maker.distinfo_path("entry_points.txt"), ep_path)?;
     }
 
-    data_files.sort();
+    data_files.sort_unstable();
     for (filename, real_path) in &data_files {
-        whl.add_file(&maker.data_path(filename), Path::new(real_path))?;
+        whl.add_file(&maker.data_path(filename), real_path)?;
     }
 
-    extra_distinfo_file.sort();
+    extra_distinfo_file.sort_unstable();
     for (filename, real_path) in &extra_distinfo_file {
-        whl.add_file(&maker.distinfo_path(filename), Path::new(real_path))?;
+        whl.add_file(&maker.distinfo_path(filename), real_path)?;
     }
 
     whl.add_recordfile()?;
     whl.finish()?;
 
     if let Some(ref name_file_path) = options.name_file {
-        if let Some(parent) = name_file_path.parent() {
-            if !parent.as_os_str().is_empty() {
-                fs::create_dir_all(parent)?;
-            }
+        if let Some(parent) = name_file_path.parent()
+            && !parent.as_os_str().is_empty()
+        {
+            fs::create_dir_all(parent)?;
         }
         fs::write(name_file_path, maker.wheelname())?;
     }
@@ -1145,192 +748,249 @@ pub fn build_wheel(options: &WheelOptions) -> io::Result<()> {
     Ok(())
 }
 
-fn expand_flagfiles<I, S>(args: I) -> Result<Vec<String>, String>
-where
-    I: IntoIterator<Item = S>,
-    S: AsRef<str>,
-{
-    let mut expanded = Vec::new();
-    for arg in args {
-        let s = arg.as_ref();
-        if let Some(file_path) = s.strip_prefix('@') {
-            let content = fs::read_to_string(file_path)
-                .map_err(|e| format!("failed to read flagfile '{}': {}", file_path, e))?;
-            for line in content.lines() {
-                expanded.push(line.to_string());
-            }
-        } else {
-            expanded.push(s.to_string());
-        }
-    }
-    Ok(expanded)
+/// Command-line options for `wheelmaker`.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct WheelOptions {
+    pub name: String,
+    pub version: String,
+    pub build_tag: String,
+    pub python_tag: String,
+    pub abi: String,
+    pub platform: String,
+    pub out: Option<PathBuf>,
+    pub no_compress: bool,
+    pub name_file: Option<PathBuf>,
+    pub strip_path_prefix: Vec<String>,
+    pub path_prefix: String,
+    pub metadata_file: Option<PathBuf>,
+    pub description_file: Option<PathBuf>,
+    pub description_content_type: Option<String>,
+    pub entry_points_file: Option<PathBuf>,
+    pub input_file: Vec<(String, PathBuf)>,
+    pub input_file_list: Vec<PathBuf>,
+    pub extra_distinfo_file: Vec<(String, PathBuf)>,
+    pub data_files: Vec<(String, PathBuf)>,
+    pub volatile_status_file: Option<PathBuf>,
+    pub stable_status_file: Option<PathBuf>,
+    pub extra_requires_file: Vec<(String, String)>,
 }
 
-fn next_val(
-    flag: &str,
-    inline: Option<&str>,
-    iter: &mut std::vec::IntoIter<String>,
-) -> Result<String, String> {
-    if let Some(v) = inline {
-        Ok(v.to_string())
+fn parse_target_path_pair(s: &str) -> Result<(String, PathBuf), String> {
+    let (target, real_path) = s
+        .split_once(';')
+        .ok_or_else(|| format!("expected 'target;real_path' pair, got '{s}'"))?;
+    Ok((target.to_string(), PathBuf::from(real_path)))
+}
+
+fn parse_extra_requires_pair(s: &str) -> Result<(String, String), String> {
+    let (file, extra_opt) = s
+        .split_once(';')
+        .ok_or_else(|| format!("expected 'file;extra' pair, got '{s}'"))?;
+    let trimmed_extra = extra_opt.trim();
+    let formatted_extra = if trimmed_extra.starts_with("extra") {
+        trimmed_extra.to_string()
     } else {
-        iter.next()
-            .ok_or_else(|| format!("missing value for {}", flag))
-    }
+        format!("extra == '{trimmed_extra}'")
+    };
+    Ok((file.trim().to_string(), formatted_extra))
 }
 
 /// Parses command-line arguments (excluding `argv[0]`) into `WheelOptions`.
-pub fn parse_args<I, S>(args: I) -> Result<WheelOptions, String>
+pub fn parse_args<I, T>(args: I) -> Result<WheelOptions, String>
 where
-    I: IntoIterator<Item = S>,
-    S: AsRef<str>,
+    I: IntoIterator<Item = T>,
+    T: Into<OsString>,
 {
-    let expanded = expand_flagfiles(args)?;
+    use lexopt::prelude::*;
+
+    let expanded = argfile::expand_args_from(
+        args.into_iter().map(Into::into),
+        argfile::parse_fromfile,
+        argfile::PREFIX,
+    )
+    .map_err(|err| format!("failed to read flagfile: {err}"))?;
+
     let mut opts = WheelOptions {
         python_tag: "py3".to_string(),
         abi: "none".to_string(),
         platform: "any".to_string(),
         ..Default::default()
     };
+    let mut name: Option<String> = None;
+    let mut version: Option<String> = None;
 
-    let mut has_name = false;
-    let mut has_version = false;
-
-    let mut iter = expanded.into_iter();
-    while let Some(arg) = iter.next() {
-        if arg == "-h" || arg == "--help" {
-            return Err("Usage: wheelmaker --name NAME --version VERSION [OPTIONS]".to_string());
-        }
-
-        let (flag, inline_val) = if let Some((f, v)) = arg.split_once('=') {
-            if f.starts_with('-') {
-                (f, Some(v))
-            } else {
-                (arg.as_str(), None)
+    let mut parser = lexopt::Parser::from_args(expanded);
+    while let Some(arg) = parser.next().map_err(|err| err.to_string())? {
+        match arg {
+            Short('h') | Long("help") => {
+                return Err("Usage: wheelmaker --name NAME --version VERSION [OPTIONS]".to_string());
             }
-        } else {
-            (arg.as_str(), None)
-        };
-
-        match flag {
-            "--name" => {
-                opts.name = next_val(flag, inline_val, &mut iter)?;
-                has_name = true;
+            Long("name") => {
+                name = Some(
+                    parser
+                        .value()
+                        .and_then(|v| v.string())
+                        .map_err(|err| err.to_string())?,
+                );
             }
-            "--version" => {
-                opts.version = next_val(flag, inline_val, &mut iter)?;
-                has_version = true;
+            Long("version") => {
+                version = Some(
+                    parser
+                        .value()
+                        .and_then(|v| v.string())
+                        .map_err(|err| err.to_string())?,
+                );
             }
-            "--build_tag" => {
-                opts.build_tag = next_val(flag, inline_val, &mut iter)?;
+            Long("build_tag") => {
+                opts.build_tag = parser
+                    .value()
+                    .and_then(|v| v.string())
+                    .map_err(|err| err.to_string())?;
             }
-            "--python_tag" => {
-                opts.python_tag = next_val(flag, inline_val, &mut iter)?;
+            Long("python_tag") => {
+                opts.python_tag = parser
+                    .value()
+                    .and_then(|v| v.string())
+                    .map_err(|err| err.to_string())?;
             }
-            "--abi" => {
-                opts.abi = next_val(flag, inline_val, &mut iter)?;
+            Long("abi") => {
+                opts.abi = parser
+                    .value()
+                    .and_then(|v| v.string())
+                    .map_err(|err| err.to_string())?;
             }
-            "--platform" => {
-                opts.platform = next_val(flag, inline_val, &mut iter)?;
+            Long("platform") => {
+                opts.platform = parser
+                    .value()
+                    .and_then(|v| v.string())
+                    .map_err(|err| err.to_string())?;
             }
-            "--out" => {
-                opts.out = Some(PathBuf::from(next_val(flag, inline_val, &mut iter)?));
+            Long("out") => {
+                opts.out = Some(PathBuf::from(
+                    parser.value().map_err(|err| err.to_string())?,
+                ));
             }
-            "--no_compress" => {
+            Long("no_compress") => {
                 opts.no_compress = true;
             }
-            "--Compress" | "--compress" => {
+            Long("Compress" | "compress") => {
                 opts.no_compress = false;
             }
-            "--name_file" => {
-                opts.name_file = Some(PathBuf::from(next_val(flag, inline_val, &mut iter)?));
+            Long("name_file") => {
+                opts.name_file = Some(PathBuf::from(
+                    parser.value().map_err(|err| err.to_string())?,
+                ));
             }
-            "--strip_path_prefix" => {
-                opts.strip_path_prefix
-                    .push(next_val(flag, inline_val, &mut iter)?);
+            Long("strip_path_prefix") => {
+                opts.strip_path_prefix.push(
+                    parser
+                        .value()
+                        .and_then(|v| v.string())
+                        .map_err(|err| err.to_string())?,
+                );
             }
-            "--path_prefix" => {
-                opts.path_prefix = next_val(flag, inline_val, &mut iter)?;
+            Long("path_prefix") => {
+                opts.path_prefix = parser
+                    .value()
+                    .and_then(|v| v.string())
+                    .map_err(|err| err.to_string())?;
             }
-            "--metadata_file" => {
-                opts.metadata_file = Some(PathBuf::from(next_val(flag, inline_val, &mut iter)?));
+            Long("metadata_file") => {
+                opts.metadata_file = Some(PathBuf::from(
+                    parser.value().map_err(|err| err.to_string())?,
+                ));
             }
-            "--description_file" => {
-                opts.description_file = Some(PathBuf::from(next_val(flag, inline_val, &mut iter)?));
+            Long("description_file") => {
+                opts.description_file = Some(PathBuf::from(
+                    parser.value().map_err(|err| err.to_string())?,
+                ));
             }
-            "--description_content_type" => {
-                opts.description_content_type = Some(next_val(flag, inline_val, &mut iter)?);
+            Long("description_content_type") => {
+                opts.description_content_type = Some(
+                    parser
+                        .value()
+                        .and_then(|v| v.string())
+                        .map_err(|err| err.to_string())?,
+                );
             }
-            "--entry_points_file" => {
-                opts.entry_points_file =
-                    Some(PathBuf::from(next_val(flag, inline_val, &mut iter)?));
+            Long("entry_points_file") => {
+                opts.entry_points_file = Some(PathBuf::from(
+                    parser.value().map_err(|err| err.to_string())?,
+                ));
             }
-            "--input_file" => {
-                opts.input_file.push(next_val(flag, inline_val, &mut iter)?);
+            Long("input_file") => {
+                let pair = parser
+                    .value()
+                    .and_then(|v| v.parse_with(parse_target_path_pair))
+                    .map_err(|err| err.to_string())?;
+                opts.input_file.push(pair);
             }
-            "--input_file_list" => {
-                opts.input_file_list
-                    .push(PathBuf::from(next_val(flag, inline_val, &mut iter)?));
+            Long("input_file_list") => {
+                opts.input_file_list.push(PathBuf::from(
+                    parser.value().map_err(|err| err.to_string())?,
+                ));
             }
-            "--extra_distinfo_file" => {
-                opts.extra_distinfo_file
-                    .push(next_val(flag, inline_val, &mut iter)?);
+            Long("extra_distinfo_file") => {
+                let pair = parser
+                    .value()
+                    .and_then(|v| v.parse_with(parse_target_path_pair))
+                    .map_err(|err| err.to_string())?;
+                opts.extra_distinfo_file.push(pair);
             }
-            "--data_files" => {
-                opts.data_files.push(next_val(flag, inline_val, &mut iter)?);
+            Long("data_files") => {
+                let pair = parser
+                    .value()
+                    .and_then(|v| v.parse_with(parse_target_path_pair))
+                    .map_err(|err| err.to_string())?;
+                opts.data_files.push(pair);
             }
-            "--volatile_status_file" => {
-                opts.volatile_status_file =
-                    Some(PathBuf::from(next_val(flag, inline_val, &mut iter)?));
+            Long("volatile_status_file") => {
+                opts.volatile_status_file = Some(PathBuf::from(
+                    parser.value().map_err(|err| err.to_string())?,
+                ));
             }
-            "--stable_status_file" => {
-                opts.stable_status_file =
-                    Some(PathBuf::from(next_val(flag, inline_val, &mut iter)?));
+            Long("stable_status_file") => {
+                opts.stable_status_file = Some(PathBuf::from(
+                    parser.value().map_err(|err| err.to_string())?,
+                ));
             }
-            "--extra_requires_file" => {
-                opts.extra_requires_file
-                    .push(next_val(flag, inline_val, &mut iter)?);
+            Long("extra_requires_file") => {
+                let pair = parser
+                    .value()
+                    .and_then(|v| v.parse_with(parse_extra_requires_pair))
+                    .map_err(|err| err.to_string())?;
+                opts.extra_requires_file.push(pair);
             }
-            other => {
-                return Err(format!("unrecognized argument: {}", other));
-            }
+            Value(val) if val.is_empty() => {}
+            _ => return Err(arg.unexpected().to_string()),
         }
     }
 
-    if !has_name {
-        return Err("missing required argument: --name".to_string());
-    }
-    if !has_version {
-        return Err("missing required argument: --version".to_string());
-    }
-
+    opts.name = name.ok_or_else(|| "missing required argument: --name".to_string())?;
+    opts.version = version.ok_or_else(|| "missing required argument: --version".to_string())?;
     Ok(opts)
 }
 
 /// Parses CLI arguments and builds the wheel.
-pub fn run<I, S>(args: I) -> Result<(), String>
-where
-    I: IntoIterator<Item = S>,
-    S: AsRef<str>,
-{
-    let options = parse_args(args)?;
-    build_wheel(&options).map_err(|e| e.to_string())
-}
-
-/// Parses CLI arguments (excluding `argv[0]` and subcommand name), builds the wheel, and returns
-/// the process exit code.
-pub fn run_cli<I, T>(args: I) -> i32
+pub fn run<I, T>(args: I) -> Result<(), String>
 where
     I: IntoIterator<Item = T>,
     T: Into<OsString>,
 {
-    let str_args: Vec<String> = args
-        .into_iter()
-        .map(|a| a.into().to_string_lossy().into_owned())
-        .collect();
-    if let Err(err) = run(&str_args) {
-        eprintln!("wheelmaker: error: {}", err);
-        return 1;
+    let options = parse_args(args)?;
+    build_wheel(&options).map_err(|err| err.to_string())
+}
+
+/// Parses CLI arguments (excluding `argv[0]` and subcommand name), builds the wheel, and returns
+/// the process exit code.
+pub fn run_cli<I, T>(args: I) -> ExitCode
+where
+    I: IntoIterator<Item = T>,
+    T: Into<OsString>,
+{
+    if let Err(err) = run(args) {
+        eprintln!("wheelmaker: error: {err}");
+        return ExitCode::FAILURE;
     }
-    0
+    ExitCode::SUCCESS
 }

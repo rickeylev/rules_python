@@ -1,12 +1,12 @@
 use std::env;
 use std::fs;
 use std::path::PathBuf;
-use std::process::Command;
+use std::process::{Command, ExitCode};
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use venv_shebang_rewriter_lib::{
-    parse_args, rewrite_shebang, rewrite_shebang_bytes, run, split_first_line, UNIX_HEADER,
-    WINDOWS_PYTHONW_HEADER, WINDOWS_PYTHON_HEADER,
+    Options, TargetOs, UNIX_HEADER, WINDOWS_PYTHON_HEADER, WINDOWS_PYTHONW_HEADER, parse_args,
+    rewrite_shebang, rewrite_shebang_bytes, run, run_cli, split_first_line,
 };
 
 static COUNTER: AtomicUsize = AtomicUsize::new(0);
@@ -61,7 +61,7 @@ fn test_unix_shebang_rewrite_and_permissions() {
         fs::set_permissions(&in_path, fs::Permissions::from_mode(0o644)).unwrap();
     }
 
-    rewrite_shebang(&in_path, &out_path, "unix").unwrap();
+    rewrite_shebang(&in_path, &out_path, TargetOs::Unix).unwrap();
 
     let actual = fs::read(&out_path).unwrap();
     let mut expected = UNIX_HEADER.to_vec();
@@ -75,8 +75,7 @@ fn test_unix_shebang_rewrite_and_permissions() {
         assert_eq!(
             mode & 0o111,
             0o111,
-            "Expected all executable bits (0o111) to be set, got {:o}",
-            mode
+            "Expected all executable bits (0o111) to be set, got {mode:o}"
         );
     }
 
@@ -94,7 +93,7 @@ fn test_windows_python_shebang_rewrite() {
     input.extend_from_slice(body);
     fs::write(&in_path, &input).unwrap();
 
-    rewrite_shebang(&in_path, &out_path, "windows").unwrap();
+    rewrite_shebang(&in_path, &out_path, TargetOs::Windows).unwrap();
 
     let actual = fs::read(&out_path).unwrap();
     let mut expected = WINDOWS_PYTHON_HEADER.to_vec();
@@ -118,7 +117,7 @@ fn test_windows_pythonw_shebang_rewrite() {
     input.extend_from_slice(body);
     fs::write(&in_path, &input).unwrap();
 
-    rewrite_shebang(&in_path, &out_path, "windows").unwrap();
+    rewrite_shebang(&in_path, &out_path, TargetOs::Windows).unwrap();
 
     let actual = fs::read(&out_path).unwrap();
     let mut expected = WINDOWS_PYTHONW_HEADER.to_vec();
@@ -134,7 +133,7 @@ fn test_windows_pythonw_shebang_rewrite() {
 #[test]
 fn test_windows_pythonw_exe_or_flags_prefix() {
     let input = b"#!pythonw.exe -u\nprint('gui')\n";
-    let actual = rewrite_shebang_bytes(input, "windows");
+    let actual = rewrite_shebang_bytes(input, TargetOs::Windows);
     let mut expected = WINDOWS_PYTHONW_HEADER.to_vec();
     expected.extend_from_slice(b"print('gui')\n");
     assert_eq!(actual, expected);
@@ -143,7 +142,7 @@ fn test_windows_pythonw_exe_or_flags_prefix() {
 #[test]
 fn test_unix_ignores_pythonw_distinction() {
     let input = b"#!pythonw\nprint('gui on unix')\n";
-    let actual = rewrite_shebang_bytes(input, "unix");
+    let actual = rewrite_shebang_bytes(input, TargetOs::Unix);
     let mut expected = UNIX_HEADER.to_vec();
     expected.extend_from_slice(b"print('gui on unix')\n");
     assert_eq!(actual, expected);
@@ -163,7 +162,7 @@ fn test_preserves_binary_and_non_utf8_bytes_verbatim() {
     input.extend_from_slice(binary_rest);
     fs::write(&in_path, &input).unwrap();
 
-    rewrite_shebang(&in_path, &out_path, "unix").unwrap();
+    rewrite_shebang(&in_path, &out_path, TargetOs::Unix).unwrap();
 
     let actual = fs::read(&out_path).unwrap();
     let mut expected = UNIX_HEADER.to_vec();
@@ -182,10 +181,10 @@ fn test_single_line_without_trailing_newline() {
 
     fs::write(&in_path, b"#!pythonw").unwrap();
 
-    rewrite_shebang(&in_path, &out_path_unix, "unix").unwrap();
+    rewrite_shebang(&in_path, &out_path_unix, TargetOs::Unix).unwrap();
     assert_eq!(fs::read(&out_path_unix).unwrap(), UNIX_HEADER);
 
-    rewrite_shebang(&in_path, &out_path_win, "windows").unwrap();
+    rewrite_shebang(&in_path, &out_path_win, TargetOs::Windows).unwrap();
     assert_eq!(fs::read(&out_path_win).unwrap(), WINDOWS_PYTHONW_HEADER);
 
     let _ = fs::remove_dir_all(&temp_dir);
@@ -200,10 +199,10 @@ fn test_empty_file() {
 
     fs::write(&in_path, b"").unwrap();
 
-    rewrite_shebang(&in_path, &out_path_unix, "unix").unwrap();
+    rewrite_shebang(&in_path, &out_path_unix, TargetOs::Unix).unwrap();
     assert_eq!(fs::read(&out_path_unix).unwrap(), UNIX_HEADER);
 
-    rewrite_shebang(&in_path, &out_path_win, "windows").unwrap();
+    rewrite_shebang(&in_path, &out_path_win, TargetOs::Windows).unwrap();
     assert_eq!(fs::read(&out_path_win).unwrap(), WINDOWS_PYTHON_HEADER);
 
     let _ = fs::remove_dir_all(&temp_dir);
@@ -214,13 +213,22 @@ fn test_parse_args_and_missing_args_error() {
     assert!(parse_args::<_, &str>([]).is_err());
     assert!(parse_args(["in.py"]).is_err());
     assert!(parse_args(["in.py", "out.py"]).is_err());
+    assert!(parse_args(["in.py", "out.py", "macos"]).is_err());
+    assert!(parse_args(["--unknown", "in.py", "out.py", "unix"]).is_err());
+    assert!(parse_args(["", "out.py", "unix"]).is_err());
     assert!(run(["only_one_arg"]).is_err());
+    assert_eq!(run_cli(["only_one_arg"]), ExitCode::FAILURE);
 
     // Extra arguments beyond the first 3 are ignored (matching argv[1:4] in Python).
     let cfg = parse_args(["in.py", "out.py", "windows", "extra_ignored"]).unwrap();
-    assert_eq!(cfg.in_path, PathBuf::from("in.py"));
-    assert_eq!(cfg.out_path, PathBuf::from("out.py"));
-    assert_eq!(cfg.target_os, "windows");
+    assert_eq!(
+        cfg,
+        Options {
+            in_path: PathBuf::from("in.py"),
+            out_path: PathBuf::from("out.py"),
+            target_os: TargetOs::Windows,
+        }
+    );
 }
 
 #[test]
@@ -229,45 +237,67 @@ fn test_nonexistent_input_file_returns_error() {
     let missing_in = temp_dir.join("does_not_exist");
     let out_path = temp_dir.join("out");
 
-    assert!(rewrite_shebang(&missing_in, &out_path, "unix").is_err());
-    assert!(run([
-        missing_in.to_str().unwrap(),
-        out_path.to_str().unwrap(),
-        "unix"
-    ])
-    .is_err());
+    assert!(rewrite_shebang(&missing_in, &out_path, TargetOs::Unix).is_err());
+    assert!(
+        run([
+            missing_in.to_str().unwrap(),
+            out_path.to_str().unwrap(),
+            "unix"
+        ])
+        .is_err()
+    );
+    assert_eq!(
+        run_cli([
+            missing_in.to_str().unwrap(),
+            out_path.to_str().unwrap(),
+            "unix"
+        ]),
+        ExitCode::FAILURE
+    );
 
     let _ = fs::remove_dir_all(&temp_dir);
 }
 
 #[test]
 fn test_cli_binary_execution_and_error_exit_code() {
-    let Some(bin_rel) = env::var_os("RUPYRU_BOX_BIN") else {
-        return;
-    };
-    let bin_path = PathBuf::from(bin_rel);
-    if !bin_path.exists() {
-        return;
-    }
-
     let temp_dir = create_temp_dir("cli_bin");
     let in_path = temp_dir.join("cli_in.py");
     let out_path = temp_dir.join("nested").join("cli_out");
 
     fs::write(&in_path, b"#!/usr/bin/env python3\nprint('cli ok')\n").unwrap();
-
-    let status = Command::new(&bin_path)
-        .arg("venv_shebang_rewriter")
-        .arg(&in_path)
-        .arg(&out_path)
-        .arg("unix")
-        .status()
-        .unwrap();
-    assert!(status.success());
+    assert_eq!(
+        run_cli([
+            in_path.to_str().unwrap(),
+            out_path.to_str().unwrap(),
+            "unix"
+        ]),
+        ExitCode::SUCCESS
+    );
 
     let mut expected = UNIX_HEADER.to_vec();
     expected.extend_from_slice(b"print('cli ok')\n");
     assert_eq!(fs::read(&out_path).unwrap(), expected);
+
+    let Some(bin_rel) = env::var_os("SHRUBBERY_BIN") else {
+        let _ = fs::remove_dir_all(&temp_dir);
+        return;
+    };
+    let bin_path = PathBuf::from(bin_rel);
+    if !bin_path.exists() {
+        let _ = fs::remove_dir_all(&temp_dir);
+        return;
+    }
+
+    let bin_out_path = temp_dir.join("nested_bin").join("cli_out");
+    let status = Command::new(&bin_path)
+        .arg("venv_shebang_rewriter")
+        .arg(&in_path)
+        .arg(&bin_out_path)
+        .arg("unix")
+        .status()
+        .unwrap();
+    assert!(status.success());
+    assert_eq!(fs::read(&bin_out_path).unwrap(), expected);
 
     // Fewer than 3 args should exit with non-zero status.
     let bad_output = Command::new(&bin_path)

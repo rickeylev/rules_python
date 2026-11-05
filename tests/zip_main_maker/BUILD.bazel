@@ -8,6 +8,7 @@ rust_test(
     name = "zip_main_maker_test",
     size = "small",
     srcs = ["zip_main_maker_test.rs"],
+    edition = "2024",
     deps = [
         "//crates/zip_main_maker:zip_main_maker_lib",
         "@crates//:sha2",

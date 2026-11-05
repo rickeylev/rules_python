@@ -14,13 +14,13 @@
 
 "Implementation of py_wheel rule"
 
-load("//python/private/toolchains:rupyru_box_toolchain.bzl", "get_rupyru_box_tool")
+load("//python/private/toolchains:shrubbery_toolchain.bzl", "get_shrubbery_tool")
 load(":attributes.bzl", "CONFIG_SETTINGS_ATTR", "apply_config_settings_attr")
 load(":py_info.bzl", "PyInfo")
 load(":py_package.bzl", "py_package_lib")
 load(":rule_builders.bzl", "ruleb")
 load(":stamp_impl.bzl", "is_stamping_enabled")
-load(":toolchain_types.bzl", "RUPYRU_BOX_TOOLCHAIN_TYPE", "TARGET_TOOLCHAIN_TYPE")
+load(":toolchain_types.bzl", "SHRUBBERY_TOOLCHAIN_TYPE", "TARGET_TOOLCHAIN_TYPE")
 load(":transition_labels.bzl", "TRANSITION_LABELS")
 load(":version.bzl", "version")
 
@@ -612,7 +612,7 @@ def _py_wheel_impl(ctx):
                 final_filename + ";" + file.path,
             )
 
-    tool = get_rupyru_box_tool(ctx, "wheelmaker", ctx.attr._wheelmaker)
+    tool = get_shrubbery_tool(ctx, "wheelmaker", ctx.attr._wheelmaker)
     ctx.actions.run(
         mnemonic = "PyWheel",
         inputs = depset(direct = other_inputs, transitive = [inputs_to_package]),
@@ -694,6 +694,6 @@ in the way they expect.
     ),
     toolchains = [
         ruleb.ToolchainType(TARGET_TOOLCHAIN_TYPE, mandatory = False),
-        ruleb.ToolchainType(RUPYRU_BOX_TOOLCHAIN_TYPE, mandatory = False),
+        ruleb.ToolchainType(SHRUBBERY_TOOLCHAIN_TYPE, mandatory = False),
     ],
 ).build()

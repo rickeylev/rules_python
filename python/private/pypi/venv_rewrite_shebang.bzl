@@ -4,8 +4,8 @@ load("//python/private:attributes.bzl", "WINDOWS_CONSTRAINTS_ATTRS")
 load("//python/private:common.bzl", "is_windows_platform", "runfiles_root_path")
 load("//python/private:py_info.bzl", "PyInfoBuilder", "VenvSymlinkEntry", "VenvSymlinkKind")
 load("//python/private:rule_builders.bzl", "ruleb")
-load("//python/private:toolchain_types.bzl", "RUPYRU_BOX_TOOLCHAIN_TYPE")
-load("//python/private/toolchains:rupyru_box_toolchain.bzl", "get_rupyru_box_tool")
+load("//python/private:toolchain_types.bzl", "SHRUBBERY_TOOLCHAIN_TYPE")
+load("//python/private/toolchains:shrubbery_toolchain.bzl", "get_shrubbery_tool")
 
 def _venv_rewrite_shebang_impl(ctx):
     is_windows = is_windows_platform(ctx)
@@ -18,7 +18,7 @@ def _venv_rewrite_shebang_impl(ctx):
     in_file = ctx.file.src
 
     action_args = ctx.actions.args()
-    tool = get_rupyru_box_tool(
+    tool = get_shrubbery_tool(
         ctx,
         "venv_shebang_rewriter",
         ctx.attr._venv_shebang_rewriter,
@@ -80,7 +80,7 @@ _builder = ruleb.Rule(
     implementation = _venv_rewrite_shebang_impl,
     executable = True,
     toolchains = [
-        ruleb.ToolchainType(RUPYRU_BOX_TOOLCHAIN_TYPE, mandatory = False),
+        ruleb.ToolchainType(SHRUBBERY_TOOLCHAIN_TYPE, mandatory = False),
     ],
 )
 _builder.attrs.update({

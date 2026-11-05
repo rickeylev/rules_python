@@ -8,7 +8,11 @@ licenses(["notice"])
 rust_library(
     name = "py_console_script_gen_lib",
     srcs = ["src/lib.rs"],
-    edition = "2021",
+    edition = "2024",
+    deps = [
+        "@crates//:argfile",
+        "@crates//:lexopt",
+    ],
 )
 
 distribution_filegroup(
