@@ -17,7 +17,8 @@ def _shrubbery_toolchain_impl(ctx):
 shrubbery_toolchain = rule(
     implementation = _shrubbery_toolchain_impl,
     doc = """
-Provides the unified `shrubbery` ("Shell replacements for Bazel build tools in Rust") subcommand binary.
+Provides the unified `shrubbery` ("Shell replacements for Bazel build tools in
+Rust") subcommand binary.
 
 This provides `ToolchainInfo` with the following attributes:
 * `shrubbery`: {type}`Target | None`. Invoked as

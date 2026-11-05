@@ -1,5 +1,5 @@
-//! Unified `shrubbery` ("Shell replacements for Bazel build tools in Rust") subcommand dispatcher
-//! for `@rules_python` Rust build tools.
+//! Unified `shrubbery` ("Shell replacements for Bazel build tools in Rust") subcommand
+//! dispatcher for `@rules_python` Rust build tools.
 
 use std::ffi::OsString;
 use std::process::ExitCode;

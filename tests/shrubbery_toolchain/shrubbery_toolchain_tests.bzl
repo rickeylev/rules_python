@@ -27,7 +27,7 @@ _tests = []
 # zip, so PyZipAppCreateExecutableZip is not created; skip there for zipapp
 # self-executable tests.
 _COMPATIBLE_WITH = SUPPORTS_BZLMOD + NOT_WINDOWS
-_RUST_TOOLS_SUFFIX = "crates/shrubbery/shrubbery"
+_SHRUBBERY_SUFFIX = "crates/shrubbery/shrubbery"
 _PYTHON_EXE_ZIP_MAKER_SUFFIX = "tools/zipapp/exe_zip_maker_.py"
 _PYTHON_ZIPPER_SUFFIX = "tools/zipapp/zipper_.py"
 _PYTHON_ZIP_MAIN_MAKER_SUFFIX = "tools/zipapp/zip_main_maker_.py"
@@ -78,7 +78,7 @@ def _test_py_zipapp_uses_toolchain_shrubbery_impl(env, target):
     ]:
         action = env.expect.that_target(target).action_named(mnemonic)
         action.argv().contains_predicate(
-            matching.str_endswith(_RUST_TOOLS_SUFFIX),
+            matching.str_endswith(_SHRUBBERY_SUFFIX),
         )
         action.argv().contains(subcommand)
 
@@ -129,7 +129,7 @@ def _test_py_wheel_respects_need_shrubbery_flag(name):
 def _test_py_wheel_respects_need_shrubbery_flag_impl(env, target):
     action = env.expect.that_target(target).action_named("PyWheel")
     action.argv().contains_predicate(
-        matching.str_endswith(_RUST_TOOLS_SUFFIX),
+        matching.str_endswith(_SHRUBBERY_SUFFIX),
     )
     action.argv().contains("wheelmaker")
 

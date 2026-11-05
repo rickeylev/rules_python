@@ -96,9 +96,7 @@ fn test_subcommand_forwarding_and_hyphen_rejection() {
 
 #[test]
 fn test_cli_binary_subprocess() {
-    let Some(bin_rel) = env::var_os("SHRUBBERY_BIN") else {
-        return;
-    };
+    let bin_rel = env::var_os("SHRUBBERY_BIN").expect("SHRUBBERY_BIN must be set");
     let bin_path = PathBuf::from(&bin_rel);
     let resolved = if bin_path.exists() {
         bin_path
@@ -106,11 +104,8 @@ fn test_cli_binary_subprocess() {
         let ws = env::var("TEST_WORKSPACE").unwrap_or_else(|_| "_main".to_string());
         PathBuf::from(srcdir).join(ws).join(&bin_rel)
     } else {
-        return;
+        bin_path
     };
-    if !resolved.exists() {
-        return;
-    }
 
     let help_out = Command::new(&resolved).arg("--help").output().unwrap();
     assert_eq!(help_out.status.code(), Some(0));
