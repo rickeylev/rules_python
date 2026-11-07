@@ -83,8 +83,13 @@ pub fn create_exe_zip(preamble_path: &Path, zip_path: &Path, output_path: &Path)
 /// Parsed command-line options for `exe_zip_maker`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Options {
+    /// Path to the executable preamble file to prepend, relative to the current working directory
+    /// or absolute.
     pub preamble_path: PathBuf,
+    /// Path to the input zip archive, relative to the current working directory or absolute.
     pub zip_path: PathBuf,
+    /// Path to the output self-executable zip archive, relative to the current working directory
+    /// or absolute.
     pub output_path: PathBuf,
 }
 
@@ -101,25 +106,25 @@ where
     let mut parser = lexopt::Parser::from_args(args);
     while let Some(arg) = parser.next().map_err(|e| format!("{e}\n{USAGE}"))? {
         match arg {
-            Value(val) if positional.len() < 3 => {
+            Short('h') | Long("help") => return Err(USAGE.to_string()),
+            Value(val) => {
                 if val.is_empty() {
                     return Err(format!("path argument must not be empty\n{USAGE}"));
                 }
                 positional.push(PathBuf::from(val));
             }
-            Short('h') | Long("help") => return Err(USAGE.to_string()),
             _ => return Err(format!("{}\n{USAGE}", arg.unexpected())),
         }
     }
 
-    let Ok([preamble_path, zip_path, output_path]) = <[PathBuf; 3]>::try_from(positional) else {
+    if positional.len() != 3 {
         return Err(USAGE.to_string());
-    };
+    }
 
     Ok(Options {
-        preamble_path,
-        zip_path,
-        output_path,
+        preamble_path: positional.remove(0),
+        zip_path: positional.remove(0),
+        output_path: positional.remove(0),
     })
 }
 
