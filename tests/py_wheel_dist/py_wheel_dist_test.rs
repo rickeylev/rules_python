@@ -49,7 +49,7 @@ fn test_parse_args_space_separated() {
         "--output",
         "path/to/dist",
     ];
-    let opts = parse_args(&args).unwrap();
+    let opts = parse_args(args).unwrap();
     assert_eq!(
         opts,
         Options {
@@ -67,7 +67,7 @@ fn test_parse_args_equals_separated() {
         "--name_file=path/to/name.txt",
         "--output=path/to/dist",
     ];
-    let opts = parse_args(&args).unwrap();
+    let opts = parse_args(args).unwrap();
     assert_eq!(
         opts,
         Options {
@@ -89,7 +89,7 @@ fn test_parse_args_flagfile() {
     .unwrap();
 
     let arg = format!("@{}", flagfile.display());
-    let opts = parse_args(&[arg]).unwrap();
+    let opts = parse_args([arg]).unwrap();
     assert_eq!(
         opts,
         Options {
@@ -107,7 +107,7 @@ fn test_parse_args_mixed_flagfile_and_overrides() {
     fs::write(&flagfile, "--wheel\nfirst.whl\n--name_file\nname.txt\n").unwrap();
 
     let flagfile_arg = format!("@{}", flagfile.display());
-    let opts = parse_args(&[
+    let opts = parse_args([
         flagfile_arg.as_str(),
         "--wheel=override.whl",
         "--output",
@@ -126,33 +126,33 @@ fn test_parse_args_mixed_flagfile_and_overrides() {
 
 #[test]
 fn test_parse_args_missing_required_flags() {
-    let err_no_wheel = parse_args(&["--name_file", "a", "--output", "b"]).unwrap_err();
+    let err_no_wheel = parse_args(["--name_file", "a", "--output", "b"]).unwrap_err();
     assert!(err_no_wheel.contains("--wheel"), "got: {err_no_wheel}");
 
-    let err_no_name = parse_args(&["--wheel", "a", "--output", "b"]).unwrap_err();
+    let err_no_name = parse_args(["--wheel", "a", "--output", "b"]).unwrap_err();
     assert!(err_no_name.contains("--name_file"), "got: {err_no_name}");
 
-    let err_no_out = parse_args(&["--wheel", "a", "--name_file", "b"]).unwrap_err();
+    let err_no_out = parse_args(["--wheel", "a", "--name_file", "b"]).unwrap_err();
     assert!(err_no_out.contains("--output"), "got: {err_no_out}");
 }
 
 #[test]
 fn test_parse_args_missing_flag_values_and_unknown_args() {
-    assert!(parse_args(&["--wheel"]).is_err());
-    assert!(parse_args(&["--name_file"]).is_err());
-    assert!(parse_args(&["--output"]).is_err());
-    assert!(parse_args(&["--wheel="]).is_err());
-    assert!(parse_args(&["--name_file="]).is_err());
-    assert!(parse_args(&["--output="]).is_err());
-    assert!(parse_args(&["--unknown", "val"]).is_err());
-    let bogus_err = parse_args(&["--bogus-flag=123"]).unwrap_err();
+    assert!(parse_args(["--wheel"]).is_err());
+    assert!(parse_args(["--name_file"]).is_err());
+    assert!(parse_args(["--output"]).is_err());
+    assert!(parse_args(["--wheel="]).is_err());
+    assert!(parse_args(["--name_file="]).is_err());
+    assert!(parse_args(["--output="]).is_err());
+    assert!(parse_args(["--unknown", "val"]).is_err());
+    let bogus_err = parse_args(["--bogus-flag=123"]).unwrap_err();
     assert!(
         bogus_err.contains("unexpected argument: --bogus-flag=123"),
         "got: {bogus_err}"
     );
-    assert!(parse_args(&["positional_arg"]).is_err());
-    assert!(parse_args(&["@"]).is_err());
-    assert!(parse_args(&["@nonexistent_flagfile_path_12345"]).is_err());
+    assert!(parse_args(["positional_arg"]).is_err());
+    assert!(parse_args(["@"]).is_err());
+    assert!(parse_args(["@nonexistent_flagfile_path_12345"]).is_err());
 }
 
 #[test]

@@ -56,7 +56,7 @@ fn write_test_zip(
     let file = File::create(zip_path).unwrap();
     let mut writer = ZipWriter::new(file);
     if let Some(c) = comment {
-        writer.set_comment(c);
+        writer.set_comment(c).unwrap();
     }
     for &(name, data, method) in entries {
         let options = SimpleFileOptions::default()
@@ -244,7 +244,7 @@ fn test_extract_files() {
     if example_wheel.exists() {
         let tmp = TempDir::new("extract_real");
         let outdir = tmp.path().join("out");
-        extract_files(example_wheel, &files, &outdir).unwrap();
+        extract_files(example_wheel, files, &outdir).unwrap();
         let extracted = collect_extracted_files(&outdir);
         assert_eq!(extracted, expected_set);
     }
@@ -253,7 +253,7 @@ fn test_extract_files() {
     let synth_whl = tmp.path().join("synth.whl");
     create_synthetic_minimal_wheel(&synth_whl, CompressionMethod::Deflated, None);
     let outdir = tmp.path().join("out");
-    extract_files(&synth_whl, &files, &outdir).unwrap();
+    extract_files(&synth_whl, files, &outdir).unwrap();
     let extracted = collect_extracted_files(&outdir);
     assert_eq!(extracted, expected_set);
     assert_eq!(

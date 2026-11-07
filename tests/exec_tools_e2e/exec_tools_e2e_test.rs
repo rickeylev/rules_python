@@ -2158,7 +2158,7 @@ fn tier2_f3_03_syntax_error_emits_warning_and_exits_zero() {
 fn tier2_f3_04_null_byte_or_non_utf8_source_emits_warning_and_exits_zero() {
     let td = TestDir::new("t2_f3_04");
     let nul_src = td.write("nul.py", b"x = 1\x00\n");
-    let bad_utf8_src = td.write("bad_utf8.py", &[0xff, 0xfe, 0xfd, b'\n']);
+    let bad_utf8_src = td.write("bad_utf8.py", [0xff, 0xfe, 0xfd, b'\n']);
     let out1 = td.path().join("nul.ok");
     let out2 = td.path().join("utf8.ok");
 

@@ -1,5 +1,5 @@
 {
-  "checksum": "e1081af9cf88e10cdb7ad01e2242c33dc77d32121d1c90e25a0485a04f9986cf",
+  "checksum": "0a1b9d0e0be5e935fad65894e7b90668319d5e77f02bbf8fa622cc3d167fc89d",
   "crates": {
     "adler2 2.0.1": {
       "name": "adler2",
@@ -95,6 +95,81 @@
         "Unlicense"
       ],
       "license_file": "LICENSE-MIT"
+    },
+    "anyhow 1.0.104": {
+      "name": "anyhow",
+      "version": "1.0.104",
+      "package_url": "https://github.com/dtolnay/anyhow",
+      "repository": {
+        "Http": {
+          "url": "https://static.crates.io/crates/anyhow/1.0.104/download",
+          "sha256": "330a5ed07fa54e4702c9d6c4174f74427fc0ef6e214bbd677ae50a5099946470"
+        }
+      },
+      "targets": [
+        {
+          "Library": {
+            "crate_name": "anyhow",
+            "crate_root": "src/lib.rs",
+            "srcs": {
+              "allow_empty": true,
+              "include": [
+                "**/*.rs"
+              ]
+            }
+          }
+        },
+        {
+          "BuildScript": {
+            "crate_name": "build_script_build",
+            "crate_root": "build.rs",
+            "srcs": {
+              "allow_empty": true,
+              "include": [
+                "**/*.rs"
+              ]
+            }
+          }
+        }
+      ],
+      "library_target_name": "anyhow",
+      "common_attrs": {
+        "compile_data_glob": [
+          "**"
+        ],
+        "crate_features": {
+          "common": [
+            "default",
+            "std"
+          ],
+          "selects": {}
+        },
+        "extra_deps": {
+          "common": [
+            ":build_script_build"
+          ],
+          "selects": {}
+        },
+        "edition": "2021",
+        "version": "1.0.104"
+      },
+      "build_script_attrs": {
+        "compile_data_glob": [
+          "**"
+        ],
+        "compile_data_glob_excludes": [
+          "**/*.rs"
+        ],
+        "data_glob": [
+          "**"
+        ]
+      },
+      "license": "MIT OR Apache-2.0",
+      "license_ids": [
+        "Apache-2.0",
+        "MIT"
+      ],
+      "license_file": "LICENSE-APACHE"
     },
     "argfile 1.0.0": {
       "name": "argfile",
@@ -1377,6 +1452,10 @@
         ],
         "deps": {
           "common": [
+            {
+              "id": "anyhow 1.0.104",
+              "target": "anyhow"
+            },
             {
               "id": "argfile 1.0.0",
               "target": "argfile"
@@ -7798,6 +7877,7 @@
     ]
   },
   "direct_deps": [
+    "anyhow 1.0.104",
     "argfile 1.0.0",
     "base64 0.23.1",
     "csv 1.4.0",
