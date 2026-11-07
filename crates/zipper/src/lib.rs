@@ -8,10 +8,11 @@ use std::ffi::OsString;
 use std::fs::{self, File, Metadata};
 use std::io::{self, BufWriter, Seek, Write};
 use std::path::{Path, PathBuf};
+use std::process::ExitCode;
 
-use anyhow::{bail, Context, Result};
+use anyhow::{Context, Result, bail};
 use zip::write::SimpleFileOptions;
-use zip::{CompressionMethod, DateTime, ZipWriter, ZIP64_BYTES_THR};
+use zip::{CompressionMethod, DateTime, ZIP64_BYTES_THR, ZipWriter};
 
 /// `BufWriter` capacity for the output zip.
 ///
@@ -51,10 +52,8 @@ fn get_zip_runfiles_path(
     legacy_external_runfiles: bool,
     runfiles_dir: &str,
 ) -> String {
-    if legacy_external_runfiles {
-        if let Some(rest) = path.strip_prefix("external/") {
-            return unix_join(&[runfiles_dir, rest]);
-        }
+    if legacy_external_runfiles && let Some(rest) = path.strip_prefix("external/") {
+        return unix_join(&[runfiles_dir, rest]);
     }
     if let Some(rest) = path.strip_prefix("../") {
         return unix_join(&[runfiles_dir, rest]);
@@ -75,11 +74,11 @@ fn normalize_components(path: &str) -> Vec<&str> {
             continue;
         }
         if part == ".." {
-            if let Some(&last) = out.last() {
-                if last != ".." {
-                    out.pop();
-                    continue;
-                }
+            if let Some(&last) = out.last()
+                && last != ".."
+            {
+                out.pop();
+                continue;
             }
             out.push("..");
         } else {
@@ -531,7 +530,7 @@ where
 
 /// Parses CLI arguments (excluding `argv[0]` and subcommand name), creates the zip archive, and
 /// returns the process exit code.
-pub fn run_cli<I, T>(args: I) -> i32
+pub fn run_cli<I, T>(args: I) -> ExitCode
 where
     I: IntoIterator<Item = T>,
     T: Into<OsString>,
@@ -539,19 +538,19 @@ where
     let options = match parse_args(args) {
         Ok(Cli::Help) => {
             println!("{USAGE}");
-            return 0;
+            return ExitCode::SUCCESS;
         }
         Ok(Cli::Run(opts)) => opts,
         Err(msg) => {
             eprintln!("zipper: error: {msg}");
-            return 1;
+            return ExitCode::FAILURE;
         }
     };
     if let Err(err) = create_zip(&options) {
         eprintln!("zipper: error: {err:#}");
-        return 1;
+        return ExitCode::FAILURE;
     }
-    0
+    ExitCode::SUCCESS
 }
 
 /// Result of parsing the command line.

@@ -117,6 +117,22 @@ rust_crates.spec(
     package = "anyhow",
     version = "1.0.104",
 )
+rust_crates.spec(
+    package = "argfile",
+    version = "1.0.0",
+)
+
+# Omit default `simd-unsafe` feature so base64 stays 100% safe Rust.
+rust_crates.spec(
+    default_features = False,
+    features = ["std"],
+    package = "base64",
+    version = "0.23.1",
+)
+rust_crates.spec(
+    package = "csv",
+    version = "1.4.0",
+)
 
 # Not used directly; it's a transitive dep of zip. zip's `deflate-flate2`
 # feature enables flate2 without selecting a backend, so a top-level spec is
@@ -133,14 +149,34 @@ rust_crates.spec(
     version = "0.3.2",
 )
 rust_crates.spec(
+    package = "pep440_rs",
+    version = "0.7.3",
+)
+rust_crates.spec(
+    package = "pep508_rs",
+    version = "0.9.2",
+)
+rust_crates.spec(
+    package = "regex",
+    version = "1.13.1",
+)
+rust_crates.spec(
+    package = "ruff_python_ast",
+    version = "0.0.20",
+)
+rust_crates.spec(
+    package = "ruff_python_parser",
+    version = "0.0.20",
+)
+rust_crates.spec(
     package = "sha2",
-    version = "0.10.8",
+    version = "0.11.1",
 )
 
 # NOTE: zip 9.x added mandatory target-conditional OS deps (getrandom, nix,
 # windows-sys) that fail on powerpc64le-unknown-linux-musl until rules_rust
 # defines a powerpc64le @rules_rust//rust/platform config_setting. Keep on the
-# latest 8.x release until rules_rust supports powerpc64le platform selection.
+# latest 8.x release and disable unused C codec defaults (bzip2, zstd).
 rust_crates.spec(
     default_features = False,
     features = ["deflate-flate2"],
@@ -173,7 +209,7 @@ rust_crates.from_specs(
 # rules_rust has no @rules_rust//rust/platform config_setting for Linux ppc64le,
 # so don't mark the crates as incompatible with platforms that don't match one
 # of the triples above. Such platforms get only the unconditional dependencies,
-# which suffice for anyhow, flate2, lexopt, sha2, and zip.
+# which suffice for every crate used here.
 rust_crates.render_config(
     generate_target_compatible_with = False,
 )
