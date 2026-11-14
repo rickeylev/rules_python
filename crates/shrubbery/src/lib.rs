@@ -13,6 +13,7 @@ pub mod subcommands {
     pub const EXE_ZIP_MAKER: &str = "exe_zip_maker";
     pub const PY_CONSOLE_SCRIPT_GEN: &str = "py_console_script_gen";
     pub const PY_TEST_MAIN_VALIDATOR: &str = "py_test_main_validator";
+    pub const WHEELMAKER: &str = "wheelmaker";
     pub const ZIP_MAIN_MAKER: &str = "zip_main_maker";
     pub const ZIPPER: &str = "zipper";
     // keep-sorted end
@@ -24,6 +25,7 @@ pub const SUBCOMMANDS: &[&str] = &[
     subcommands::EXE_ZIP_MAKER,
     subcommands::PY_CONSOLE_SCRIPT_GEN,
     subcommands::PY_TEST_MAIN_VALIDATOR,
+    subcommands::WHEELMAKER,
     subcommands::ZIP_MAIN_MAKER,
     subcommands::ZIPPER,
     // keep-sorted end
@@ -70,6 +72,7 @@ where
         subcommands::EXE_ZIP_MAKER => exe_zip_maker_lib::run_cli(iter),
         subcommands::PY_CONSOLE_SCRIPT_GEN => py_console_script_gen_lib::run_cli(iter),
         subcommands::PY_TEST_MAIN_VALIDATOR => py_test_main_validator_lib::run_cli(iter),
+        subcommands::WHEELMAKER => wheelmaker_lib::run_cli(iter),
         subcommands::ZIP_MAIN_MAKER => zip_main_maker_lib::run_cli(iter),
         subcommands::ZIPPER => zipper_lib::run_cli(iter),
         // keep-sorted end

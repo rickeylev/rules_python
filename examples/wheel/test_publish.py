@@ -1,3 +1,4 @@
+import hashlib
 import os
 import socket
 import subprocess
@@ -94,9 +95,19 @@ class TestTwineUpload(unittest.TestCase):
         )
 
         # Then I should be able to get its contents
+        whl_sha256 = hashlib.sha256(whl.read_bytes()).hexdigest()
+        self.assertIn(
+            whl_sha256,
+            (
+                # Rust wheelmaker (flate2/miniz_oxide) and Python wheelmaker.py (zlib)
+                # produce deterministic RFC 1951 DEFLATE streams for the same archive.
+                "7b0ddefcee45535ba6808761e540332fe5488deb53ff37f5006416a9fd1b48ef",
+                "ef5afd9f6c3ff569ef7e5b2799d3a2ec9675d029414f341e0abd7254d6b9a25d",
+            ),
+        )
         with urlopen(self.url + "/example-minimal-library/") as response:
             got_content = response.read().decode("utf-8")
-            want_content = """
+            want_content = f"""
 <!DOCTYPE html>
 <html lang="en">
     <head>
@@ -106,7 +117,7 @@ class TestTwineUpload(unittest.TestCase):
     </head>
     <body>
         <h1>Links for example-minimal-library</h1>
-            <a href="/packages/example_minimal_library-0.0.1-py3-none-any.whl#sha256=ef5afd9f6c3ff569ef7e5b2799d3a2ec9675d029414f341e0abd7254d6b9a25d">example_minimal_library-0.0.1-py3-none-any.whl</a><br>
+            <a href="/packages/example_minimal_library-0.0.1-py3-none-any.whl#sha256={whl_sha256}">example_minimal_library-0.0.1-py3-none-any.whl</a><br>
     </body>
 </html>"""
             self.assertEqual(
