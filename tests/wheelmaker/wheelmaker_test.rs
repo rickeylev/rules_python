@@ -469,6 +469,7 @@ fn test_end_to_end_customized_wheel_and_record() {
 
     let sub_dir = tmp.path().join("someDir");
     fs::create_dir_all(&sub_dir).expect("sub_dir should be creatable");
+    fs::write(sub_dir.join("zed.py"), b"y = 2\n").expect("zed.py should be writable");
     fs::write(sub_dir.join("foo.py"), b"x = 1\n").expect("foo.py should be writable");
 
     let input_list_path = tmp.path().join("inputs.txt");
@@ -568,9 +569,13 @@ fn test_end_to_end_customized_wheel_and_record() {
             "--entry_points_file",
             ep_file.to_str().expect("ep_file path should be UTF-8"),
             "--extra_distinfo_file",
+            &format!("README;{}", desc_file.display()),
+            "--extra_distinfo_file",
             &format!("NOTICE;{}", notice_file.display()),
             "--data_files",
             &format!("scripts/NOTICE;{}", notice_file.display()),
+            "--data_files",
+            &format!("data/README.md;{}", desc_file.display()),
         ])
         .expect("customized wheel args should parse"),
     );
@@ -592,11 +597,14 @@ fn test_end_to_end_customized_wheel_and_record() {
             "pkg/lib/data,with,commas.txt",
             "pkg/lib/mod.pyi",
             "pkg/someDir/foo.py",
+            "pkg/someDir/zed.py",
             "file_name_escaping-0.0.1rc1+ubuntu.r7.dist-info/WHEEL",
             "file_name_escaping-0.0.1rc1+ubuntu.r7.dist-info/METADATA",
             "file_name_escaping-0.0.1rc1+ubuntu.r7.dist-info/entry_points.txt",
+            "file_name_escaping-0.0.1rc1+ubuntu.r7.data/data/README.md",
             "file_name_escaping-0.0.1rc1+ubuntu.r7.data/scripts/NOTICE",
             "file_name_escaping-0.0.1rc1+ubuntu.r7.dist-info/NOTICE",
+            "file_name_escaping-0.0.1rc1+ubuntu.r7.dist-info/README",
             "file_name_escaping-0.0.1rc1+ubuntu.r7.dist-info/RECORD",
         ]
     );
@@ -633,7 +641,7 @@ fn test_end_to_end_customized_wheel_and_record() {
 
     let record_text = by_name["file_name_escaping-0.0.1rc1+ubuntu.r7.dist-info/RECORD"].text();
     let record_lines: Vec<&str> = record_text.lines().collect();
-    assert_eq!(record_lines.len(), 9);
+    assert_eq!(record_lines.len(), 12);
     let mut sha = Sha256::new();
     sha.update(b"hello world\n");
     let expected_first = format!(
@@ -642,7 +650,7 @@ fn test_end_to_end_customized_wheel_and_record() {
     );
     assert_eq!(record_lines[0], expected_first);
     assert_eq!(
-        record_lines[8],
+        record_lines[11],
         "file_name_escaping-0.0.1rc1+ubuntu.r7.dist-info/RECORD,,"
     );
 }
@@ -793,6 +801,15 @@ fn test_stamping_semantics_and_empty_requires_and_no_compress() {
         fs::read_to_string(&half_name).expect("half_stamped.name should be readable"),
         "my_pkg{build_user}-0.1.0+0.1.build.timestamp-py3-none-any.whl"
     );
+    let half_entries: HashMap<String, ParsedZipEntry> = read_zip_entries(&half_whl)
+        .into_iter()
+        .map(|e| (e.name.clone(), e))
+        .collect();
+    assert!(
+        half_entries["my_pkg{build_user}-0.1.0+0.1.build.timestamp.dist-info/METADATA"]
+            .text()
+            .ends_with("\n\nUNKNOWN\n")
+    );
 }
 
 #[test]
@@ -817,6 +834,7 @@ fn test_build_tag_inline_requires_and_duplicate_inputs() {
                 "Metadata-Version: 2.1\n",
                 "Name: Demo-Pkg\n",
                 "Requires-Dist: extra_requires[example]==0.0.1\n",
+                "Requires-Dist: pytest; python_version != \"3.8\"\n",
                 "Requires-Dist: six>=1.16.0,!=1.16.1; python_version>='3.8'; extra == 'dev'\n",
                 "Provides-Extra: dev\n",
                 "Requires-Dist: @{}; extra == 'dev'\n",
@@ -892,6 +910,7 @@ fn test_build_tag_inline_requires_and_duplicate_inputs() {
             "Metadata-Version: 2.1\n",
             "Name: Demo-Pkg\n",
             "Requires-Dist: extra_requires[example]==0.0.1\n",
+            "Requires-Dist: pytest; python_full_version != '3.8.*'\n",
             "Requires-Dist: six!=1.16.1,>=1.16.0; ",
             "python_full_version >= '3.8' and extra == 'dev'\n",
             "Provides-Extra: dev\n",
@@ -899,6 +918,106 @@ fn test_build_tag_inline_requires_and_duplicate_inputs() {
             "Version: 1.0.0\n\n",
             "UNKNOWN\n",
         )
+    );
+}
+
+#[test]
+fn test_multi_strip_path_prefix_order_and_no_leading_slash_in_record() {
+    let tmp = TempDir::new("multi_prefix");
+    let mod_file = tmp.path().join("mod.py");
+    let main_file = tmp.path().join("main.py");
+    fs::write(&mod_file, b"x = 1\n").expect("mod.py should be writable");
+    fs::write(&main_file, b"y = 2\n").expect("main.py should be writable");
+
+    let metadata_file = tmp.path().join("metadata.txt");
+    fs::write(&metadata_file, "Metadata-Version: 2.1\nName: roots\n")
+        .expect("metadata.txt should be writable");
+
+    let build_with_prefixes = |tag: &str, prefixes: &[&str]| -> Vec<ParsedZipEntry> {
+        let out_whl = tmp.path().join(format!("{tag}.whl"));
+        let mut args = vec![
+            "--name".to_string(),
+            "roots".to_string(),
+            "--version".to_string(),
+            "0.0.1".to_string(),
+            "--out".to_string(),
+            out_whl
+                .to_str()
+                .expect("out_whl should be UTF-8")
+                .to_string(),
+            "--metadata_file".to_string(),
+            metadata_file
+                .to_str()
+                .expect("metadata_file should be UTF-8")
+                .to_string(),
+            "--input_file".to_string(),
+            format!("examples/wheel/lib/mod.py;{}", mod_file.display()),
+            "--input_file".to_string(),
+            format!("examples/wheel/main.py;{}", main_file.display()),
+        ];
+        for prefix in prefixes {
+            args.push(format!("--strip_path_prefix={prefix}"));
+        }
+        let opts = unwrap_run_options(parse_args(args).expect("prefix args should parse"));
+        build_wheel(&opts).expect("build_wheel should succeed");
+        let entries = read_zip_entries(&out_whl);
+        let record = entries
+            .iter()
+            .find(|e| e.name == "roots-0.0.1.dist-info/RECORD")
+            .expect("RECORD entry should exist")
+            .text();
+        for line in record.lines() {
+            assert!(
+                !line.starts_with('/'),
+                "RECORD line must not start with '/': {line}"
+            );
+        }
+        entries
+    };
+
+    // Stripping `examples` (without a trailing `/`) leaves a leading `/` in `arcname_from`, which
+    // `WhlFile` must strip in both zip entry headers and `RECORD`.
+    let single = build_with_prefixes("single", &["examples"]);
+    let single_names: Vec<&str> = single.iter().map(|e| e.name.as_str()).collect();
+    assert_eq!(
+        single_names,
+        vec![
+            "wheel/lib/mod.py",
+            "wheel/main.py",
+            "roots-0.0.1.dist-info/WHEEL",
+            "roots-0.0.1.dist-info/METADATA",
+            "roots-0.0.1.dist-info/RECORD",
+        ]
+    );
+
+    // More specific prefix first strips `examples/wheel/lib` on `mod.py` and `examples/wheel` on
+    // `main.py`.
+    let specific_first =
+        build_with_prefixes("specific_first", &["examples/wheel/lib", "examples/wheel"]);
+    let specific_names: Vec<&str> = specific_first.iter().map(|e| e.name.as_str()).collect();
+    assert_eq!(
+        specific_names,
+        vec![
+            "mod.py",
+            "main.py",
+            "roots-0.0.1.dist-info/WHEEL",
+            "roots-0.0.1.dist-info/METADATA",
+            "roots-0.0.1.dist-info/RECORD",
+        ]
+    );
+
+    // Broader prefix first wins for both entries, leaving `lib/mod.py` and `main.py`.
+    let broad_first = build_with_prefixes("broad_first", &["examples/wheel", "examples/wheel/lib"]);
+    let broad_names: Vec<&str> = broad_first.iter().map(|e| e.name.as_str()).collect();
+    assert_eq!(
+        broad_names,
+        vec![
+            "lib/mod.py",
+            "main.py",
+            "roots-0.0.1.dist-info/WHEEL",
+            "roots-0.0.1.dist-info/METADATA",
+            "roots-0.0.1.dist-info/RECORD",
+        ]
     );
 }
 
