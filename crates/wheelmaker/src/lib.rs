@@ -28,7 +28,12 @@ use zip::write::SimpleFileOptions;
 use zip::{CompressionMethod, DateTime, System, ZIP64_BYTES_THR, ZipWriter};
 
 /// Read/write buffer size when streaming files into the `.whl` archive and SHA-256 hasher.
-pub const BLOCK_SIZE: usize = 256 * 1024;
+///
+/// 256 KiB matches the other `shrubbery` tools (`zipper`, `exe_zip_maker`, `zip_main_maker`). It
+/// is large enough to coalesce small wheel entries into few `write` syscalls and amortize `read`
+/// syscalls on large files, while staying small enough to fit in L2 cache where bigger buffers
+/// stop paying off.
+const BLOCK_SIZE: usize = 256 * 1024;
 
 /// Fixed timestamp for all entries so output is deterministic. This is the earliest MS-DOS
 /// timestamp a zip can represent (1980-01-01 00:00:00) and matches `_ZIP_EPOCH` in
@@ -384,6 +389,7 @@ fn collect_sorted_inputs(options: &Options) -> Result<Vec<(String, PathBuf)>> {
     }
     let mut sorted_files: Vec<(String, PathBuf)> =
         get_files_to_package(&input_files).into_iter().collect();
+    // Sort the files for reproducible order in the archive.
     sorted_files.sort_unstable_by(|a, b| a.0.cmp(&b.0));
     Ok(sorted_files)
 }
@@ -715,6 +721,7 @@ impl<W: Write + Seek> WhlFile<W> {
                 };
                 entries.push((file_name, entry.path()));
             }
+            // Sort directory entries for reproducible order in the archive.
             entries.sort_by(|a, b| a.0.cmp(&b.0));
             for (file_name, path) in entries {
                 let child_pkg = format!("{package_filename}/{file_name}");
@@ -742,6 +749,7 @@ impl<W: Write + Seek> WhlFile<W> {
             .start_file(zip_arcname, opts)
             .with_context(|| format!("starting zip entry {zip_arcname}"))?;
 
+        // Write file to the zip archive while computing its SHA-256 digest and byte length.
         let mut sha = Sha256::new();
         let mut size: u64 = 0;
         loop {
@@ -788,6 +796,7 @@ impl<W: Write + Seek> WhlFile<W> {
     /// `RECORD` text.
     pub fn add_recordfile(&mut self) -> Result<String> {
         let record_path = self.distinfo_path("RECORD");
+        // Quote only when necessary (e.g. for filenames with commas).
         let mut wtr = csv::WriterBuilder::new()
             .has_headers(false)
             .terminator(csv::Terminator::Any(b'\n'))
