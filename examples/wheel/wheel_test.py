@@ -60,7 +60,10 @@ class WheelTest(unittest.TestCase):
                 if not buf:
                     break
                 hash.update(buf)
-        self.assertEqual(want, hash.hexdigest())
+        if isinstance(want, (tuple, list, set)):
+            self.assertIn(hash.hexdigest(), want)
+        else:
+            self.assertEqual(want, hash.hexdigest())
 
     def assertAllEntriesHasReproducibleMetadata(self, zf):
         for zinfo in zf.infolist():
@@ -91,8 +94,14 @@ class WheelTest(unittest.TestCase):
                     "example_minimal_library-0.0.1.dist-info/RECORD",
                 ],
             )
+        # Rust wheelmaker (flate2/miniz_oxide) and Python wheelmaker.py (zlib)
+        # produce deterministic RFC 1951 DEFLATE streams for the same archive.
         self.assertFileSha256Equal(
-            filename, "ef5afd9f6c3ff569ef7e5b2799d3a2ec9675d029414f341e0abd7254d6b9a25d"
+            filename,
+            (
+                "7b0ddefcee45535ba6808761e540332fe5488deb53ff37f5006416a9fd1b48ef",
+                "ef5afd9f6c3ff569ef7e5b2799d3a2ec9675d029414f341e0abd7254d6b9a25d",
+            ),
         )
 
     def test_py_package_wheel(self):
@@ -117,7 +126,11 @@ class WheelTest(unittest.TestCase):
                 ],
             )
         self.assertFileSha256Equal(
-            filename, "7322902ab63fd702afb9730843496637058b5d7449208c624875d06d191d386e"
+            filename,
+            (
+                "01eacc04389891449feadac17a3fabcb8258398518327671c9f031a760293db0",
+                "7322902ab63fd702afb9730843496637058b5d7449208c624875d06d191d386e",
+            ),
         )
 
     def test_customized_wheel(self):
@@ -213,7 +226,11 @@ first = first.main:f
 second = second.main:s""",
             )
         self.assertFileSha256Equal(
-            filename, "6d08fbb30864cee89396e7857c910c92bec56b6586d40a64b796b4812af15fbf"
+            filename,
+            (
+                "1d34e7c704448673a6a4458b887f4e70f6874a7646778828c079e0ac2e454db1",
+                "6d08fbb30864cee89396e7857c910c92bec56b6586d40a64b796b4812af15fbf",
+            ),
         )
 
     def test_filename_escaping(self):
@@ -285,7 +302,11 @@ UNKNOWN
             for line in record_contents.splitlines():
                 self.assertFalse(line.startswith("/"))
         self.assertFileSha256Equal(
-            filename, "0b5a35251ad35fd9e14f3f7e77993f59a7341268f24fb0a255b403cee60d429e"
+            filename,
+            (
+                "1b45e76f5618d7125b8a0ea0fd4de841c250575a73869fb67293d95325f763b8",
+                "0b5a35251ad35fd9e14f3f7e77993f59a7341268f24fb0a255b403cee60d429e",
+            ),
         )
 
     def test_custom_package_root_multi_prefix_wheel(self):
@@ -319,7 +340,11 @@ UNKNOWN
             for line in record_contents.splitlines():
                 self.assertFalse(line.startswith("/"))
         self.assertFileSha256Equal(
-            filename, "437127690584a035dc37542f64c38d1a6d6652655afc81f5a9472706343aae23"
+            filename,
+            (
+                "512f75085e9b0919daeaef32d0ebc5aa419bc23c65641a32ea38a72295e61a06",
+                "437127690584a035dc37542f64c38d1a6d6652655afc81f5a9472706343aae23",
+            ),
         )
 
     def test_custom_package_root_multi_prefix_reverse_order_wheel(self):
@@ -353,7 +378,11 @@ UNKNOWN
             for line in record_contents.splitlines():
                 self.assertFalse(line.startswith("/"))
         self.assertFileSha256Equal(
-            filename, "265cc2ba4c99d0b62f1922f357de961f15f416bcee93ff307e4d4f04e4c067a3"
+            filename,
+            (
+                "510aa10aa0daa69e9903c946b046d6b998cc85209c715333ffc412e324880833",
+                "265cc2ba4c99d0b62f1922f357de961f15f416bcee93ff307e4d4f04e4c067a3",
+            ),
         )
 
     def test_python_requires_wheel(self):
@@ -378,7 +407,11 @@ UNKNOWN
 """,
             )
         self.assertFileSha256Equal(
-            filename, "cb1d0bf64df1cbf23b7d4473a1c113cedbbea0d23209cdb4d2e5fe2edc68ceec"
+            filename,
+            (
+                "cc1060cccda6e422ec8bf92006e0c0a0ae7986d637814144de4dedb87fb448c6",
+                "cb1d0bf64df1cbf23b7d4473a1c113cedbbea0d23209cdb4d2e5fe2edc68ceec",
+            ),
         )
 
     def test_python_abi3_binary_wheel(self):
@@ -443,7 +476,11 @@ Tag: cp38-abi3-{os_string}_{arch}
                 ],
             )
         self.assertFileSha256Equal(
-            filename, "2358a8ee58dd7ed1a89862e368a0eb00e83ec5de28995ecf0f3c38c2524102dc"
+            filename,
+            (
+                "1c0e3c6f2f529466c5f2fb93d1a1a21da47e4695571be738e794e5dde484e756",
+                "2358a8ee58dd7ed1a89862e368a0eb00e83ec5de28995ecf0f3c38c2524102dc",
+            ),
         )
 
     def test_rule_expands_workspace_status_keys_in_wheel_metadata(self):
@@ -491,15 +528,24 @@ Tag: cp38-abi3-{os_string}_{arch}
                     if line.startswith(b"Requires-Dist:"):
                         requires.append(line.decode("utf-8").strip())
 
-            self.assertEqual(
-                [
-                    "Requires-Dist: tomli>=2.0.0",
-                    "Requires-Dist: starlark",
-                    "Requires-Dist: pyyaml!=6.0.1,>=6.0.0; extra == 'example'",
-                    'Requires-Dist: toml; ((python_version == "3.11" or python_version == "3.12") and python_version != "3.8") and extra == \'example\'',
-                    'Requires-Dist: wheel; (python_version == "3.11" or python_version == "3.12") and extra == \'example\'',
-                ],
+            self.assertIn(
                 requires,
+                [
+                    [
+                        "Requires-Dist: tomli>=2.0.0",
+                        "Requires-Dist: starlark",
+                        "Requires-Dist: pyyaml!=6.0.1,>=6.0.0; extra == 'example'",
+                        'Requires-Dist: toml; ((python_version == "3.11" or python_version == "3.12") and python_version != "3.8") and extra == \'example\'',
+                        'Requires-Dist: wheel; (python_version == "3.11" or python_version == "3.12") and extra == \'example\'',
+                    ],
+                    [
+                        "Requires-Dist: tomli>=2.0.0",
+                        "Requires-Dist: starlark",
+                        "Requires-Dist: pyyaml!=6.0.1,>=6.0.0; extra == 'example'",
+                        "Requires-Dist: toml; python_full_version >= '3.11' and python_full_version < '3.13' and extra == 'example'",
+                        "Requires-Dist: wheel; python_full_version >= '3.11' and python_full_version < '3.13' and extra == 'example'",
+                    ],
+                ],
             )
 
     def test_empty_requires_file(self):
@@ -560,16 +606,26 @@ Tag: cp38-abi3-{os_string}_{arch}
                         requires.append(line.decode("utf-8").strip())
 
             print(requires)
-            self.assertEqual(
-                [
-                    "Requires-Dist: tomli>=2.0.0",
-                    "Requires-Dist: starlark",
-                    'Requires-Dist: pytest; python_version != "3.8"',
-                    "Requires-Dist: pyyaml!=6.0.1,>=6.0.0; extra == 'example'",
-                    'Requires-Dist: toml; ((python_version == "3.11" or python_version == "3.12") and python_version != "3.8") and extra == \'example\'',
-                    'Requires-Dist: wheel; (python_version == "3.11" or python_version == "3.12") and extra == \'example\'',
-                ],
+            self.assertIn(
                 requires,
+                [
+                    [
+                        "Requires-Dist: tomli>=2.0.0",
+                        "Requires-Dist: starlark",
+                        'Requires-Dist: pytest; python_version != "3.8"',
+                        "Requires-Dist: pyyaml!=6.0.1,>=6.0.0; extra == 'example'",
+                        'Requires-Dist: toml; ((python_version == "3.11" or python_version == "3.12") and python_version != "3.8") and extra == \'example\'',
+                        'Requires-Dist: wheel; (python_version == "3.11" or python_version == "3.12") and extra == \'example\'',
+                    ],
+                    [
+                        "Requires-Dist: tomli>=2.0.0",
+                        "Requires-Dist: starlark",
+                        "Requires-Dist: pytest; python_full_version != '3.8.*'",
+                        "Requires-Dist: pyyaml!=6.0.1,>=6.0.0; extra == 'example'",
+                        "Requires-Dist: toml; python_full_version >= '3.11' and python_full_version < '3.13' and extra == 'example'",
+                        "Requires-Dist: wheel; python_full_version >= '3.11' and python_full_version < '3.13' and extra == 'example'",
+                    ],
+                ],
             )
 
     def test_requires_dist_depends_on_extras(self):
@@ -619,11 +675,12 @@ Tag: cp38-abi3-{os_string}_{arch}
                         requires.append(line.decode("utf-8").strip())
 
             print(requires)
-            self.assertEqual(
-                [
-                    "Requires-Dist: extra_requires[example]==0.0.1",
-                ],
+            self.assertIn(
                 requires,
+                [
+                    ["Requires-Dist: extra_requires[example]==0.0.1"],
+                    ["Requires-Dist: extra-requires[example]==0.0.1"],
+                ],
             )
 
     def test_data_files_installed_in_folder(self):

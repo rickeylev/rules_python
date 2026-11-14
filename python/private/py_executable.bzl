@@ -1387,18 +1387,23 @@ def _maybe_add_test_main_validation(ctx, main_py, output_groups):
     if main_py == None:
         return
 
-    exec_tools_toolchain = ctx.toolchains[EXEC_TOOLS_TOOLCHAIN_TYPE]
-    if (
-        exec_tools_toolchain == None or
-        exec_tools_toolchain.exec_tools.exec_runtime == None
-    ):
-        fail(
-            "Validating py_test main modules requires the exec tools toolchain " +
-            "with an exec runtime, but none was found. Either register one " +
-            "or set --@rules_python//python/config_settings:validate_test_main=disabled.",
-        )
+    validator = get_shrubbery_tool(
+        ctx,
+        "py_test_main_validator",
+        ctx.attr._validate_test_main,
+    )
+    if not validator.is_rust:
+        exec_tools_toolchain = ctx.toolchains[EXEC_TOOLS_TOOLCHAIN_TYPE]
+        if (
+            exec_tools_toolchain == None or
+            exec_tools_toolchain.exec_tools.exec_runtime == None
+        ):
+            fail(
+                "Validating py_test main modules requires the exec tools toolchain " +
+                "with an exec runtime, but none was found. Either register one " +
+                "or set --@rules_python//python/config_settings:validate_test_main=disabled.",
+            )
 
-    validator = ctx.attr._validate_test_main
     validation_output = ctx.actions.declare_file(ctx.label.name + "_validate_test_main.txt")
 
     args = ctx.actions.args()
@@ -1409,8 +1414,9 @@ def _maybe_add_test_main_validation(ctx, main_py, output_groups):
 
     actions_run(
         ctx,
-        executable = validator,
-        arguments = [args],
+        executable = validator.executable,
+        toolchain = validator.toolchain,
+        arguments = validator.prefix_args + [args],
         inputs = [main_py],
         outputs = [validation_output],
         mnemonic = "PyValidateTestMain",
@@ -1723,22 +1729,33 @@ def _write_build_data(ctx):
     )
 
     action_args = ctx.actions.args()
-    writer_file = ctx.files._build_data_writer[0]
-    if writer_file.path.endswith(".ps1"):
-        # powershell.exe is used for broader compatibility
-        # It is installed by default on most Windows versions
-        action_exe = "powershell.exe"
-        action_args.add_all([
-            # Bypass execution policy is needed because,
-            # by default, Windows blocks ps1 scripts.
-            "-ExecutionPolicy",
-            "Bypass",
-            "-File",
-            writer_file,
-        ])
-        inputs.add(writer_file)
+    writer = get_shrubbery_tool(
+        ctx,
+        "build_data_writer",
+        ctx.attr._build_data_writer,
+    )
+    if writer.is_rust:
+        action_exe = writer.files_to_run
+        action_toolchain = writer.toolchain
+        action_args.add_all(writer.prefix_args)
     else:
-        action_exe = ctx.attr._build_data_writer[DefaultInfo].files_to_run
+        action_toolchain = None
+        writer_file = ctx.files._build_data_writer[0]
+        if writer_file.path.endswith(".ps1"):
+            # powershell.exe is used for broader compatibility
+            # It is installed by default on most Windows versions
+            action_exe = "powershell.exe"
+            action_args.add_all([
+                # Bypass execution policy is needed because,
+                # by default, Windows blocks ps1 scripts.
+                "-ExecutionPolicy",
+                "Bypass",
+                "-File",
+                writer_file,
+            ])
+            inputs.add(writer_file)
+        else:
+            action_exe = writer.files_to_run
 
     ctx.actions.run(
         executable = action_exe,
@@ -1756,7 +1773,7 @@ def _write_build_data(ctx):
         outputs = [build_data],
         mnemonic = "PyWriteBuildData",
         progress_message = "Reticulating %{label} build data",
-        toolchain = None,
+        toolchain = action_toolchain,
     )
     return build_data
 
