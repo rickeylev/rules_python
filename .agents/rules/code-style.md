@@ -69,3 +69,13 @@ Order definitions within a file as:
 ## Bulk Logging
 * In bulk operations, log a single summary line on success; on failure, list
   each failing item sorted, one per line, with its location and reason.
+
+## Security
+* Validate external repository slugs (`owner/name`) and Git/branch refs
+  fail-closed before passing them to CLI tools, URLs, or refspecs, rejecting
+  `.` / `..` segments, leading `-`, `..`, `:`, and control characters.
+* Separate option flags from positional arguments with `--` when invoking CLI
+  tools, and escape untrusted inputs to shell commands.
+* Treat external metadata (PR titles, branch names, URLs) passed into agent
+  prompts strictly as untrusted data inside explicit delimiters after
+  stripping control characters and neutralizing fence markers.

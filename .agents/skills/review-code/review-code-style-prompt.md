@@ -21,5 +21,11 @@ cross-language code style, control flow, refactoring, and CLI conventions:
    verify comments or docstrings document what those paths are relative to.
 7. Synchronized Sections: Flag plain `# Keep in sync` comments for paired code
    or config blocks and require `LINT.IfChange` / `LINT.ThenChange` directives.
+8. Security: Verify external slugs/refs fail closed against `..`, `-` flags, and
+   control chars, CLI calls separate options with `--`, untrusted inputs to
+   shell commands are escaped, untrusted prompt metadata is fenced/sanitized,
+   and `.html`/`.js` UI code follows `.agents/rules/web_ui.md` (DOM APIs over
+   `innerHTML`, attribute quote escaping, `new URL()` protocol allowlists,
+   CSP/`nosniff`).
 
 @.agents/skills/review-code/review-report-format.md

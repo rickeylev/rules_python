@@ -468,6 +468,7 @@
     <section id="lookup-panel" class="panel hidden" aria-live="polite"></section>
 
     <section id="filters-panel" class="panel hidden">
+      <!-- LINT.IfChange(pr_queue_config_fields) -->
       <form id="filters-form">
         <div class="filter-grid">
           <div class="field">
@@ -520,6 +521,7 @@
           </button>
         </div>
       </form>
+      <!-- LINT.ThenChange(//.agents/plugins/pr-queue/sidecars/pr_queue/server.py:pr_queue_config_fields) -->
     </section>
 
     <div id="error-banner" class="banner banner-error hidden" role="alert">
@@ -541,6 +543,67 @@
       <div id="stale-list" class="pr-list"></div>
     </details>
   </div>
+
+  <script>
+    "use strict";
+
+    function escapeHtml(text) {
+      const div = document.createElement("div");
+      div.textContent = text == null ? "" : String(text);
+      return div.innerHTML
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#39;");
+    }
+
+    function sanitizeExternalUrl(raw) {
+      if (typeof raw !== "string" || !raw.trim()) return "";
+      try {
+        const parsed = new URL(raw.trim());
+        if (parsed.protocol === "https:" || parsed.protocol === "http:") {
+          return parsed.href;
+        }
+      } catch (_err) {
+        return "";
+      }
+      return "";
+    }
+  </script>
+  <!-- LINT.IfChange(action_needed_buckets) -->
+  <script>
+    "use strict";
+
+    function actionBadge(pr) {
+      const map = {
+        review_requested: ["Review Requested", "pill-warn"],
+        needs_review: ["Needs Review", "pill-info"],
+        waiting_on_author: ["Changes Requested", "pill-err"],
+        approved: ["Approved", "pill-ok"],
+        draft: ["Draft", "pill"],
+        my_pr: ["Your PR", "pill"],
+      };
+      const pair = map[pr.action_needed] || [pr.action_needed || "Open", "pill"];
+      return `<span class="pill ${pair[1]}">${escapeHtml(pair[0])}</span>`;
+    }
+  </script>
+  <!-- LINT.ThenChange(//.agents/plugins/pr-queue/sidecars/pr_queue/fetch_pr_queue.py:action_needed_buckets) -->
+  <!-- LINT.IfChange(checks_state_values) -->
+  <script>
+    "use strict";
+
+    function checksBadge(pr) {
+      if (!pr.checks_total) return "";
+      const map = {
+        passing: [`CI ${pr.checks_passed}/${pr.checks_total} passing`, "pill-ok"],
+        failing: [`CI ${pr.checks_failed} failing`, "pill-err"],
+        pending: [`CI ${pr.checks_pending} pending`, "pill-warn"],
+        cancelled: ["CI cancelled", "pill"],
+      };
+      const pair = map[pr.checks_state];
+      if (!pair) return "";
+      return `<span class="pill ${pair[1]}">${escapeHtml(pair[0])}</span>`;
+    }
+  </script>
+  <!-- LINT.ThenChange(//.agents/plugins/pr-queue/sidecars/pr_queue/fetch_pr_queue.py:checks_state_values) -->
 
   <script>
     (function () {
@@ -658,135 +721,28 @@
       }
 
       function openExternalUrl(url) {
-        if (!url) return;
+        const safeUrl = sanitizeExternalUrl(url);
+        if (!safeUrl) return;
         if (window.sidecar?.ui?.openUrl) {
-          window.sidecar.ui.openUrl(url);
+          window.sidecar.ui.openUrl(safeUrl);
         } else {
-          window.open(url, "_blank", "noopener,noreferrer");
+          window.open(safeUrl, "_blank", "noopener,noreferrer");
         }
       }
 
-      function escapeHtml(text) {
-        const div = document.createElement("div");
-        div.textContent = text == null ? "" : String(text);
-        return div.innerHTML;
-      }
-
       function formatAgeText(pr) {
-        if (pr.stale_days === 0) return "updated today";
-        if (pr.stale_days === 1) return "updated 1d ago";
-        return `updated ${pr.stale_days}d ago`;
+        if (pr.days_since_update === 0) return "updated today";
+        if (pr.days_since_update === 1) return "updated 1d ago";
+        return `updated ${pr.days_since_update}d ago`;
       }
 
-      function actionBadge(pr) {
-        const map = {
-          review_requested: ["Review Requested", "pill-warn"],
-          needs_review: ["Needs Review", "pill-info"],
-          waiting_on_author: ["Changes Requested", "pill-err"],
-          approved: ["Approved", "pill-ok"],
-          draft: ["Draft", "pill"],
-          my_pr: ["Your PR", "pill"],
-        };
-        const pair = map[pr.action_needed] || [pr.action_needed || "Open", "pill"];
-        return `<span class="pill ${pair[1]}">${escapeHtml(pair[0])}</span>`;
-      }
-
-      function checksBadge(pr) {
-        if (!pr.checks_total) return "";
-        const map = {
-          passing: [`CI ${pr.checks_passed}/${pr.checks_total} passing`, "pill-ok"],
-          failing: [`CI ${pr.checks_failed} failing`, "pill-err"],
-          pending: [`CI ${pr.checks_pending} pending`, "pill-warn"],
-          cancelled: ["CI cancelled", "pill"],
-        };
-        const pair = map[pr.checks_state];
-        if (!pair) return "";
-        return `<span class="pill ${pair[1]}">${escapeHtml(pair[0])}</span>`;
-      }
-
-      function renderPrCard(pr, isStaleCard) {
-        const card = document.createElement("article");
-        card.className = "pr-card";
-        const diffStats = `+${pr.additions} / -${pr.deletions} · ${pr.changed_files}f`;
-        // Cap per-card label pills at 4 to keep card headers compact.
-        const labelsHtml = (pr.labels || [])
-          .slice(0, 4)
-          .map((label) => `<span class="pill">${escapeHtml(label)}</span>`)
-          .join("");
-        const botPill = pr.is_bot ? `<span class="pill">bot</span>` : "";
-        const memberRole = escapeHtml(pr.author_association || "MEMBER");
-        const memberPill = pr.is_project_member
-          ? `<span class="pill pill-member" title="Repository role: ${memberRole}">` +
-            `Project member</span>`
-          : "";
-        const branchFlow =
-          `${escapeHtml(pr.head_ref_name)} → ${escapeHtml(pr.base_ref_name)}`;
-
-        card.innerHTML = `
-          <div class="pr-card-top">
-            <div class="pr-badges">
-              <a
-                class="pr-link"
-                href="${escapeHtml(pr.url)}"
-                target="_blank"
-                rel="noopener noreferrer"
-              >#${pr.number}</a>
-              ${actionBadge(pr)}
-              ${checksBadge(pr)}
-            </div>
-            <div class="pr-stats">${escapeHtml(formatAgeText(pr))} · ${escapeHtml(diffStats)}</div>
-          </div>
-          <div class="pr-title">${escapeHtml(pr.title)}</div>
-          <div class="pr-meta">
-            <span>@${escapeHtml(pr.author)}</span>
-            ${memberPill}
-            ${botPill}
-            <span class="mono">${branchFlow}</span>
-            ${labelsHtml}
-          </div>
-        `;
-
-        const prAnchor = card.querySelector(".pr-link");
-        prAnchor.addEventListener("click", (evt) => {
-          evt.preventDefault();
-          openExternalUrl(pr.url);
-        });
-
+      function renderCardActions(pr, isStaleCard) {
         const actions = document.createElement("div");
         actions.className = "pr-actions";
         const busy = state.launchingPr === pr.number;
         const chat = pr.triggered_chat;
 
-        if (chat && chat.conversation_id) {
-          const openBtn = document.createElement("button");
-          openBtn.type = "button";
-          openBtn.className = "primary";
-          openBtn.textContent = "Open Review Chat ↗";
-          openBtn.addEventListener("click", () => openConversation(chat.conversation_id));
-          actions.appendChild(openBtn);
-
-          const rerunBtn = document.createElement("button");
-          rerunBtn.type = "button";
-          rerunBtn.disabled = busy;
-          rerunBtn.textContent = busy ? "Launching..." : "Re-run";
-          rerunBtn.addEventListener("click", () => launchReview(pr.number, true));
-          actions.appendChild(rerunBtn);
-
-          if (chat.stale_commit) {
-            const staleTag = document.createElement("span");
-            staleTag.className = "pill pill-warn";
-            staleTag.textContent = "New commits since review";
-            actions.appendChild(staleTag);
-          }
-
-          if (chat.worktree_path) {
-            const wt = document.createElement("span");
-            wt.className = "worktree-note mono";
-            wt.textContent = chat.worktree_path;
-            wt.title = chat.worktree_path;
-            actions.appendChild(wt);
-          }
-        } else {
+        if (!(chat && chat.conversation_id)) {
           const reviewBtn = document.createElement("button");
           reviewBtn.type = "button";
           reviewBtn.className = isStaleCard ? "" : "primary";
@@ -800,9 +756,117 @@
           reviewBtn.textContent = buttonText;
           reviewBtn.addEventListener("click", () => launchReview(pr.number, false));
           actions.appendChild(reviewBtn);
+          return actions;
         }
 
-        card.appendChild(actions);
+        const openBtn = document.createElement("button");
+        openBtn.type = "button";
+        openBtn.className = "primary";
+        openBtn.textContent = "Open Review Chat ↗";
+        openBtn.addEventListener("click", () => openConversation(chat.conversation_id));
+        actions.appendChild(openBtn);
+
+        const rerunBtn = document.createElement("button");
+        rerunBtn.type = "button";
+        rerunBtn.disabled = busy;
+        rerunBtn.textContent = busy ? "Launching..." : "Re-run";
+        rerunBtn.addEventListener("click", () => launchReview(pr.number, true));
+        actions.appendChild(rerunBtn);
+
+        if (chat.stale_commit) {
+          const staleTag = document.createElement("span");
+          staleTag.className = "pill pill-warn";
+          staleTag.textContent = "New commits since review";
+          actions.appendChild(staleTag);
+        }
+
+        if (chat.worktree_path) {
+          const wt = document.createElement("span");
+          wt.className = "worktree-note mono";
+          wt.textContent = chat.worktree_path;
+          wt.title = chat.worktree_path;
+          actions.appendChild(wt);
+        }
+        return actions;
+      }
+
+      function renderPrCard(pr, isStaleCard) {
+        const card = document.createElement("article");
+        card.className = "pr-card";
+        const prNum = Number.parseInt(pr.number, 10) || 0;
+        const safeUrl = sanitizeExternalUrl(pr.url);
+
+        const cardTop = document.createElement("div");
+        cardTop.className = "pr-card-top";
+
+        const badges = document.createElement("div");
+        badges.className = "pr-badges";
+        const prAnchor = document.createElement(safeUrl ? "a" : "span");
+        prAnchor.className = "pr-link";
+        prAnchor.textContent = `#${prNum}`;
+        if (safeUrl) {
+          prAnchor.href = safeUrl;
+          prAnchor.target = "_blank";
+          prAnchor.rel = "noopener noreferrer";
+          prAnchor.addEventListener("click", (evt) => {
+            evt.preventDefault();
+            openExternalUrl(safeUrl);
+          });
+        }
+        badges.appendChild(prAnchor);
+        badges.insertAdjacentHTML("beforeend", `${actionBadge(pr)}${checksBadge(pr)}`);
+
+        const stats = document.createElement("div");
+        stats.className = "pr-stats";
+        const diffStats = `+${pr.additions} / -${pr.deletions} · ${pr.changed_files}f`;
+        stats.textContent = `${formatAgeText(pr)} · ${diffStats}`;
+
+        cardTop.appendChild(badges);
+        cardTop.appendChild(stats);
+
+        const titleEl = document.createElement("div");
+        titleEl.className = "pr-title";
+        titleEl.textContent = pr.title || "";
+
+        const metaEl = document.createElement("div");
+        metaEl.className = "pr-meta";
+        const authorEl = document.createElement("span");
+        authorEl.textContent = `@${pr.author || ""}`;
+        metaEl.appendChild(authorEl);
+
+        if (pr.is_project_member) {
+          const memberPill = document.createElement("span");
+          memberPill.className = "pill pill-member";
+          memberPill.title = `Repository role: ${pr.author_association || "MEMBER"}`;
+          memberPill.textContent = "Project member";
+          metaEl.appendChild(memberPill);
+        }
+
+        if (pr.is_bot) {
+          const botPill = document.createElement("span");
+          botPill.className = "pill";
+          botPill.textContent = "bot";
+          metaEl.appendChild(botPill);
+        }
+
+        const branchEl = document.createElement("span");
+        branchEl.className = "mono";
+        branchEl.textContent =
+          `${pr.head_ref_name || ""} → ${pr.base_ref_name || ""}`;
+        metaEl.appendChild(branchEl);
+
+        // Cap per-card label pills at 4 to keep card headers compact.
+        for (const label of (pr.labels || []).slice(0, 4)) {
+          const labelPill = document.createElement("span");
+          labelPill.className = "pill";
+          labelPill.textContent = String(label);
+          metaEl.appendChild(labelPill);
+        }
+
+        card.appendChild(cardTop);
+        card.appendChild(titleEl);
+        card.appendChild(metaEl);
+        card.appendChild(renderCardActions(pr, isStaleCard));
         return card;
       }
 
@@ -918,6 +982,23 @@
         }
       }
 
+      function updateLaunchedQueueItem(items, prNumber, res) {
+        return (items || []).map((item) => {
+          if (item.number !== prNumber) return item;
+          return {
+            ...item,
+            triggered_chat: {
+              conversation_id: res.conversation_id,
+              title: res.title,
+              head_sha: res.record?.head_sha || "",
+              worktree_path: res.worktree_path,
+              triggered_at: res.record?.triggered_at || Date.now() / 1000,
+              stale_commit: false,
+            },
+          };
+        });
+      }
+
       async function launchReview(prNumber, force) {
         if (state.launchingPr !== null) return;
         state.launchingPr = prNumber;
@@ -925,7 +1006,6 @@
         showStatus(`Creating worktree & launching /review-code for PR #${prNumber}...`);
         if (state.queue) renderQueue(state.queue);
         try {
-          // Covers two 3x60s git fetch retry budgets plus local git and LS RPC steps.
           const sourceConversationId = window.sidecar?.conversationId || "";
           const res = await apiFetch("api/review", {
             method: "POST",
@@ -935,7 +1015,8 @@
               force: Boolean(force),
               source_conversation_id: sourceConversationId,
             }),
-            timeoutMs: 380000,
+            // Covers two 3x60s git fetch budgets, uncached gh pr view, and LS RPCs.
+            timeoutMs: 450000,
           });
           showStatus(
             res.reused
@@ -943,26 +1024,10 @@
               : `Started review chat for PR #${prNumber} in ${res.worktree_path}`
           );
           if (state.queue) {
-            const updateItems = (items) =>
-              (items || []).map((item) =>
-                item.number === prNumber
-                  ? {
-                      ...item,
-                      triggered_chat: {
-                        conversation_id: res.conversation_id,
-                        title: res.title,
-                        head_sha: res.record?.head_sha || "",
-                        worktree_path: res.worktree_path,
-                        triggered_at: res.record?.triggered_at || Date.now() / 1000,
-                        stale_commit: false,
-                      },
-                    }
-                  : item
-              );
             state.queue = {
               ...state.queue,
-              prs: updateItems(state.queue.prs),
-              stale_prs: updateItems(state.queue.stale_prs),
+              prs: updateLaunchedQueueItem(state.queue.prs, prNumber, res),
+              stale_prs: updateLaunchedQueueItem(state.queue.stale_prs, prNumber, res),
             };
           }
           if (res.conversation_id) {
@@ -979,20 +1044,25 @@
 
       async function runLookup() {
         const raw = el.lookupInput.value.trim().replace(/^#/, "");
-        const prNum = Number.parseInt(raw, 10);
-        if (!raw || !Number.isFinite(prNum) || prNum <= 0) {
+        const prNum = /^\d+$/.test(raw) ? Number.parseInt(raw, 10) : 0;
+        if (prNum <= 0) {
           showError("Enter a valid positive PR number.");
           return;
         }
         showError("");
         el.lookupPanel.classList.remove("hidden");
-        el.lookupPanel.innerHTML = `<span class="cache-note">Looking up PR #${prNum}...</span>`;
+        const loadingNote = document.createElement("span");
+        loadingNote.className = "cache-note";
+        loadingNote.textContent = `Looking up PR #${prNum}...`;
+        el.lookupPanel.replaceChildren(loadingNote);
         try {
           const res = await apiFetch(`api/lookup-pr?pr=${prNum}`);
           const convs = res.conversations || [];
           const header = document.createElement("div");
           header.className = "pr-card-top";
-          header.innerHTML = `<strong>PR #${prNum} (${escapeHtml(res.repo)})</strong>`;
+          const headerTitle = document.createElement("strong");
+          headerTitle.textContent = `PR #${prNum} (${res.repo || ""})`;
+          header.appendChild(headerTitle);
 
           const closeBtn = document.createElement("button");
           closeBtn.type = "button";
@@ -1003,8 +1073,7 @@
           });
           header.appendChild(closeBtn);
 
-          el.lookupPanel.innerHTML = "";
-          el.lookupPanel.appendChild(header);
+          el.lookupPanel.replaceChildren(header);
 
           if (convs.length) {
             const list = document.createElement("div");
@@ -1013,9 +1082,13 @@
               const row = document.createElement("div");
               row.className = "lookup-result-item";
               const info = document.createElement("div");
-              info.innerHTML =
-                `<div>${escapeHtml(c.title)}</div>` +
-                `<div class="mono cache-note">${escapeHtml(c.conversation_id)}</div>`;
+              const convTitle = document.createElement("div");
+              convTitle.textContent = c.title || "";
+              const convIdEl = document.createElement("div");
+              convIdEl.className = "mono cache-note";
+              convIdEl.textContent = c.conversation_id || "";
+              info.appendChild(convTitle);
+              info.appendChild(convIdEl);
               const btn = document.createElement("button");
               btn.type = "button";
               btn.className = "primary";

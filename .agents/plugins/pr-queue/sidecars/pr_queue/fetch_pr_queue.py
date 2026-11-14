@@ -2,7 +2,7 @@
 """Fetches and filters pending GitHub pull requests using the `gh` CLI.
 
 Usage:
-  python3 .agents/plugins/pr-queue/sidecars/pr_queue/fetch_pr_queue.py [options]
+  ./.agents/plugins/pr-queue/sidecars/pr_queue/fetch_pr_queue.py [options]
 
 Options control repository scope, viewer identity, draft/approval/age filters,
 GitHub search queries, and `--json` vs. Markdown output. Network calls use
@@ -20,9 +20,8 @@ import datetime
 import json
 import logging
 import random
-import subprocess
+import re
 import sys
-import time
 from collections.abc import Awaitable, Callable, Mapping, Sequence
 from typing import Any, TypeVar
 
@@ -34,7 +33,7 @@ DEFAULT_REPO = "bazel-contrib/rules_python"
 # Hide untouched PRs after 30 days by default so stale backlog stays collapsible.
 DEFAULT_MAX_AGE_DAYS = 30
 # Match GitHub GraphQL connection `first` max (100) so PR and role lists align.
-DEFAULT_PR_LIMIT = 100
+_DEFAULT_PR_LIMIT = 100
 PR_JSON_FIELDS = (
     "number,title,url,author,createdAt,updatedAt,headRefName,headRefOid,"
     "baseRefName,isDraft,reviewDecision,reviewRequests,reviews,latestReviews,"
@@ -57,7 +56,9 @@ _DEFAULT_ACTION_PRIORITY = 99
 
 _LOGGER = logging.getLogger("pr_queue.fetch")
 _T = TypeVar("_T")
+_SAFE_REPO_SEGMENT_RE = re.compile(r"^[A-Za-z0-9._][A-Za-z0-9._-]*$")
 
+# LINT.IfChange(action_needed_buckets)
 _ACTION_SORT_PRIORITY = {
     # keep-sorted start
     "approved": 4,
@@ -68,6 +69,7 @@ _ACTION_SORT_PRIORITY = {
     "waiting_on_author": 2,
     # keep-sorted end
 }
+# LINT.ThenChange(//.agents/plugins/pr-queue/sidecars/pr_queue/index.html:action_needed_buckets)
 
 _PROJECT_MEMBER_ASSOCIATIONS = frozenset(
     {
@@ -203,7 +205,7 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--limit",
         type=int,
-        default=DEFAULT_PR_LIMIT,
+        default=_DEFAULT_PR_LIMIT,
         help="Maximum open PRs to request from GitHub (default: %(default)s)",
     )
     parser.add_argument(
@@ -222,6 +224,32 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
 # =============================================================================
 # 3. Functions
 # =============================================================================
+
+
+def validate_repo_slug(repo: str, *, error_cls: type[Exception]) -> str:
+    """Validates a GitHub `owner/name` repository slug and returns it stripped.
+
+    Args:
+      repo: Candidate `owner/name` repository identifier.
+      error_cls: Exception class raised when validation fails.
+
+    Returns:
+      Normalized `owner/name` repository slug.
+    """
+    clean = repo.strip()
+    owner, sep, name = clean.partition("/")
+    if not sep or "/" in name:
+        raise error_cls(f"Invalid repository format `{clean}`; expected `owner/name`.")
+    for segment in (owner, name):
+        if (
+            segment in (".", "..")
+            or ".." in segment
+            or not _SAFE_REPO_SEGMENT_RE.match(segment)
+        ):
+            raise error_cls(
+                f"Invalid repository format `{clean}`; expected `owner/name`."
+            )
+    return clean
 
 
 def format_subprocess_error(
@@ -341,32 +369,6 @@ async def retry_async(
     return await operation()
 
 
-def _retry_sync(
-    operation: Callable[[], _T],
-    *,
-    is_retryable: Callable[[Exception], bool],
-    label: str,
-) -> _T:
-    """Retries a blocking operation on transient errors with backoff."""
-    for attempt in range(_RETRY_MAX_ATTEMPTS - 1):
-        try:
-            return operation()
-        except Exception as exc:
-            if not is_retryable(exc):
-                raise
-            delay = _retry_delay_seconds(attempt)
-            _LOGGER.warning(
-                "%s attempt %d/%d failed (%s); retrying in %.2fs",
-                label,
-                attempt + 1,
-                _RETRY_MAX_ATTEMPTS,
-                exc,
-                delay,
-            )
-            time.sleep(delay)
-    return operation()
-
-
 def _build_gh_error(
     label: str, returncode: int, stdout: str, stderr: str
 ) -> FetchError:
@@ -398,43 +400,6 @@ def compute_age_days(timestamp: str, now: datetime.datetime) -> int:
         return 0
     delta_seconds = max(0.0, (now - parsed).total_seconds())
     return int(delta_seconds // _SECONDS_PER_DAY)
-
-
-def _run_gh_once_sync(args: Sequence[str], timeout_seconds: int) -> str:
-    cmd = ["gh", *args]
-    label = f"gh {' '.join(args[:3])}"
-    try:
-        proc = subprocess.run(
-            cmd,
-            capture_output=True,
-            text=True,
-            timeout=timeout_seconds,
-            check=False,
-        )
-    except FileNotFoundError as exc:
-        raise FetchError(
-            "`gh` CLI executable was not found on PATH; install GitHub CLI."
-        ) from exc
-    except subprocess.TimeoutExpired as exc:
-        raise FetchError(f"`{label}` timed out after {timeout_seconds}s") from exc
-
-    if proc.returncode != 0:
-        raise _build_gh_error(
-            label, proc.returncode, proc.stdout or "", proc.stderr or ""
-        )
-    return proc.stdout
-
-
-def run_gh_command(args: Sequence[str], timeout_seconds: int) -> str:
-    """Runs a `gh` subprocess with transient retries and returns stdout."""
-    label = f"gh {' '.join(args[:3])}"
-    return _retry_sync(
-        lambda: _run_gh_once_sync(args, timeout_seconds),
-        is_retryable=lambda exc: (
-            isinstance(exc, FetchError) and is_transient_error(str(exc))
-        ),
-        label=label,
-    )
 
 
 async def _run_gh_once_async(args: Sequence[str], timeout_seconds: int) -> str:
@@ -474,15 +439,6 @@ def _parse_gh_login(output: str) -> str:
     return login
 
 
-def get_current_gh_user(
-    runner: Callable[[Sequence[str], int], str] | None = None,
-) -> str:
-    """Returns the authenticated GitHub login from `gh api user`."""
-    cmd_runner = runner if runner is not None else run_gh_command
-    output = cmd_runner(["api", "user", "--jq", ".login"], _GH_USER_TIMEOUT_SECONDS)
-    return _parse_gh_login(output)
-
-
 async def get_current_gh_user_async(
     runner: Callable[[Sequence[str], int], Awaitable[str]] | None = None,
 ) -> str:
@@ -494,6 +450,18 @@ async def get_current_gh_user_async(
     return _parse_gh_login(output)
 
 
+def _extract_reviewer_name(item: dict[str, Any]) -> str:
+    # `gh` returns either direct fields or a nested `requestedReviewer` object.
+    nested = item.get("requestedReviewer")
+    containers = (item, nested) if isinstance(nested, dict) else (item,)
+    for container in containers:
+        for key in ("login", "slug", "name"):
+            candidate = container.get(key)
+            if candidate:
+                return str(candidate)
+    return ""
+
+
 def _extract_reviewer_names(raw_requests: Any) -> list[str]:
     names: list[str] = []
     if not isinstance(raw_requests, list):
@@ -501,18 +469,7 @@ def _extract_reviewer_names(raw_requests: Any) -> list[str]:
     for item in raw_requests:
         if not isinstance(item, dict):
             continue
-        # `gh` returns either direct fields or a nested `requestedReviewer` object.
-        nested = item.get("requestedReviewer")
-        containers = [item, nested] if isinstance(nested, dict) else [item]
-        name = ""
-        for container in containers:
-            for key in ("login", "slug", "name"):
-                candidate = container.get(key)
-                if candidate:
-                    name = str(candidate)
-                    break
-            if name:
-                break
+        name = _extract_reviewer_name(item)
         if name and name not in names:
             names.append(name)
     return names
@@ -586,6 +543,7 @@ def _summarize_checks(raw_rollup: Any) -> tuple[str, int, int, int, int]:
         elif not conclusion:
             pending += 1
 
+    # LINT.IfChange(checks_state_values)
     if failed > 0:
         overall = "failing"
     elif pending > 0:
@@ -596,6 +554,7 @@ def _summarize_checks(raw_rollup: Any) -> tuple[str, int, int, int, int]:
         overall = "passing"
     else:
         overall = "none"
+    # LINT.ThenChange(//.agents/plugins/pr-queue/sidecars/pr_queue/index.html:checks_state_values)
     return (overall, passed, failed, pending, total)
 
 
@@ -661,8 +620,8 @@ def normalize_pr(
     created_at = str(raw_pr.get("createdAt") or "")
     updated_at = str(raw_pr.get("updatedAt") or created_at)
     age_days = compute_age_days(created_at, now)
-    stale_days = compute_age_days(updated_at, now)
-    is_stale = max_age_days > 0 and stale_days > max_age_days
+    days_since_update = compute_age_days(updated_at, now)
+    is_stale = max_age_days > 0 and days_since_update > max_age_days
 
     requested = _extract_reviewer_names(raw_pr.get("reviewRequests"))
     viewer_lower = viewer.lower()
@@ -725,7 +684,7 @@ def normalize_pr(
         created_at=created_at,
         updated_at=updated_at,
         age_days=age_days,
-        stale_days=stale_days,
+        days_since_update=days_since_update,
         head_ref_name=str(raw_pr.get("headRefName") or ""),
         head_ref_oid=str(raw_pr.get("headRefOid") or ""),
         base_ref_name=str(raw_pr.get("baseRefName") or ""),
@@ -802,25 +761,37 @@ def _build_author_association_args(
         return [
             "api",
             "graphql",
-            "-f",
+            "--raw-field",
             f"query={_GRAPHQL_SEARCH_ASSOCIATIONS_QUERY}",
-            "-f",
+            "--raw-field",
             f"searchQuery={search_expr}",
-            "-F",
+            "--field",
             f"limit={gql_limit}",
         ]
     return [
         "api",
         "graphql",
-        "-f",
+        "--raw-field",
         f"query={_GRAPHQL_PR_ASSOCIATIONS_QUERY}",
-        "-f",
+        "--raw-field",
         f"owner={owner}",
-        "-f",
+        "--raw-field",
         f"name={name}",
-        "-F",
+        "--field",
         f"limit={gql_limit}",
     ]
+
+
+def _extract_association_nodes(data: dict[str, Any]) -> Any:
+    repo_obj = data.get("repository")
+    if isinstance(repo_obj, dict):
+        prs_obj = repo_obj.get("pullRequests")
+        if isinstance(prs_obj, dict):
+            return prs_obj.get("nodes")
+    search_obj = data.get("search")
+    if isinstance(search_obj, dict):
+        return search_obj.get("nodes")
+    return None
 
 
 def _parse_author_associations(raw_output: str) -> dict[int, str]:
@@ -834,16 +805,7 @@ def _parse_author_associations(raw_output: str) -> dict[int, str]:
     if not isinstance(data, dict):
         return {}
 
-    nodes: Any = None
-    repo_obj = data.get("repository")
-    if isinstance(repo_obj, dict):
-        prs_obj = repo_obj.get("pullRequests")
-        if isinstance(prs_obj, dict):
-            nodes = prs_obj.get("nodes")
-    if nodes is None:
-        search_obj = data.get("search")
-        if isinstance(search_obj, dict):
-            nodes = search_obj.get("nodes")
+    nodes = _extract_association_nodes(data)
     if not isinstance(nodes, list):
         return {}
 
@@ -869,8 +831,25 @@ def _parse_and_filter_prs(
     exclude_authored_by_me: bool,
     exclude_drafts: bool,
     now: datetime.datetime | None,
-    author_associations: Mapping[int, str] | None = None,
+    author_associations: Mapping[int, str],
 ) -> PrQueueResult:
+    """Parses `gh pr list` JSON, normalizes each PR, and partitions active/stale.
+
+    Args:
+      raw_output: Raw JSON string from `gh pr list --json`.
+      clean_repo: Validated repository slug (`owner/name`).
+      viewer: Active GitHub login used for personalized filters.
+      max_age_days: Days since update after which PRs move to stale_prs.
+      review_requested_only: Retain only PRs requesting review from viewer.
+      exclude_approved_by_me: Omit PRs whose latest viewer review is APPROVED.
+      exclude_authored_by_me: Omit PRs authored by viewer.
+      exclude_drafts: Omit draft PRs.
+      now: Optional UTC timestamp override for age calculations.
+      author_associations: Map of PR number to GraphQL authorAssociation value.
+
+    Returns:
+      Sorted and partitioned PrQueueResult.
+    """
     try:
         raw_items = json.loads(raw_output or "[]")
     except json.JSONDecodeError as exc:
@@ -880,7 +859,6 @@ def _parse_and_filter_prs(
 
     current_time = now or datetime.datetime.now(datetime.UTC)
     viewer_lower = viewer.lower()
-    assoc_map = author_associations or {}
 
     active_prs: list[PrSummary] = []
     stale_prs: list[PrSummary] = []
@@ -898,7 +876,7 @@ def _parse_and_filter_prs(
             viewer=viewer,
             max_age_days=max(0, max_age_days),
             now=current_time,
-            author_association=assoc_map.get(pr_num, ""),
+            author_association=author_associations.get(pr_num, ""),
         )
         if exclude_drafts and summary.is_draft:
             skipped_drafts += 1
@@ -933,70 +911,6 @@ def _parse_and_filter_prs(
     )
 
 
-def fetch_pr_queue(
-    *,
-    repo: str = DEFAULT_REPO,
-    user: str | None = None,
-    max_age_days: int = DEFAULT_MAX_AGE_DAYS,
-    review_requested_only: bool = False,
-    exclude_approved_by_me: bool = True,
-    exclude_authored_by_me: bool = True,
-    exclude_drafts: bool = True,
-    custom_query: str = "",
-    limit: int = DEFAULT_PR_LIMIT,
-    runner: Callable[[Sequence[str], int], str] | None = None,
-    now: datetime.datetime | None = None,
-) -> PrQueueResult:
-    """Queries GitHub open PRs via `gh pr list` and applies queue filters.
-
-    Args:
-      repo: Target repository slug (`owner/name`).
-      user: Viewer GitHub login override; empty resolves via `gh api user`.
-      max_age_days: Stale threshold in days; 0 disables stale partitioning.
-      review_requested_only: Retain only PRs requesting review from viewer.
-      exclude_approved_by_me: Omit PRs whose latest review by viewer is APPROVED.
-      exclude_authored_by_me: Omit PRs authored by viewer.
-      exclude_drafts: Omit draft PRs.
-      custom_query: Optional GitHub search filter string.
-      limit: Maximum number of open PRs to fetch.
-      runner: Optional subprocess runner replacement for testing.
-      now: Reference UTC timestamp for deterministic age calculation.
-
-    Returns:
-      Filtered and sorted PrQueueResult.
-    """
-    cmd_runner = runner if runner is not None else run_gh_command
-    clean_repo = repo.strip() or DEFAULT_REPO
-    viewer = (user or "").strip()
-    if not viewer:
-        viewer = get_current_gh_user(runner=cmd_runner)
-
-    args = _build_pr_list_args(clean_repo, custom_query, limit)
-    raw_output = cmd_runner(args, _GH_LIST_TIMEOUT_SECONDS)
-    associations: dict[int, str] = {}
-    assoc_args = _build_author_association_args(clean_repo, custom_query, limit)
-    if assoc_args is not None:
-        # GraphQL membership metadata is advisory; degrade safely if secondary lookup fails.
-        try:
-            associations = _parse_author_associations(
-                cmd_runner(assoc_args, _GH_LIST_TIMEOUT_SECONDS)
-            )
-        except FetchError as exc:
-            _LOGGER.warning("GraphQL authorAssociation lookup failed: %s", exc)
-    return _parse_and_filter_prs(
-        raw_output,
-        clean_repo=clean_repo,
-        viewer=viewer,
-        max_age_days=max_age_days,
-        review_requested_only=review_requested_only,
-        exclude_approved_by_me=exclude_approved_by_me,
-        exclude_authored_by_me=exclude_authored_by_me,
-        exclude_drafts=exclude_drafts,
-        now=now,
-        author_associations=associations,
-    )
-
-
 async def _ready_value(value: str) -> str:
     return value
 
@@ -1004,14 +918,14 @@ async def _ready_value(value: str) -> str:
 async def fetch_pr_queue_async(
     *,
     repo: str = DEFAULT_REPO,
-    user: str | None = None,
+    user: str = "",
     max_age_days: int = DEFAULT_MAX_AGE_DAYS,
     review_requested_only: bool = False,
     exclude_approved_by_me: bool = True,
     exclude_authored_by_me: bool = True,
     exclude_drafts: bool = True,
     custom_query: str = "",
-    limit: int = DEFAULT_PR_LIMIT,
+    limit: int = _DEFAULT_PR_LIMIT,
     runner: Callable[[Sequence[str], int], Awaitable[str]] | None = None,
     now: datetime.datetime | None = None,
 ) -> PrQueueResult:
@@ -1034,8 +948,10 @@ async def fetch_pr_queue_async(
       Filtered and sorted PrQueueResult.
     """
     cmd_runner = runner if runner is not None else run_gh_command_async
-    clean_repo = repo.strip() or DEFAULT_REPO
-    viewer = (user or "").strip()
+    clean_repo = validate_repo_slug(repo, error_cls=FetchError)
+    if any(ord(ch) < 32 or ord(ch) == 127 for ch in custom_query):
+        raise FetchError("Custom query must not contain control characters.")
+    viewer = user.strip()
 
     args = _build_pr_list_args(clean_repo, custom_query, limit)
     assoc_args = _build_author_association_args(clean_repo, custom_query, limit)
@@ -1059,10 +975,12 @@ async def fetch_pr_queue_async(
         raise viewer_res
     if isinstance(raw_output, BaseException):
         raise raw_output
-    if isinstance(assoc_res, BaseException):
+    if isinstance(assoc_res, FetchError):
         # GraphQL membership metadata is advisory; degrade safely if secondary lookup fails.
         _LOGGER.warning("GraphQL authorAssociation lookup failed: %s", assoc_res)
         associations: dict[int, str] = {}
+    elif isinstance(assoc_res, BaseException):
+        raise assoc_res
     else:
         associations = _parse_author_associations(assoc_res)
 
@@ -1099,7 +1017,8 @@ def format_markdown(result: PrQueueResult) -> str:
         checks_tag = f"checks={pr.checks_state}"
         lines.append(
             f"- **#{pr.number}** [{pr.action_needed}{req_tag}] "
-            f"{pr.title} (@{pr.author}{member_tag}, {pr.stale_days}d since update, "
+            f"{pr.title} (@{pr.author}{member_tag}, "
+            f"{pr.days_since_update}d since update, "
             f"{checks_tag}) — {pr.url}"
         )
     if result.stale_prs:
@@ -1108,7 +1027,7 @@ def format_markdown(result: PrQueueResult) -> str:
             member_tag = " [member]" if pr.is_project_member else ""
             lines.append(
                 f"- **#{pr.number}** {pr.title} (@{pr.author}{member_tag}, "
-                f"{pr.stale_days}d) — {pr.url}"
+                f"{pr.days_since_update}d) — {pr.url}"
             )
     return "\n".join(lines) + "\n"
 
@@ -1149,7 +1068,7 @@ class PrSummary:
     # Whole days elapsed since created_at.
     age_days: int
     # Whole days elapsed since updated_at.
-    stale_days: int
+    days_since_update: int
     # Source branch name of the PR.
     head_ref_name: str
     # Head commit SHA of the PR.
@@ -1209,7 +1128,7 @@ class PrSummary:
 
 @dataclasses.dataclass(frozen=True)
 class PrQueueResult:
-    """Filtered pull request queue response returned by fetch_pr_queue."""
+    """Filtered pull request queue response returned by fetch_pr_queue_async."""
 
     # GitHub repository queried in owner/name format.
     repo: str
@@ -1249,13 +1168,13 @@ class PrQueueResult:
 # =============================================================================
 
 
-def main(argv: Sequence[str] | None = None) -> int:
-    """CLI entry point returning process exit code."""
+async def async_main(argv: Sequence[str] | None = None) -> int:
+    """Runs the PR queue fetcher CLI inside an asyncio event loop."""
     args = parse_args(argv)
     try:
-        result = fetch_pr_queue(
+        result = await fetch_pr_queue_async(
             repo=args.repo,
-            user=args.user or None,
+            user=args.user,
             max_age_days=args.max_age_days,
             review_requested_only=args.review_requested_only,
             exclude_approved_by_me=not args.include_approved,
@@ -1273,6 +1192,11 @@ def main(argv: Sequence[str] | None = None) -> int:
     else:
         print(format_markdown(result), end="")
     return 0
+
+
+def main(argv: Sequence[str] | None = None) -> int:
+    """CLI entry point returning process exit code."""
+    return asyncio.run(async_main(argv))
 
 
 if __name__ == "__main__":

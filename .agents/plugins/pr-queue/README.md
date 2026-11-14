@@ -7,10 +7,9 @@ requests with buttons to launch manual code reviews in isolated Git worktrees.
 
 - Displays open GitHub PRs filtered by review status, author, draft state, age,
   or custom search query using the `gh` CLI.
-- Fetches on demand only: does not automatically run code reviews and does not
-  automatically poll or refresh the queue or review results in the background.
+- Fetches on demand without automatic reviews or background polling.
 - Clicking a PR review button creates or updates a dedicated Git worktree at the
-  PR head commit and starts a new Antigravity conversation running
+  PR head commit and starts a new conversation running
   `.agents/skills/review-code/SKILL.md`.
 
 ## Requirements
@@ -20,7 +19,7 @@ requests with buttons to launch manual code reviews in isolated Git worktrees.
 - A local Git clone of the target repo containing an `upstream` (or `origin`)
   remote so review worktrees can be created from `refs/pull/<N>/head`.
 - Global registration in `~/.gemini/config/plugins/pr-queue` (for example via a
-  symlink to this directory) so Antigravity starts `pr-queue/pr_queue`.
+  symlink to this directory) so the agent IDE starts `pr-queue/pr_queue`.
 
 ## Files
 
@@ -28,9 +27,13 @@ requests with buttons to launch manual code reviews in isolated Git worktrees.
 - `rules/AGENTS.md`: Rule surfacing `[📋 PR Queue](sidecar://pr-queue/pr_queue/)`
   when `/pr-queue` is requested.
 - `skills/pr-queue/SKILL.md`: `/pr-queue` skill instructions.
-- `sidecars/pr_queue/sidecar.json`: Antigravity sidecar registration.
+- `sidecars/pr_queue/BUILD.bazel`: Bazel targets for the sidecar and unit tests.
+- `sidecars/pr_queue/sidecar.json`: Sidecar registration and UI view config.
 - `sidecars/pr_queue/fetch_pr_queue.py`: `gh`-based PR queue fetcher and
   filter CLI.
+- `sidecars/pr_queue/fetch_pr_queue_test.py`: Unit tests for
+  `fetch_pr_queue.py`.
 - `sidecars/pr_queue/server.py`: HTTP backend serving the UI, cached PR queue,
   review conversation lookup, and worktree/chat launcher.
+- `sidecars/pr_queue/server_test.py`: Unit tests for `server.py`.
 - `sidecars/pr_queue/index.html`: Adaptive dark/light side panel frontend.

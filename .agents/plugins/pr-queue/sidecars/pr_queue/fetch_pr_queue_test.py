@@ -3,10 +3,12 @@
 
 from __future__ import annotations
 
+import asyncio
 import datetime
 import io
 import json
 import unittest
+from collections.abc import Sequence
 from unittest import mock
 
 import fetch_pr_queue
@@ -68,13 +70,13 @@ class TimestampParsingTest(unittest.TestCase):
         )
 
 
-class FetchPrQueueTest(unittest.TestCase):
+class FetchPrQueueTest(unittest.IsolatedAsyncioTestCase):
     """Tests filtering, normalization, check summarization, sorting, and CLI."""
 
     def setUp(self) -> None:
         self.now = datetime.datetime(2026, 11, 12, 12, 0, 0, tzinfo=datetime.UTC)
 
-    def test_filters_drafts_authored_approved_and_stale(self) -> None:
+    async def test_filters_drafts_authored_approved_and_stale(self) -> None:
         raw_prs = [
             _make_raw_pr(1, is_draft=True),
             _make_raw_pr(2, author="rickeylev"),
@@ -112,13 +114,15 @@ class FetchPrQueueTest(unittest.TestCase):
 
         recorded_cmds: list[list[str]] = []
 
-        def fake_runner(args: list[str], _timeout: int) -> str:
+        async def fake_runner(args: Sequence[str], _timeout: int) -> str:
             recorded_cmds.append(list(args))
-            if args[:2] == ["api", "user"]:
+            if list(args[:2]) == ["api", "user"]:
                 return "rickeylev\n"
+            if list(args[:2]) == ["api", "graphql"]:
+                return "{}"
             return json.dumps(raw_prs)
 
-        result = fetch_pr_queue.fetch_pr_queue(
+        result = await fetch_pr_queue.fetch_pr_queue_async(
             repo="bazel-contrib/rules_python",
             max_age_days=30,
             custom_query="label:bug",
@@ -137,10 +141,10 @@ class FetchPrQueueTest(unittest.TestCase):
         self.assertEqual(result.prs[0].checks_state, "pending")
         self.assertEqual(result.prs[0].checks_passed, 1)
         self.assertEqual(result.prs[0].checks_pending, 1)
-        self.assertIn("--search", recorded_cmds[1])
-        self.assertIn("label:bug", recorded_cmds[1])
+        self.assertIn("--search", recorded_cmds[0])
+        self.assertIn("label:bug", recorded_cmds[0])
 
-    def test_sorts_by_action_priority_then_updated_desc(self) -> None:
+    async def test_sorts_by_action_priority_then_updated_desc(self) -> None:
         raw_prs = [
             _make_raw_pr(
                 10,
@@ -169,14 +173,19 @@ class FetchPrQueueTest(unittest.TestCase):
             ),
         ]
 
-        result = fetch_pr_queue.fetch_pr_queue(
+        async def fake_runner(args: Sequence[str], _timeout: int) -> str:
+            if list(args[:2]) == ["api", "graphql"]:
+                return "{}"
+            return json.dumps(raw_prs)
+
+        result = await fetch_pr_queue.fetch_pr_queue_async(
             user="rickeylev",
-            runner=lambda _args, _timeout: json.dumps(raw_prs),
+            runner=fake_runner,
             now=self.now,
         )
         self.assertEqual([pr.number for pr in result.prs], [13, 12, 11, 10])
 
-    def test_summarizes_status_context_and_check_failures(self) -> None:
+    async def test_summarizes_status_context_and_check_failures(self) -> None:
         raw_prs = [
             _make_raw_pr(
                 20,
@@ -190,9 +199,15 @@ class FetchPrQueueTest(unittest.TestCase):
                 ],
             )
         ]
-        result = fetch_pr_queue.fetch_pr_queue(
+
+        async def fake_runner(args: Sequence[str], _timeout: int) -> str:
+            if list(args[:2]) == ["api", "graphql"]:
+                return "{}"
+            return json.dumps(raw_prs)
+
+        result = await fetch_pr_queue.fetch_pr_queue_async(
             user="alice",
-            runner=lambda _args, _timeout: json.dumps(raw_prs),
+            runner=fake_runner,
             now=self.now,
         )
         pr = result.prs[0]
@@ -201,7 +216,7 @@ class FetchPrQueueTest(unittest.TestCase):
         self.assertEqual(pr.checks_passed, 1)
         self.assertEqual(pr.checks_total, 2)
 
-    def test_review_requested_only_filter(self) -> None:
+    async def test_review_requested_only_filter(self) -> None:
         raw_prs = [
             _make_raw_pr(30),
             _make_raw_pr(
@@ -209,29 +224,63 @@ class FetchPrQueueTest(unittest.TestCase):
                 review_requests=[{"__typename": "User", "login": "alice"}],
             ),
         ]
-        result = fetch_pr_queue.fetch_pr_queue(
+
+        async def fake_runner(args: Sequence[str], _timeout: int) -> str:
+            if list(args[:2]) == ["api", "graphql"]:
+                return "{}"
+            return json.dumps(raw_prs)
+
+        result = await fetch_pr_queue.fetch_pr_queue_async(
             user="alice",
             review_requested_only=True,
-            runner=lambda _args, _timeout: json.dumps(raw_prs),
+            runner=fake_runner,
             now=self.now,
         )
         self.assertEqual([pr.number for pr in result.prs], [31])
 
-    def test_raises_fetch_error_on_invalid_json(self) -> None:
+    async def test_raises_fetch_error_on_empty_repo_and_invalid_json(self) -> None:
+        async def bad_json_runner(args: Sequence[str], _timeout: int) -> str:
+            if list(args[:2]) == ["api", "graphql"]:
+                return "{}"
+            return "{not json"
+
+        for invalid_repo in ("   ", "../evil", "owner/..", "-bad/repo", "owner/a b"):
+            with self.assertRaises(fetch_pr_queue.FetchError):
+                await fetch_pr_queue.fetch_pr_queue_async(
+                    repo=invalid_repo,
+                    user="alice",
+                    runner=bad_json_runner,
+                    now=self.now,
+                )
+
         with self.assertRaises(fetch_pr_queue.FetchError):
-            fetch_pr_queue.fetch_pr_queue(
+            await fetch_pr_queue.fetch_pr_queue_async(
                 user="alice",
-                runner=lambda _args, _timeout: "{not json",
+                custom_query="label:bug\nauthor:evil",
+                runner=bad_json_runner,
+                now=self.now,
+            )
+
+        with self.assertRaises(fetch_pr_queue.FetchError):
+            await fetch_pr_queue.fetch_pr_queue_async(
+                user="alice",
+                runner=bad_json_runner,
                 now=self.now,
             )
 
     def test_main_emits_json_and_handles_errors(self) -> None:
         raw_prs = [_make_raw_pr(99, title="CLI PR")]
         stdout = io.StringIO()
+
+        async def ok_runner(args: Sequence[str], _timeout: int) -> str:
+            if list(args[:2]) == ["api", "graphql"]:
+                return "{}"
+            return json.dumps(raw_prs)
+
         with mock.patch.object(
             fetch_pr_queue,
-            "run_gh_command",
-            return_value=json.dumps(raw_prs),
+            "run_gh_command_async",
+            side_effect=ok_runner,
         ), mock.patch("sys.stdout", stdout):
             rc = fetch_pr_queue.main(["--user", "alice", "--json"])
         self.assertEqual(rc, 0)
@@ -242,7 +291,7 @@ class FetchPrQueueTest(unittest.TestCase):
         stderr = io.StringIO()
         with mock.patch.object(
             fetch_pr_queue,
-            "run_gh_command",
+            "run_gh_command_async",
             side_effect=fetch_pr_queue.FetchError("boom"),
         ), mock.patch("sys.stderr", stderr):
             rc_err = fetch_pr_queue.main(["--user", "alice"])
@@ -278,14 +327,14 @@ class FetchPrQueueAsyncTest(unittest.IsolatedAsyncioTestCase):
             }
         }
 
-        async def fake_runner(args: list[str], _timeout: int) -> str:
-            if args[:2] == ["api", "user"]:
+        async def fake_runner(args: Sequence[str], _timeout: int) -> str:
+            if list(args[:2]) == ["api", "user"]:
                 return "rickeylev\n"
-            if args[:2] == ["api", "graphql"]:
+            if list(args[:2]) == ["api", "graphql"]:
                 return json.dumps(gql_resp)
             return json.dumps(raw_prs)
 
-        now = datetime.datetime(2026, 11, 12, 12, 0, 0, tzinfo=datetime.timezone.utc)
+        now = datetime.datetime(2026, 11, 12, 12, 0, 0, tzinfo=datetime.UTC)
         result = await fetch_pr_queue.fetch_pr_queue_async(runner=fake_runner, now=now)
         self.assertEqual(result.viewer, "rickeylev")
         by_num = {pr.number: pr for pr in result.prs}
@@ -301,8 +350,8 @@ class FetchPrQueueAsyncTest(unittest.IsolatedAsyncioTestCase):
     async def test_search_mode_and_graphql_failure_degrades_gracefully(self) -> None:
         raw_prs = [_make_raw_pr(500, title="Search PR", author="someone")]
 
-        async def fake_runner(args: list[str], _timeout: int) -> str:
-            if args[:2] == ["api", "graphql"]:
+        async def fake_runner(args: Sequence[str], _timeout: int) -> str:
+            if list(args[:2]) == ["api", "graphql"]:
                 raise fetch_pr_queue.FetchError("graphql flaky")
             return json.dumps(raw_prs)
 
@@ -310,11 +359,24 @@ class FetchPrQueueAsyncTest(unittest.IsolatedAsyncioTestCase):
             user="rickeylev",
             custom_query="label:bug",
             runner=fake_runner,
-            now=datetime.datetime(2026, 11, 12, 12, 0, 0, tzinfo=datetime.timezone.utc),
+            now=datetime.datetime(2026, 11, 12, 12, 0, 0, tzinfo=datetime.UTC),
         )
         self.assertEqual(len(result.prs), 1)
         self.assertFalse(result.prs[0].is_project_member)
         self.assertEqual(result.prs[0].author_association, "")
+
+    async def test_graphql_cancellation_is_not_swallowed(self) -> None:
+        async def cancelled_runner(args: Sequence[str], _timeout: int) -> str:
+            if list(args[:2]) == ["api", "graphql"]:
+                raise asyncio.CancelledError()
+            return json.dumps([_make_raw_pr(501)])
+
+        with self.assertRaises(asyncio.CancelledError):
+            await fetch_pr_queue.fetch_pr_queue_async(
+                user="rickeylev",
+                runner=cancelled_runner,
+                now=datetime.datetime(2026, 11, 12, 12, 0, 0, tzinfo=datetime.UTC),
+            )
 
     async def test_retries_transient_502_and_fails_fast_on_auth_error(self) -> None:
         calls = 0
