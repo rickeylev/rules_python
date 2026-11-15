@@ -16,6 +16,7 @@ pub mod subcommands {
     pub const PY_TEST_MAIN_VALIDATOR: &str = "py_test_main_validator";
     pub const PY_WHEEL_DIST: &str = "py_wheel_dist";
     pub const VENV_SHEBANG_REWRITER: &str = "venv_shebang_rewriter";
+    pub const WHEEL_RECORD_REWRITER: &str = "wheel_record_rewriter";
     pub const WHEELMAKER: &str = "wheelmaker";
     pub const ZIP_MAIN_MAKER: &str = "zip_main_maker";
     pub const ZIPPER: &str = "zipper";
@@ -31,6 +32,7 @@ pub const SUBCOMMANDS: &[&str] = &[
     subcommands::PY_TEST_MAIN_VALIDATOR,
     subcommands::PY_WHEEL_DIST,
     subcommands::VENV_SHEBANG_REWRITER,
+    subcommands::WHEEL_RECORD_REWRITER,
     subcommands::WHEELMAKER,
     subcommands::ZIP_MAIN_MAKER,
     subcommands::ZIPPER,
@@ -81,6 +83,7 @@ where
         subcommands::PY_TEST_MAIN_VALIDATOR => py_test_main_validator_lib::run_cli(iter),
         subcommands::PY_WHEEL_DIST => py_wheel_dist_lib::run_cli(iter),
         subcommands::VENV_SHEBANG_REWRITER => venv_shebang_rewriter_lib::run_cli(iter),
+        subcommands::WHEEL_RECORD_REWRITER => wheel_record_rewriter_lib::run_cli(iter),
         subcommands::WHEELMAKER => wheelmaker_lib::run_cli(iter),
         subcommands::ZIP_MAIN_MAKER => zip_main_maker_lib::run_cli(iter),
         subcommands::ZIPPER => zipper_lib::run_cli(iter),

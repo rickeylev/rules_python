@@ -16,6 +16,7 @@ rust_library(
         "//crates/py_test_main_validator:py_test_main_validator_lib",
         "//crates/py_wheel_dist:py_wheel_dist_lib",
         "//crates/venv_shebang_rewriter:venv_shebang_rewriter_lib",
+        "//crates/wheel_record_rewriter:wheel_record_rewriter_lib",
         "//crates/wheelmaker:wheelmaker_lib",
         "//crates/zip_main_maker:zip_main_maker_lib",
         "//crates/zipper:zipper_lib",
