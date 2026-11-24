@@ -14,12 +14,20 @@
 
 "Implementation of py_wheel rule"
 
+load(
+    "//python/private/toolchains:shrubbery_toolchain.bzl",
+    "get_shrubbery_tool",
+)
 load(":attributes.bzl", "CONFIG_SETTINGS_ATTR", "apply_config_settings_attr")
 load(":py_info.bzl", "PyInfo")
 load(":py_package.bzl", "py_package_lib")
 load(":rule_builders.bzl", "ruleb")
 load(":stamp_impl.bzl", "is_stamping_enabled")
-load(":toolchain_types.bzl", "TARGET_TOOLCHAIN_TYPE")
+load(
+    ":toolchain_types.bzl",
+    "SHRUBBERY_TOOLCHAIN_TYPE",
+    "TARGET_TOOLCHAIN_TYPE",
+)
 load(":transition_labels.bzl", "TRANSITION_LABELS")
 load(":version.bzl", "version")
 
@@ -43,7 +51,7 @@ Python ABI tag. 'none' for pure-Python wheels.
 Supports make variables, e.g. `abi = "$(PY_WHEEL_ABI_TAG)"`. See
 {rule}`py_runtime_pair` for variables provided by the Python toolchain.
 
-:::{versionchanged} VERSION_NEXT_FEATURE
+:::{versionchanged} 2.5.0
 Python toolchain make variables (such as `$(PY_WHEEL_ABI_TAG)`) are available by
 default.
 :::
@@ -89,7 +97,7 @@ platform = select({
 
 Supports make variables.
 
-:::{versionchanged} VERSION_NEXT_FEATURE
+:::{versionchanged} 2.5.0
 Supports make variables.
 :::
 """,
@@ -102,7 +110,7 @@ Supported Python version(s), eg `py3`, `cp35.cp36`, etc.
 Supports make variables, e.g. `python_tag = "$(PY_WHEEL_PYTHON_TAG)"`. See
 {rule}`py_runtime_pair` for variables provided by the Python toolchain.
 
-:::{versionchanged} VERSION_NEXT_FEATURE
+:::{versionchanged} 2.5.0
 Python toolchain make variables (such as `$(PY_WHEEL_PYTHON_TAG)`) are available
 by default.
 :::
@@ -290,7 +298,7 @@ Python versions required by this distribution, e.g. '>=3.5,<3.7'.
 Supports make variables, e.g. `python_requires = "==$(PY_MAJOR_DOT_MINOR).*"`.
 See {rule}`py_runtime_pair` for variables provided by the Python toolchain.
 
-:::{versionchanged} VERSION_NEXT_FEATURE
+:::{versionchanged} 2.5.0
 Supports make variables.
 :::
 """,
@@ -611,12 +619,16 @@ def _py_wheel_impl(ctx):
                 final_filename + ";" + file.path,
             )
 
+    tool = get_shrubbery_tool(ctx, "wheelmaker", ctx.attr._wheelmaker)
+    prefix_args = ctx.actions.args()
+    prefix_args.add_all(tool.prefix_args)
     ctx.actions.run(
         mnemonic = "PyWheel",
         inputs = depset(direct = other_inputs, transitive = [inputs_to_package]),
         outputs = [outfile, name_file],
-        arguments = [args],
-        executable = ctx.executable._wheelmaker,
+        arguments = [prefix_args, args],
+        executable = tool.executable[DefaultInfo].files_to_run,
+        toolchain = tool.toolchain,
         # The default shell env is used to better support toolchains that look
         # up python at runtime using PATH.
         use_default_shell_env = True,
@@ -691,5 +703,6 @@ in the way they expect.
     ),
     toolchains = [
         ruleb.ToolchainType(TARGET_TOOLCHAIN_TYPE, mandatory = False),
+        ruleb.ToolchainType(SHRUBBERY_TOOLCHAIN_TYPE, mandatory = False),
     ],
 ).build()

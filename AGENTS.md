@@ -17,9 +17,58 @@ Ask for user input and provide a justificaiton if trying to violate them.
 * Once a PR is created, do not amend or rebase.
 * Do not add Bazel copyright to new or existing files.
 
+## Skills, scripts, and rules in `.agents/`
+
+Not every agent harness discovers `.agents/` automatically. Before writing a
+helper script or doing a multi-step task by hand, check for an existing skill
+and use it. Read the skill's `SKILL.md` before running its scripts.
+
+* `.agents/skills/analyze-ci-failure`: download a CI failure log and extract
+  the errors.
+* `.agents/skills/buildkite-get-results`: get Buildkite build results and job
+  logs.
+* `.agents/skills/conversation-done`: clean up the worktree, branches, and
+  Bazel output base when the work is done.
+* `.agents/skills/create-news`: create or update a news entry in `news/`.
+* `.agents/skills/create-pr`: propose, draft, or create a pull request.
+* `.agents/skills/merge-pr`: merge a pull request and watch the merge queue.
+* `.agents/skills/monitor-ci-results`: monitor the CI results of a pull
+  request.
+* `.agents/skills/process-dependabot-prs`: evaluate and merge Dependabot pull
+  requests.
+* `.agents/skills/retry-ci-job`: retry failed Buildkite or GitHub Actions jobs
+  and unblock approval steps.
+* `.agents/skills/review-code`: review local changes before sending a pull
+  request.
+* `.agents/skills/rule-creator`: create a rule in `.agents/rules/`.
+* `.agents/skills/sync-git-branch-continuously`: keep a Git branch pulled and
+  pushed in the background.
+* `.agents/scripts/`: shared scripts, e.g. `gh_pr_stack.py` for stacked pull
+  requests.
+* `.agents/rules/`: rules per topic. Read the ones that match the files being
+  changed, e.g. `pr.md`, `news.md`, `starlark.md`, and `testing.md`.
+
+When adding a skill, add it to this list.
+
+### Skills that do not work in the current harness
+
+A skill may name tools, commands, or CLIs that the current harness does not
+have, e.g. a tool to run background commands or to message a conversation.
+
+* Do the task with the equivalent tools of the harness and reuse the scripts of
+  the skill where they work.
+* Do not write a replacement script without telling the user why the skill
+  could not be used.
+* Tell the user what is incompatible and propose to fix the skill in a
+  separate pull request, so that it works in both harnesses. Keep the fix out
+  of the pull request of the current task.
+* If a CLI that the skill needs is not installed, ask the user to install it.
+
 ## Style and conventions
 
-Read `.editorconfig` for line length wrapping
+Read `.editorconfig` for line length wrapping. Do not line-break long string
+literals (such as URLs or hashes) to fit line length limits; allow them to
+exceed the limit.
 
 Read `CONTRIBUTING.md` for additional style rules and conventions.
 
@@ -45,7 +94,35 @@ because it interferes with code review comments.
 ### PR descriptions
 
 Follow the advice in `CONTRIBUTING.md` for PR descriptions. PR descriptions
-become the commit message upon merge.
+become the commit message upon merge. Keep the PR description clean and
+suitable for use as the commit message; do not put AI disclosures, test
+execution logs, or check checklists in the PR description.
+
+### GitHub PR interaction and AI disclosure
+
+* **Run local checks before pushing:** Run `bazel test --config=fast-tests`
+  and `buildifier` locally before opening or updating a PR.
+* **Post AI disclosure when creating a PR or posting comments:**
+  * When initially creating a new PR, post a single comment right after
+    creation so maintainers understand who/what they are interacting with:
+    explain how comments on the PR will be handled (e.g., whether an agent
+    automatically monitors and replies to review comments, whether a human
+    reviews and approves agent responses/changes before posting, or whether the
+    human author handles comments directly). Do not post a standalone AI
+    disclosure comment merely for pushing commits to an existing PR (such as
+    updating a Dependabot PR).
+  * When posting a PR comment or review reply, end the comment with an
+    italicized line identifying it as an agent-generated comment and stating
+    whether it was automatically generated or reviewed/approved by the user.
+* **No CI status spam or commit narration:** Do not post comments for every CI
+  run, and do not narrate build IDs, commit SHAs, patch line/file counts, or
+  trivial diff details (e.g., stating a push is "comment-only"). GitHub
+  already displays commits and check statuses.
+* **Comment only when actionable:** Only post a PR comment to answer a
+  reviewer's question, ask a clarifying question, briefly note direct PR
+  description line-wrapping edits or summarize direct fixes pushed while
+  reviewing another author's PR during `/review-code`, or briefly indicate
+  the PR is ready for re-review (e.g., `PTAL`) once CI is passing.
 
 ### Python pytest conventions
 
@@ -148,7 +225,9 @@ bzl_library(
 
 ## Building and testing
 
-Tests are under the `tests/` directory.
+Tests are under the `tests/` directory, except tests for agent scripts under
+`.agents/`, which stay co-located with the agent code (run with
+`bazel test --config=fast-tests //.agents/...`).
 
 When testing, add `--config=fast-tests`.
 
@@ -173,6 +252,10 @@ This repository contains 3 Bazel bzlmod modules.
 `python/config_settings/BUILD.bazel` contains build flags that are part of the
 public API. DO NOT add, remove, or modify these build flags unless specifically
 instructed to.
+
+The minimum supported Bazel version is the `bazel` version of
+`.minimum_supported_version` in `.bazelci/presubmit.yml`. Do not add
+compatibility logic or feature guards for older Bazel versions.
 
 `bazel query --output=build` can be used to inspect target definitions.
 
@@ -216,10 +299,10 @@ When modifying locked/resolved requirements files:
 
 When updating the minimum Python version for dev/docs tooling (e.g. following
 Dependabot alerts):
-  * Update `python_version` in both `lock(name = "requirements", ...)` and
-    `lock(name = "uv_lock", ...)` within `dev/BUILD.bazel`.
-  * Regenerate lockfiles by running:
-    `bazel run //dev:requirements.update && bazel run //dev:uv_lock.update`
+  * Update `python_version` in `lock(name = "uv_lock", ...)` within
+    `dev/BUILD.bazel`.
+  * Regenerate the lockfile by running:
+    `bazel run //dev:uv_lock.update`
   * Verify docs build via `bazel build //docs:docs`.
 
 ## rules_python idiosyncrasies
@@ -227,9 +310,11 @@ Dependabot alerts):
 When building `//docs:docs`, ignore an error about exit code 2; this is a flake,
 so try building again.
 
-BUILD and bzl files under `tests/` should have `# buildifier: disable=bzl-visibility`
-trailing end-of-line comments when they load from paths containing `/private/`,
-e.g.
+BUILD and bzl files under `tests/` (and internal non-`python/` packages such as
+`crates/` and `tools/` loading repo-internal helpers like
+`//python/private:distribution_filegroup.bzl`) should have
+`# buildifier: disable=bzl-visibility` trailing end-of-line comments when they
+load from paths containing `/private/`, e.g.
 
 ```
 load("//python/private:foo.bzl", "foo")  # buildifier: disable=bzl-visibility

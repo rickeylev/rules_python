@@ -1,17 +1,95 @@
 ---
 version: 2
-updates:
-  # Maintain dependencies for GitHub Actions
-  - package-ecosystem: "github-actions"
-    directory: "/"
-    schedule:
-      interval: "weekly"
 
-  - package-ecosystem: "pip"
-    directories:
-      # Maintain dependencies for our tools
-      - "/docs"
-      - "/tools/publish"
+multi-ecosystem-groups:
+  # Dependencies shipped to downstream rules_python users. We prefer the oldest
+  # compatible version for deployment compatibility, and security fixes here
+  # warrant a rules_python release.
+  user-facing:
     schedule:
       interval: "weekly"
     open-pull-requests-limit: 3
+    commit-message:
+      prefix: "build(deps-user)"
+    labels:
+      - "dependencies"
+  # Dependencies used only for rules_python development, tests, CI, and examples.
+  dev-only:
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 3
+    commit-message:
+      prefix: "build(deps-dev)"
+    labels:
+      - "dependencies"
+
+updates:
+  # Maintain dependencies for GitHub Actions
+  - package-ecosystem: "github-actions"
+    multi-ecosystem-group: "dev-only"
+    directories:
+      # keep-sorted start
+      - "/"
+      - "/.github/actions/*"
+      # keep-sorted end
+    patterns:
+      - "*"
+
+  - package-ecosystem: "uv"
+    multi-ecosystem-group: "user-facing"
+    directories:
+      # Maintain dependencies for our tools
+      - "/tools/**/*"
+    patterns:
+      - "*"
+
+  - package-ecosystem: "cargo"
+    multi-ecosystem-group: "dev-only"
+    directories:
+      - "/crates"
+      - "/crates/**/*"
+    patterns:
+      - "*"
+    ignore:
+      # keep-sorted start block=yes
+      # ruff_python_ast >= 0.0.23 requires rustc 1.98 (Option::map_or_default),
+      # whereas rules_rust 0.73.0 provides rustc 1.97.1 (see crates/Cargo.toml).
+      - dependency-name: "ruff_python_ast"
+        versions: [">= 0.0.23"]
+      # ruff_python_parser >= 0.0.23 requires rustc 1.98
+      # (Option::map_or_default), whereas rules_rust 0.73.0 provides rustc
+      # 1.97.1 (see crates/Cargo.toml).
+      - dependency-name: "ruff_python_parser"
+        versions: [">= 0.0.23"]
+      # zip >= 9.1.0 fails on powerpc64le-unknown-linux-musl until rules_rust
+      # defines a powerpc64le config_setting; keep below 9.1.0 (see
+      # crates/Cargo.toml). Unpatched zip <= 9.0.5 advisories (reading,
+      # extraction, AES/legacy-decoder flaws) do not apply: crates/zipper only
+      # creates zips via ZipWriter (ZipArchive is test-only).
+      - dependency-name: "zip"
+        versions: [">= 9.1.0"]
+      # keep-sorted end
+
+  - package-ecosystem: "uv"
+    multi-ecosystem-group: "dev-only"
+    directories:
+      # keep-sorted start
+      - "/dev"
+      - "/dev/**/*"
+      - "/examples/**/*"
+      - "/gazelle/examples/**/*"
+      - "/sphinxdocs/dev"
+      - "/tests/**/*"
+      # keep-sorted end
+    # Secondary multi-hub test fixtures intentionally pin older versions than
+    # their sibling primary hubs to test cross-hub version isolation.
+    exclude-paths:
+      # keep-sorted start
+      - "tests/integration/unified_pypi/requirements_b.txt"
+      - "tests/integration/unified_pypi/requirements_b_without_six.txt"
+      - "tests/multi_pypi/beta/*"
+      - "tests/multi_pypi/beta/pyproject.toml"
+      - "tests/multi_pypi/beta/uv.lock"
+      # keep-sorted end
+    patterns:
+      - "*"

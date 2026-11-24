@@ -16,13 +16,35 @@
 
 load("@rules_testing//lib:test_suite.bzl", "test_suite")
 load("@rules_testing//lib:truth.bzl", "subjects")
-load("//python/private/pypi:extension.bzl", "build_config", "default_platforms", "parse_modules")  # buildifier: disable=bzl-visibility
+load("//python/private/pypi:default_platforms.bzl", "default_platforms")  # buildifier: disable=bzl-visibility
+load("//python/private/pypi:extension.bzl", "build_config", "parse_modules")  # buildifier: disable=bzl-visibility
 load("//python/private/pypi:platform.bzl", _plat = "platform")  # buildifier: disable=bzl-visibility
 load("//python/private/pypi:whl_config_setting.bzl", "whl_config_setting")  # buildifier: disable=bzl-visibility
 load("//tests/support/mocks:mocks.bzl", "mocks")
-load(":pip_parse.bzl", _parse = "pip_parse")
+load(":pip_parse.bzl", _configure = "configure", _parse = "pip_parse")
 
 _tests = []
+
+_CONFIGURE_REQUIREMENTS = """\
+simple==0.0.1 \
+    --hash=sha256:deadbeef \
+    --hash=sha256:deadbaaf
+other-pkg==0.0.2 \
+    --hash=sha256:deadbeef \
+    --hash=sha256:deadbaaf
+transitive-pkg==0.0.3 \
+    --hash=sha256:deadbeef \
+    --hash=sha256:deadbaaf
+"""
+
+_CONFIGURE_PYPROJECT = """\
+[project]
+dependencies = ["simple"]
+
+[dependency-groups]
+dev = ["other-pkg"]
+test = ["simple"]
+"""
 
 def _pypi_mock_mctx(*modules, os_name = "unittest", arch_name = "exotic", environ = {}, read = None, mock_files = {}):
     _ = read  # @unused
@@ -46,6 +68,7 @@ def _default(
         config_settings = None,
         default_hub = "",
         env = None,
+        envsubst = None,
         index_url = None,
         marker = None,
         netrc = None,
@@ -61,6 +84,7 @@ def _default(
         config_settings = config_settings,
         default_hub = default_hub,
         env = env or {},
+        envsubst = envsubst or [],
         index_url = index_url or "",
         marker = marker or "",
         netrc = netrc,
@@ -72,6 +96,10 @@ def _default(
         whl_platform_tags = whl_platform_tags or [],
     )
 
+def _default_whl_abi_tags(os, cpu, freethreaded):
+    platform = "{}_{}{}".format(os, cpu, freethreaded)
+    return default_platforms()[platform]["whl_abi_tags"]
+
 # The default value for the default platforms tags use in `_mod`.
 _default_tags_default = [
     _default(
@@ -82,7 +110,7 @@ _default_tags_default = [
             "@platforms//os:{}".format(os),
             "@platforms//cpu:{}".format(cpu),
         ],
-        whl_abi_tags = ["cp{major}{minor}t"] if freethreaded else ["abi3", "cp{major}{minor}"],
+        whl_abi_tags = _default_whl_abi_tags(os, cpu, freethreaded),
         whl_platform_tags = whl_platform_tags,
     )
     for (os, cpu, freethreaded), whl_platform_tags in {
@@ -100,10 +128,20 @@ def _dep(*, name, extra_targets = []):
         extra_targets = extra_targets,
     )
 
-def _mod(*, name, default = _default_tags_default, parse = [], override = [], whl_mods = [], dep = [], is_root = True):
+def _mod(
+        *,
+        name,
+        default = _default_tags_default,
+        parse = [],
+        override = [],
+        whl_mods = [],
+        dep = [],
+        configure = [],
+        is_root = True):
     return struct(
         name = name,
         tags = struct(
+            configure = configure,
             parse = parse,
             override = override,
             whl_mods = whl_mods,
@@ -117,6 +155,7 @@ def _parse_modules(env, **kwargs):
     return env.expect.that_struct(
         parse_modules(**kwargs),
         attrs = dict(
+            configured_hubs = subjects.dict,
             declared_deps = subjects.dict,
             default_hub = subjects.str,
             exposed_packages = subjects.dict,
@@ -190,53 +229,57 @@ _tests.append(_test_simple)
 
 def _test_pip_parse_pyproject_toml(env):
     # pip.parse() reads the version from pyproject.toml's requires-python when
-    # python_version is not set explicitly.
-    pypi = _parse_modules(
-        env,
-        module_ctx = _pypi_mock_mctx(
-            _mod(
-                name = "rules_python",
-                parse = [
-                    _parse(
-                        hub_name = "pypi",
-                        pyproject_toml = "pyproject.toml",
-                        simpleapi_skip = ["simple"],
-                        requirements_lock = "requirements.txt",
+    # python_version is not set explicitly. Verify it works both when the
+    # toolchain was registered by full version (python_3_15_19_host) and when
+    # registered by minor version (python_3_15_host).
+    for available_interpreters in [
+        {"python_3_15_19_host": "unit_test_interpreter_target"},
+        {"python_3_15_host": "unit_test_interpreter_target"},
+    ]:
+        pypi = _parse_modules(
+            env,
+            module_ctx = _pypi_mock_mctx(
+                _mod(
+                    name = "rules_python",
+                    parse = [
+                        _parse(
+                            hub_name = "pypi",
+                            pyproject_toml = "pyproject.toml",
+                            simpleapi_skip = ["simple"],
+                            requirements_lock = "requirements.txt",
+                        ),
+                    ],
+                ),
+                os_name = "linux",
+                arch_name = "x86_64",
+                mock_files = {
+                    "pyproject.toml": "[project]\nrequires-python = \"==3.15.19\"\n",
+                },
+            ),
+            available_interpreters = available_interpreters,
+            minor_mapping = {"3.15": "3.15.19"},
+        )
+
+        # Resolves identically to passing python_version = "3.15.19" explicitly:
+        # the full version drives interpreter selection, hub naming uses major.minor.
+        pypi.exposed_packages().contains_exactly({"pypi": ["simple"]})
+        pypi.hub_whl_map().contains_exactly({"pypi": {
+            "simple": {
+                "pypi_315_simple": [
+                    whl_config_setting(
+                        version = "3.15",
                     ),
                 ],
-            ),
-            os_name = "linux",
-            arch_name = "x86_64",
-            mock_files = {
-                "pyproject.toml": "[project]\nrequires-python = \"==3.15.19\"\n",
             },
-        ),
-        available_interpreters = {
-            "python_3_15_19_host": "unit_test_interpreter_target",
-        },
-        minor_mapping = {"3.15": "3.15.19"},
-    )
-
-    # Resolves identically to passing python_version = "3.15.19" explicitly:
-    # the full version drives interpreter selection, hub naming uses major.minor.
-    pypi.exposed_packages().contains_exactly({"pypi": ["simple"]})
-    pypi.hub_whl_map().contains_exactly({"pypi": {
-        "simple": {
-            "pypi_315_simple": [
-                whl_config_setting(
-                    version = "3.15",
-                ),
-            ],
-        },
-    }})
-    pypi.whl_libraries().contains_exactly({
-        "pypi_315_simple": {
-            "config_load": "@pypi//:config.bzl",
-            "dep_template": "@pypi//{name}:{target}",
-            "python_interpreter_target": "unit_test_interpreter_target",
-            "requirement": "simple==0.0.1 --hash=sha256:deadbeef --hash=sha256:deadbaaf",
-        },
-    })
+        }})
+        pypi.whl_libraries().contains_exactly({
+            "pypi_315_simple": {
+                "config_load": "@pypi//:config.bzl",
+                "dep_template": "@pypi//{name}:{target}",
+                "python_interpreter_target": "unit_test_interpreter_target",
+                "requirement": "simple==0.0.1 --hash=sha256:deadbeef --hash=sha256:deadbaaf",
+            },
+        })
 
 _tests.append(_test_pip_parse_pyproject_toml)
 
@@ -720,10 +763,57 @@ def _test_default_index_setting(env):
             # `my_module` is setting the default.
             want_index_url = "https://pypi.internal.org/simple",
         ),
+        struct(
+            modules = [
+                _mod(
+                    name = "my_module",
+                    default = [
+                        _default(
+                            index_url = "${RULES_PYTHON_PIP_INDEX_URL}",
+                            envsubst = ["RULES_PYTHON_PIP_INDEX_URL"],
+                        ),
+                    ],
+                    parse = [
+                        _parse(
+                            hub_name = "pypi_a",
+                            python_version = "3.15",
+                            requirements_lock = "requirements.txt",
+                        ),
+                    ],
+                ),
+            ],
+            environ = {"RULES_PYTHON_PIP_INDEX_URL": "https://pypi.internal.org/simple"},
+            want_index_url = "https://pypi.internal.org/simple",
+        ),
+        struct(
+            modules = [
+                _mod(
+                    name = "my_module",
+                    default = [
+                        _default(
+                            index_url = "${RULES_PYTHON_PIP_INDEX_URL}",
+                            envsubst = ["RULES_PYTHON_PIP_INDEX_URL"],
+                        ),
+                    ],
+                    parse = [
+                        _parse(
+                            hub_name = "pypi_a",
+                            python_version = "3.15",
+                            requirements_lock = "requirements_with_index_url.txt",
+                        ),
+                    ],
+                ),
+            ],
+            environ = {"RULES_PYTHON_PIP_INDEX_URL": "https://pypi.internal.org/simple"},
+            # We want the file to have lower precedence than our default if the
+            # `my_module` is setting the default.
+            want_index_url = "https://pypi.internal.org/simple",
+        ),
     ]:
         pypi = _parse_modules(
             env,
             module_ctx = _pypi_mock_mctx(
+                environ = getattr(test, "environ", {}),
                 os_name = "linux",
                 arch_name = "x86_64",
                 mock_files = {
@@ -760,6 +850,206 @@ simple==0.0.1 \
         })
 
 _tests.append(_test_default_index_setting)
+
+def _test_default_slash_only_index_url_fails(env):
+    for index_url in ["/", "//"]:
+        failures = []
+        config = build_config(
+            module_ctx = _pypi_mock_mctx(
+                _mod(
+                    name = "my_module",
+                    default = [_default(index_url = index_url)],
+                ),
+                os_name = "linux",
+                arch_name = "x86_64",
+            ),
+            enable_pipstar_extract = True,
+            _fail = failures.append,
+        )
+
+        env.expect.that_bool(config == None).equals(True)
+        env.expect.that_collection(failures).contains_exactly([
+            (
+                'pip.default(index_url = "{}") is not a valid index URL. ' +
+                "To not use the SimpleAPI for the packages of a hub, set " +
+                '`simpleapi_skip = ["*"]` on `pip.parse` instead.'
+            ).format(index_url),
+        ])
+
+_tests.append(_test_default_slash_only_index_url_fails)
+
+def _test_simpleapi_skip_all(env):
+    downloads = []
+
+    pypi = _parse_modules(
+        env,
+        module_ctx = _pypi_mock_mctx(
+            _mod(
+                name = "my_module",
+                parse = [
+                    _parse(
+                        hub_name = "pypi",
+                        python_version = "3.15",
+                        simpleapi_skip = ["*"],
+                        requirements_lock = "requirements.txt",
+                    ),
+                ],
+            ),
+            os_name = "linux",
+            arch_name = "x86_64",
+            mock_files = {
+                "requirements.txt": """\
+other==0.0.2 \
+    --hash=sha256:deadb00f
+simple==0.0.1 \
+    --hash=sha256:deadbeef \
+    --hash=sha256:deadbaaf""",
+            },
+        ),
+        available_interpreters = {
+            "python_3_15_host": "unit_test_interpreter_target",
+        },
+        minor_mapping = {"3.15": "3.15.19"},
+        simpleapi_download = lambda *args, **kwargs: downloads.append(kwargs),
+    )
+
+    # The SimpleAPI is not used and all of the packages are downloaded with pip.
+    env.expect.that_collection(downloads).contains_exactly([])
+    pypi.whl_libraries().contains_exactly({
+        "pypi_315_other": {
+            "config_load": "@pypi//:config.bzl",
+            "dep_template": "@pypi//{name}:{target}",
+            "python_interpreter_target": "unit_test_interpreter_target",
+            "requirement": "other==0.0.2 --hash=sha256:deadb00f",
+        },
+        "pypi_315_simple": {
+            "config_load": "@pypi//:config.bzl",
+            "dep_template": "@pypi//{name}:{target}",
+            "python_interpreter_target": "unit_test_interpreter_target",
+            "requirement": "simple==0.0.1 --hash=sha256:deadbeef --hash=sha256:deadbaaf",
+        },
+    })
+
+_tests.append(_test_simpleapi_skip_all)
+
+def _configure_parse_modules(env, *modules):
+    return _parse_modules(
+        env,
+        module_ctx = _pypi_mock_mctx(
+            os_name = "linux",
+            arch_name = "x86_64",
+            mock_files = {
+                "pyproject.toml": _CONFIGURE_PYPROJECT,
+                "requirements.txt": _CONFIGURE_REQUIREMENTS,
+            },
+            *modules
+        ),
+        available_interpreters = {
+            "python_3_15_host": "unit_test_interpreter_target",
+        },
+        minor_mapping = {"3.15": "3.15.19"},
+    )
+
+def _configure_parse(**kwargs):
+    return _parse(
+        hub_name = "pypi_a",
+        python_version = "3.15",
+        simpleapi_skip = ["simple", "other-pkg", "transitive-pkg"],
+        requirements_lock = "requirements.txt",
+        **kwargs
+    )
+
+def _test_configure(env):
+    # The selection itself is tested in `hub_exposure_tests`.
+    pypi = _configure_parse_modules(
+        env,
+        _mod(
+            name = "rules_python",
+            parse = [_configure_parse(pyproject_toml = "pyproject.toml")],
+            configure = [
+                _configure(hub_name = "pypi_a", dependency_groups = ["test"]),
+            ],
+        ),
+    )
+
+    pypi.exposed_packages().contains_exactly({"pypi_a": ["simple"]})
+    pypi.configured_hubs().contains_exactly({"pypi_a": ["simple"]})
+
+_tests.append(_test_configure)
+
+def _test_configure_platform_specific(env):
+    # A selected package that is not available on all of the platforms is
+    # public, but it is not in the `all_*requirements`.
+    pypi = _parse_modules(
+        env,
+        module_ctx = _pypi_mock_mctx(
+            _mod(
+                name = "rules_python",
+                parse = [_configure_parse(
+                    pyproject_toml = "pyproject.toml",
+                    target_platforms = ["linux_x86_64", "windows_aarch64"],
+                )],
+                configure = [
+                    _configure(hub_name = "pypi_a", dependency_groups = ["default", "dev"]),
+                ],
+            ),
+            os_name = "linux",
+            arch_name = "x86_64",
+            mock_files = {
+                "pyproject.toml": _CONFIGURE_PYPROJECT,
+                "requirements.txt": _CONFIGURE_REQUIREMENTS.replace(
+                    "other-pkg==0.0.2",
+                    "other-pkg==0.0.2 ; sys_platform == 'win32'",
+                ),
+            },
+        ),
+        available_interpreters = {
+            "python_3_15_host": "unit_test_interpreter_target",
+        },
+        minor_mapping = {"3.15": "3.15.19"},
+    )
+
+    pypi.exposed_packages().contains_exactly({"pypi_a": ["simple"]})
+    pypi.configured_hubs().contains_exactly({"pypi_a": ["other_pkg", "simple"]})
+
+_tests.append(_test_configure_platform_specific)
+
+def _test_configure_default_pyproject(env):
+    # The `pip.default` pyproject.toml is used for the hubs of the root module.
+    pypi = _configure_parse_modules(
+        env,
+        _mod(
+            name = "rules_python",
+            default = _default_tags_default + [
+                _default(pyproject_toml = "pyproject.toml"),
+            ],
+            parse = [_configure_parse()],
+            configure = [
+                _configure(hub_name = "pypi_a", dependency_groups = ["dev"]),
+            ],
+        ),
+    )
+
+    pypi.configured_hubs().contains_exactly({"pypi_a": ["other_pkg"]})
+
+_tests.append(_test_configure_default_pyproject)
+
+def _test_not_configured_exposes_all(env):
+    # The pyproject.toml does not filter the hub without `pip.configure`.
+    pypi = _configure_parse_modules(
+        env,
+        _mod(
+            name = "rules_python",
+            parse = [_configure_parse()],
+        ),
+    )
+
+    pypi.exposed_packages().contains_exactly({
+        "pypi_a": ["other_pkg", "simple", "transitive_pkg"],
+    })
+    pypi.configured_hubs().contains_exactly({})
+
+_tests.append(_test_not_configured_exposes_all)
 
 def extension_test_suite(name):
     """Create the test suite.

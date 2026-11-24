@@ -5,7 +5,73 @@ import os
 import re
 import subprocess
 import sys
+import urllib.parse
 import urllib.request
+
+_ANSI_ESCAPE = re.compile(
+    r"\x1B(?:[_\]][^\x07\x1B]*(?:\x07|\x1B\\)|[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])"
+)
+_BUILDKITE_TIMESTAMP = re.compile(r"^_?bk;t=\d+\s*")
+_HTTP_5XX_DOWNLOAD_ERROR = re.compile(r"get returned 5\d\d\b", re.IGNORECASE)
+
+_HTTP_GATEWAY_ERRORS = (
+    # keep-sorted start
+    "502 bad gateway",
+    "503 service unavailable",
+    "504 gateway time-out",
+    # keep-sorted end
+)
+
+_DNS_OR_GIT_MIRROR_ERRORS = (
+    # keep-sorted start
+    "could not resolve host:",
+    "getting/updating git mirror:",
+    "temporary failure in name resolution",
+    # keep-sorted end
+)
+
+_MODEXTWD_CLEANUP_ERRORS = (
+    # keep-sorted start
+    "failed to clean up module context directory:",
+    # keep-sorted end
+)
+
+_ERROR_KEYWORDS = (
+    _HTTP_GATEWAY_ERRORS
+    + _DNS_OR_GIT_MIRROR_ERRORS
+    + _MODEXTWD_CLEANUP_ERRORS
+    + (
+        # keep-sorted start
+        "##[error]",
+        "connection reset by peer",
+        "critical path",
+        "curl: (",
+        "errno 5",
+        "error downloading [",
+        "error during connect:",
+        "error waiting for container",
+        "error:",
+        "error]",
+        "exception",
+        "exit code",
+        "exit-code",
+        "failed:",
+        "fatal",
+        "fatal:",
+        "filenotfounderror",
+        "get returned 5",
+        "input/output error",
+        "no such package",
+        "no such target",
+        "status 125",
+        "traceback",
+        "unable to find bazelisk version",
+        "user command error:",
+        "would be reformatted",
+        "would reformat:",
+        # keep-sorted end
+    )
+)
 
 
 def fetch_log(job_name, build_id, job_id, output_path):
@@ -39,26 +105,63 @@ def fetch_log(job_name, build_id, job_id, output_path):
         log_url = f"https://buildkite.com/organizations/bazel/pipelines/rules-python-python/builds/{build_id}/jobs/{job_id}/download.txt"
 
     # Check if this is a GitHub Actions job
-    gh_match = re.search(r"github\.com/.*/job/(\d+)", log_url)
+    gh_repo_match = re.search(
+        r"github\.com/([^/]+/[^/]+)/actions/runs/\d+/job/(\d+)", log_url
+    )
+    gh_match = gh_repo_match or re.search(r"github\.com/.*/job/(\d+)", log_url)
     if not gh_match and "github" in job_name.lower() and re.match(r"^\d+$", job_id):
         gh_match = re.match(r"^(\d+)$", job_id)
 
     if gh_match:
-        gh_job_id = gh_match.group(1)
+        if gh_repo_match:
+            gh_repo = gh_repo_match.group(1)
+            gh_job_id = gh_repo_match.group(2)
+        else:
+            gh_repo = "bazel-contrib/rules_python"
+            gh_job_id = gh_match.group(1)
         print(f"📥 Fetching GitHub Action log for job {gh_job_id} using gh CLI...")
-        cmd = ["gh", "run", "view", "--job", gh_job_id, "--log"]
+        api_cmd = [
+            "gh",
+            "api",
+            # Raw job logs contain ANSI color codes that gh api rejects by
+            # default; parse_log() strips them.
+            "--allow-escape-sequences",
+            f"repos/{gh_repo}/actions/jobs/{gh_job_id}/logs",
+        ]
+        try:
+            res = subprocess.run(api_cmd, capture_output=True, text=True, check=True)
+            if res.stdout.strip():
+                with open(output_path, "w") as f:
+                    f.write(res.stdout)
+                return True
+        except Exception as e:
+            print(
+                f"⚠️ Failed to fetch GitHub log via gh api for job {gh_job_id}: {e}",
+                file=sys.stderr,
+            )
+
+        cmd = ["gh", "run", "view", "--job", gh_job_id, "--repo", gh_repo, "--log"]
         try:
             res = subprocess.run(cmd, capture_output=True, text=True, check=True)
-            with open(output_path, "w") as f:
-                f.write(res.stdout)
-            return True
+            if (
+                res.stdout.strip()
+                and "is still in progress; logs will be available when it is complete"
+                not in res.stdout
+            ):
+                with open(output_path, "w") as f:
+                    f.write(res.stdout)
+                return True
         except Exception as e:
             print(
                 f"⚠️ Failed to fetch GitHub log via gh CLI for job {gh_job_id}: {e}",
                 file=sys.stderr,
             )
 
-    if not log_url.endswith("/download.txt") and "buildkite.com" in log_url:
+    parsed_url = urllib.parse.urlsplit(log_url)
+    if not log_url.endswith("/download.txt") and parsed_url.netloc in (
+        "buildkite.com",
+        "www.buildkite.com",
+    ):
         log_url = re.sub(r"/log$", "/download.txt", log_url)
 
     print(f"📥 Downloading CI failure log from {log_url}...")
@@ -76,7 +179,37 @@ def fetch_log(job_name, build_id, job_id, output_path):
         return False
 
 
-ANSI_ESCAPE = re.compile(r"\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])")
+def _contains_any(lines, substrings):
+    for line in lines:
+        lower_line = line.lower()
+        if any(sub in lower_line for sub in substrings):
+            return True
+    return False
+
+
+def _is_repo_download_flake(errors):
+    """Returns whether error lines indicate a transient Bazel download failure.
+
+    Args:
+        errors: Sequence of extracted error log lines.
+
+    Returns:
+        True if any line shows an HTTP 5xx or transient download failure.
+    """
+    for err in errors:
+        if _HTTP_5XX_DOWNLOAD_ERROR.search(err):
+            return True
+        lower_err = err.lower()
+        if "error downloading [" in lower_err and any(
+            reason in lower_err
+            for reason in (
+                "timed out",
+                "connection reset",
+                "unexpected end of file",
+            )
+        ):
+            return True
+    return False
 
 
 def parse_log(log_path):
@@ -88,40 +221,12 @@ def parse_log(log_path):
 
     errors = []
     for line in lines:
-        clean_line = ANSI_ESCAPE.sub("", line).strip()
-        # Clean buildkite timestamp prefix: _bk;t=...
-        clean_line = re.sub(r"^_bk;t=\d+\s*", "", clean_line)
-        if any(
-            keyword.lower() in clean_line.lower()
-            for keyword in [
-                "error:",
-                "failed:",
-                "critical path",
-                "traceback",
-                "exception",
-                "filenotfounderror",
-                "no such package",
-                "no such target",
-                "exit code",
-                "exit-code",
-                "status 125",
-                "fatal:",
-                "fatal",
-                "##[error]",
-                "would reformat:",
-                "would be reformatted",
-                "error]",
-                "error waiting for container",
-                "error during connect:",
-                "user command error:",
-                "curl: (",
-                "connection reset by peer",
-                "input/output error",
-                "errno 5",
-            ]
-        ):
-            if clean_line:
-                errors.append(clean_line)
+        clean_line = _ANSI_ESCAPE.sub("", line).strip()
+        # Strip pre-stripped `_bk;t=` / `bk;t=` prefixes in addition to APC sequences.
+        clean_line = _BUILDKITE_TIMESTAMP.sub("", clean_line)
+        lower_line = clean_line.lower()
+        if clean_line and any(kw in lower_line for kw in _ERROR_KEYWORDS):
+            errors.append(clean_line)
 
     return errors[:30]
 
@@ -133,6 +238,10 @@ def create_plan(job_name, log_path, errors):
         else "No obvious keyword error lines matched. Please inspect the raw log file."
     )
 
+    lower_job_name = job_name.lower()
+    is_docs_job = "docs" in lower_job_name or "readthedocs" in lower_job_name
+    has_exit_code_2 = _contains_any(errors, ("exit code 2", "exit-code: 2"))
+
     is_flake = False
     flake_reason = ""
     if any(
@@ -141,9 +250,7 @@ def create_plan(job_name, log_path, errors):
     ):
         is_flake = True
         flake_reason = "ReadTheDocs workspace checkout race / dirty container environment where target directory is not empty (`fatal: destination path '.' already exists`). This is an infrastructure flake, not a codebase failure."
-    elif any("exit code 2" in e.lower() for e in errors) and (
-        "docs" in job_name.lower() or "readthedocs" in job_name.lower()
-    ):
+    elif is_docs_job and has_exit_code_2:
         is_flake = True
         flake_reason = "Known docs build flake with exit code 2."
     elif any(
@@ -155,6 +262,18 @@ def create_plan(job_name, log_path, errors):
     ):
         is_flake = True
         flake_reason = "Buildkite agent / Docker runner infrastructure failure (dockerd disconnection / grpc context canceled / exit status 125). This is an infrastructure flake, not a codebase bug."
+    elif _is_repo_download_flake(errors):
+        is_flake = True
+        flake_reason = (
+            "Transient Bazel repository download failure (HTTP 5xx or I/O error). "
+            "Check if the archive is available on mirror.bazel.build before retrying."
+        )
+    elif _contains_any(errors, _HTTP_GATEWAY_ERRORS):
+        is_flake = True
+        flake_reason = (
+            "Upstream HTTP 502/503/504 gateway timeout during download "
+            "(infrastructure flake)."
+        )
     elif any(
         "curl:" in e.lower()
         or "recv failure: connection reset" in e.lower()
@@ -168,6 +287,26 @@ def create_plan(job_name, log_path, errors):
     ):
         is_flake = True
         flake_reason = "Transient runner host disk / Darwin sandbox I/O error (OSError: [Errno 5] Input/output error). This is an infrastructure flake, not a codebase defect."
+    elif any("unable to find bazelisk version" in e.lower() for e in errors):
+        is_flake = True
+        flake_reason = (
+            "Transient network error fetching Bazelisk release metadata during "
+            "GitHub Actions `setup-bazel` step (`Unable to find Bazelisk version`). "
+            "This is an infrastructure network flake, not a codebase bug."
+        )
+    elif _contains_any(errors, _DNS_OR_GIT_MIRROR_ERRORS):
+        is_flake = True
+        flake_reason = (
+            "Transient CI runner DNS resolution or git mirror checkout failure. "
+            "This is an infrastructure network flake, not a codebase bug."
+        )
+    elif _contains_any(errors, _MODEXTWD_CLEANUP_ERRORS):
+        is_flake = True
+        flake_reason = (
+            "Transient Windows file-lock race while Bazel cleaned up a temporary "
+            "`modextwd` module extension directory (`Permission denied`). "
+            "This is an infrastructure flake, not a codebase bug."
+        )
 
     classification = (
         "⚡ **Classification**: **Infrastructure / Flake Issue** (Not a codebase bug)"
@@ -175,7 +314,7 @@ def create_plan(job_name, log_path, errors):
         else "🔍 **Classification**: **Code / Configuration Issue**"
     )
     fix_advice = (
-        f"Retry the failed job (`buildkite-retry-job`). {flake_reason}"
+        f"Retry the failed job (`retry-ci-job`). {flake_reason}"
         if is_flake
         else "Resolve the root cause in the relevant source / build files."
     )
@@ -215,7 +354,8 @@ def main():
     os.makedirs(scratch_dir, exist_ok=True)
 
     safe_jname = re.sub(r"[^a-zA-Z0-9]", "_", args.job_name)
-    log_path = os.path.join(scratch_dir, f"ci_{safe_jname}_{args.job_id}.log")
+    safe_jid = re.sub(r"[^a-zA-Z0-9_-]", "_", args.job_id)
+    log_path = os.path.join(scratch_dir, f"ci_{safe_jname}_{safe_jid}.log")
 
     fetch_log(args.job_name, args.build_id, args.job_id, log_path)
 

@@ -1,5 +1,17 @@
 """A simple test helper"""
 
+def configure(
+        *,
+        dependency_groups = [],
+        hub_name,
+        pyproject_toml = None):
+    """Simulate the PyPI extension configure tag class for testing."""
+    return struct(
+        dependency_groups = dependency_groups,
+        hub_name = hub_name,
+        pyproject_toml = pyproject_toml,
+    )
+
 def pip_parse(
         *,
         hub_name,
@@ -9,7 +21,7 @@ def pip_parse(
         download_only = False,
         enable_implicit_namespace_pkgs = False,
         environment = {},
-        envsubst = {},
+        envsubst = [],
         experimental_extra_index_urls = [],
         experimental_index_url = "",
         experimental_requirement_cycles = {},

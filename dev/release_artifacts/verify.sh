@@ -7,13 +7,30 @@
 # Usage: dev/release_artifacts/verify.sh TRIPLE
 set -euo pipefail
 
-triple="$1"
+triple_arg="$1"
 
 # The paths below are relative to the workspace root.
 cd "$(dirname "$0")/../.."
 
+if [[ "$triple_arg" == "linux" ]]; then
+  manifest="bazel-bin/dev/release_artifacts/cross_compiled_artifacts.txt"
+else
+  manifest="bazel-bin/dev/release_artifacts/artifacts_for_release.txt"
+fi
+
 # The target lists the paths of its files in a manifest; see release_files.bzl.
 while IFS= read -r bin; do
+  if [[ "$triple_arg" == "linux" ]]; then
+    name="${bin##*/}"
+    if [[ "$name" =~ ^.+-(aarch64|armv7|i686|powerpc64le|riscv64gc|x86_64)-(.+)$ ]]; then
+      triple="${BASH_REMATCH[1]}-${BASH_REMATCH[2]}"
+    else
+      echo "::error::$bin: cannot parse triple from $name"
+      exit 1
+    fi
+  else
+    triple="$triple_arg"
+  fi
   case "$triple" in
     *-linux-*)
       info="$(file -L -b "$bin")"
@@ -84,4 +101,4 @@ while IFS= read -r bin; do
       exit 1
       ;;
   esac
-done < bazel-bin/dev/release_artifacts/artifacts_for_release.txt
+done < "$manifest"

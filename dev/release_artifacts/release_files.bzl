@@ -5,15 +5,20 @@ load("//python/private:common_labels.bzl", "labels")  # buildifier: disable=bzl-
 _FEATURES = "//command_line_option:features"
 _RUSTC_FLAGS = "@rules_rust//rust/settings:extra_rustc_flags"
 
+_ReleaseFilesInfo = provider(
+    doc = "Files built by _release_files, excluding the .txt manifest.",
+    fields = ["files"],
+)
+
 def _release_transition_impl(settings, attr):
     features = []
-    rustc_flags = []
+    rustc_flags = ["-Cstrip=symbols"]
     if attr.target_os == "linux":
         # Rust links glibc dynamically, so the files would require at least
         # the build machine's glibc version. Link it statically so they run on
         # older distros too. Rust links musl statically for most CPUs, but not
         # all, e.g. riscv64.
-        rustc_flags = ["-Ctarget-feature=+crt-static"]
+        rustc_flags.append("-Ctarget-feature=+crt-static")
         if attr.target_libc != "musl":
             # The gold linker can't link static glibc, so use bfd.
             rustc_flags.append("-Clink-arg=-fuse-ld=bfd")
@@ -21,7 +26,7 @@ def _release_transition_impl(settings, attr):
         # Statically link the C runtime so that the VC++ redistributable isn't
         # required.
         features = ["static_link_msvcrt"]
-        rustc_flags = ["-Ctarget-feature=+crt-static"]
+        rustc_flags.append("-Ctarget-feature=+crt-static")
     return {
         "//command_line_option:compilation_mode": "opt",
         # Only affects macOS. Without it, the minimum OS version is the build
@@ -82,7 +87,10 @@ def _release_files_impl(ctx):
         # an unterminated last line, and build.sh adds a line after the paths.
         content = "".join([file.path + "\n" for file in files]),
     )
-    return [DefaultInfo(files = depset([manifest] + files))]
+    return [
+        DefaultInfo(files = depset([manifest] + files)),
+        _ReleaseFilesInfo(files = files),
+    ]
 
 _release_files = rule(
     implementation = _release_files_impl,
@@ -115,7 +123,7 @@ def release_files(name, srcs, **kwargs):
     machine's, without extra runtime libraries.
 
     The paths, one per line, are relative to the execroot, e.g.
-    `bazel-out/k8-opt/bin/dev/release_artifacts/foo-x86_64-unknown-linux-gnu`.
+    `bazel-out/k8-opt/bin/dev/release_artifacts/foo-x86_64-unknown-linux-musl`.
     Paths of generated files also resolve from the workspace root through the
     `bazel-out` convenience symlink. This lets scripts find the files without
     running `bazel cquery`, which re-analyzes the build.
@@ -168,8 +176,17 @@ def _cross_compiled_files_impl(ctx):
         return [DefaultInfo()]
 
     # With a transition, ctx.attr.src is a list: one target per platform.
-    files = [src[DefaultInfo].files for src in ctx.attr.src]
-    return [DefaultInfo(files = depset(transitive = files))]
+    files = []
+    for src in ctx.attr.src:
+        files.extend(src[_ReleaseFilesInfo].files)
+    manifest = ctx.actions.declare_file(ctx.label.name + ".txt")
+    ctx.actions.write(
+        output = manifest,
+        # End every line with "\n", including the last: `while read` loops skip
+        # an unterminated last line, and build.sh adds a line after the paths.
+        content = "".join([file.path + "\n" for file in files]),
+    )
+    return [DefaultInfo(files = depset([manifest] + files))]
 
 cross_compiled_files = rule(
     implementation = _cross_compiled_files_impl,
@@ -188,6 +205,7 @@ this builds nothing.
             cfg = _platforms_transition,
             doc = "The target to build.",
             mandatory = True,
+            providers = [_ReleaseFilesInfo],
         ),
     },
 )

@@ -8,6 +8,7 @@ import re
 import subprocess
 import sys
 import time
+import traceback
 import urllib.request
 
 
@@ -37,6 +38,29 @@ def get_pr_checks(pr_number):
     except Exception as e:
         print(f"⚠️ Error fetching PR checks: {e}", file=sys.stderr)
         return []
+
+
+def _has_do_not_merge_label(pr_number):
+    cmd = ["gh", "pr", "view", str(pr_number), "--json", "labels"]
+    try:
+        res = subprocess.run(cmd, capture_output=True, text=True, check=True)
+    except subprocess.CalledProcessError as e:
+        e.add_note(
+            "==================== STDOUT BEGIN ====================\n"
+            f"{e.stdout or ''}"
+            "==================== STDOUT END ====================\n"
+            "==================== STDERR BEGIN ====================\n"
+            f"{e.stderr or ''}"
+            "==================== STDERR END ===================="
+        )
+        raise
+    out = res.stdout
+    json_str = out[out.find("{") :] if "{" in out else out
+    data = json.loads(json_str)
+    return any(
+        label.get("name", "").lower() == "do not merge"
+        for label in data.get("labels", [])
+    )
 
 
 def get_buildkite_jobs(build_url):
@@ -260,7 +284,9 @@ def main():
                                     f"⚠️ Remote CI Buildkite Job '{jname}' is blocked!\n\n"
                                     f"Build ID: {build_id} | Job ID: {jid}\n"
                                     f"Log URL: {log_url}\n\n"
-                                    f"Action required: Unblock the job using the buildkite-retry-job skill (`retry_buildkite_jobs.py {args.pr} --unblock`)."
+                                    "Action required: Unblock the job using the "
+                                    f"retry-ci-job skill (`retry_ci_jobs.py --pr {args.pr} "
+                                    "--unblock`)."
                                 )
                                 subprocess.run(
                                     [
@@ -324,24 +350,50 @@ def main():
             elif (
                 state.upper() in ["FAILURE", "FAIL", "CANCELLED", "TIMED_OUT"]
                 or bucket == "fail"
-            ) and name not in monitored:
-                print(f"🚨 Notifying failure for GitHub check '{name}'...")
-                job_id = link.split("/")[-1] if "/" in link else link
-                msg = (
-                    f"⚠️ Remote CI GitHub Check '{name}' completed with errors!\n\n"
-                    f"Link: {link}\n\n"
-                    f"Action required: Start a subagent to run the analyze-ci-failure skill for '{name}' with link '{link}' and job ID '{job_id}'."
-                )
-                subprocess.run(
-                    [
-                        "agentapi",
-                        "send-message",
-                        "--title=CI Check Failed",
-                        args.conv_id,
-                        msg,
-                    ]
-                )
-                monitored[name] = time.time()
+            ):
+                job_id = link.split("/")[-1].split("?")[0] if "/" in link else link
+                gh_key = f"gh_{job_id}" if job_id else name
+                if gh_key in monitored:
+                    continue
+                skip_expected_dnm = False
+                if name == "blocks-do-not-merge":
+                    try:
+                        skip_expected_dnm = _has_do_not_merge_label(args.pr)
+                    except (
+                        OSError,
+                        subprocess.CalledProcessError,
+                        json.JSONDecodeError,
+                    ) as e:
+                        details = "".join(traceback.format_exception_only(e)).strip()
+                        print(
+                            f"⚠️ Error fetching PR labels: {details}",
+                            file=sys.stderr,
+                        )
+                        continue
+                if skip_expected_dnm:
+                    print(
+                        "ℹ️ Skipping expected 'blocks-do-not-merge' failure "
+                        "while 'do not merge' label is present."
+                    )
+                else:
+                    print(f"🚨 Notifying failure for GitHub check '{name}'...")
+                    msg = (
+                        f"⚠️ Remote CI GitHub Check '{name}' completed with errors!\n\n"
+                        f"Link: {link}\n\n"
+                        f"Action required: Start a subagent to run the "
+                        f"analyze-ci-failure skill for '{name}' with link "
+                        f"'{link}' and job ID '{job_id}'."
+                    )
+                    subprocess.run(
+                        [
+                            "agentapi",
+                            "send-message",
+                            "--title=CI Check Failed",
+                            args.conv_id,
+                            msg,
+                        ]
+                    )
+                monitored[gh_key] = time.time()
                 with open(state_file, "w") as f:
                     json.dump(monitored, f)
 

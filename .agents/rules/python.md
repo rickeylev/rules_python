@@ -20,6 +20,28 @@ globs: "*.py,*.sh"
 * Factor non-trivial scripts (such as multi-line Python or shell logic) into
   standalone files (e.g. `.py` or `.sh` files) instead of inlining them via
   heredocs (`<< 'EOF'`) or `-c` flags (`python3 -c`, `bash -c`).
+* **Directly Executable Scripts**: Scripts executed directly (outside a
+  `py_binary` rule) must have `chmod +x` (mode `100755`) and a
+  `#!/usr/bin/env python3` shebang.
+* Do not repeat default values in CLI flag `help` strings when the parser
+  displays defaults automatically.
+* Include a `Usage:` example and input file format description in CLI module
+  docstrings.
+* State what a module or function does in docstrings; omit execution adverbs
+  like `"Asynchronously"`.
+* Split simple comma- or newline-delimited CLI inputs with `splitlines()` and
+  `.split(",")` instead of `csv`.
+
+## API Minimalism & Module State
+* Pass dependencies explicitly; avoid implicit optionals that auto-load state or
+  magical global state. Do not return mutable internal state.
+* Assume the supported execution environment. Do not add `ImportError`
+  fallbacks or `sys.path` probing unless direct invocation outside Bazel is
+  required by an external caller constraint and justified in a comment or PR
+  description.
+* Prefix private module-level constants and tables with `_`.
+* Use direct attribute syntax (`obj.attr`) instead of `getattr`/`setattr` for
+  static attribute names.
 
 ## Interface & ABC Docstrings
 * In abstract base class / interface methods, always document `Args:`,
@@ -27,13 +49,37 @@ globs: "*.py,*.sh"
 
 ## Exception Handling
 * Inherit custom exceptions from `Exception`, not `RuntimeError`.
+* Let errors bubble up from utility functions instead of printing and returning
+  failure sentinels or catching and re-wrapping into caller-specific exception
+  classes.
+* Use `e.add_note(...)` to attach context to an exception and plain `raise` when
+  re-raising.
+* Do not place redundant `return` statements after `sys.exit(...)`.
+
+## Unit Testing
+* Use real temporary files (`tmp_path` or `tempfile`) instead of mocking file IO
+  or `pathlib.Path`.
+* Use `unittest.mock.patch` (and `mock.create_autospec(..., instance=True)` over
+  bare `Mock()`/`MagicMock()`) instead of manual state save/restore, and avoid
+  over-mocking the unit under test.
+* Call `main(args)` directly in tests instead of mutating `sys.argv`, and test
+  `sys.exit` with `pytest.raises(SystemExit)` / `assertRaises(SystemExit)`
+  instead of mocking `sys.exit`.
+* Do not prefix test method names with redundant target names (e.g., use
+  `test_success_directory` instead of `test_main_success_directory`).
+* Factor repeated assertion blocks into `_assert_*` helpers, and assert against
+  literal expected strings in formatting/transformation tests rather than
+  duplicating production logic.
 
 ## Subprocess
 * Demarcate captured stdout/stderr in exceptions with 20 `=` characters:
   `==================== STDOUT BEGIN ====================` /
   `==================== STDOUT END ====================` (same for STDERR).
+* Use `asyncio` for concurrent subprocesses and retried network I/O.
 
-## TypedDict
+## Data Classes & TypedDict
+* In dataclasses (`@dataclasses.dataclass`), add a comment above each field
+  describing its value.
 * **External Objects**: When defining a `TypedDict` for an external object,
   link to its definition in the docstring.
 
@@ -60,6 +106,46 @@ globs: "*.py,*.sh"
   `Iterator`, `Callable`, `Mapping`) and builtin generics (`list`, `dict`,
   `tuple`, `set`) instead of `typing.XXX` collection types.
 
+## Security & Sensitive Data
+* **URL Domain Validation (`py/incomplete-url-substring-sanitization`)**: Never
+  use substring checks (`"example.com" in url`, `url.endswith(...)`) to
+  validate domains. Parse with `urllib.parse.urlsplit(url)` and verify
+  `parsed.netloc in {"example.com", "www.example.com"}` or check exact hostname
+  equality.
+* **Credential Logging & Mock Names (`py/clear-text-logging-sensitive-data`)**:
+  Never log plaintext secrets, tokens, or passwords. In test fixtures or mock
+  servers that print mock tokens, avoid sensitive variable names (`password`,
+  `secret`, `token`); use `mock_token` and annotate intentional log lines with
+  `# codeql[py/clear-text-logging-sensitive-data]`.
+* **Repo Slugs, Git Refs, and `--` Separators**: Reject `.` / `..`, leading
+  `-`, and control characters in `owner/name` repository slugs before building
+  URLs, API paths, or search queries. Validate untrusted Git branch/remote
+  refs passed to `git` against strict ref rules, pass `--` before positional
+  CLI args when supported, and quote shell examples with `shlex.quote`.
+* **Search DSL Queries**: Reject control characters, unclosed quotes, and
+  unbalanced parentheses in user search queries before CLI or GraphQL use, and
+  pass them via `--flag=value`.
+* **Loopback Credentials & No Redirects**: Reject non-loopback hosts in local
+  RPC clients for both `http` and `https` schemes before attaching CSRF or auth
+  tokens, and disable HTTP redirects.
+* **Local HTTP Server Hardening**: Emit `X-Content-Type-Options: nosniff`,
+  `Referrer-Policy: no-referrer`, and a strict `Content-Security-Policy`
+  (using cryptographic nonces rather than `'unsafe-inline'` for scripts).
+  Validate incoming `Host` headers against allowed bind/loopback hosts
+  (including loopback hosts for wildcard binds, rejecting userinfo `@` or path
+  chars; non-loopback reverse-proxy `Host` and matching `Origin` endpoints may
+  be accepted only when a configured secret `X-Sidecar-Token` matches via
+  `hmac.compare_digest`) and reject `Sec-Fetch-Site: cross-site` and untrusted
+  `Origin` headers on `/api/*` and `/_sidecar/*` routes.
+* **SQLite `file:` URIs & `LIKE` Wildcards**: Build file-backed SQLite URIs via
+  `Path.resolve().as_uri()`, and escape `\`, `%`, and `_` with `ESCAPE '\'` in
+  parameterized `LIKE` clauses, plus re-verify exact repo/slug boundaries.
+* **Agent Prompt Injection Boundaries**: Never interpolate raw external metadata
+  (such as PR titles, authors, branches, or URLs) directly into agent
+  instructions; strip control characters and newlines, neutralize fences, wrap
+  fields in explicit untrusted-data delimiters, and instruct agents to treat
+  fenced values strictly as data.
+
 ## Runfiles
 * **Fail-fast creation**: Prefer `runfiles.CreateOrRaise()` over
   `runfiles.Create()` + `assert`.
@@ -73,3 +159,7 @@ globs: "*.py,*.sh"
 ## Context Managers
 * Implement temporary state changes (e.g., `Git.checkout()`, `os.chdir()`) as
   context managers that restore prior state on exit.
+
+## Formatting
+* Do not line-break long string literals (such as URLs or hashes) to fit line
+  length limits; allow them to exceed the limit.

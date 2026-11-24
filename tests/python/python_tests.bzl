@@ -16,6 +16,7 @@
 
 load("@pythons_hub//:versions.bzl", "MINOR_MAPPING")
 load("@rules_testing//lib:test_suite.bzl", "test_suite")
+load("//python:versions.bzl", "TOOL_VERSIONS")
 load("//python/private:bzlmod_enabled.bzl", "BZLMOD_ENABLED")  # buildifier: disable=bzl-visibility
 load("//python/private:python.bzl", "parse_modules")  # buildifier: disable=bzl-visibility
 load("//python/private:repo_utils.bzl", "repo_utils")  # buildifier: disable=bzl-visibility
@@ -441,6 +442,34 @@ def _test_libpython_override(env):
 
 _tests.append(_test_libpython_override)
 
+def _test_single_version_override_keeps_strip_prefix(env):
+    # This version has `full` archives for the freethreaded builds, which use
+    # a different strip_prefix.
+    python_version = "3.13.0"
+    py = parse_modules(
+        module_ctx = python_ext.mctx(
+            python_ext.module(
+                name = "my_module",
+                is_root = True,
+                single_version_override = [
+                    python_ext.single_version_override(
+                        libpython = "exclude",
+                        python_version = python_version,
+                    ),
+                ],
+                toolchain = [python_ext.toolchain(python_version = "3.13")],
+            ),
+            _rules_python_module(),
+        ),
+        logger = repo_utils.logger(verbosity_level = 0, name = "python"),
+    )
+
+    env.expect.that_dict(
+        py.config.default["tool_versions"][python_version]["strip_prefix"],
+    ).contains_exactly(TOOL_VERSIONS[python_version]["strip_prefix"])
+
+_tests.append(_test_single_version_override_keeps_strip_prefix)
+
 _ARCHIVE_FLAVOR_MANIFEST = """
 1111111111111111111111111111111111111111111111111111111111111111  20260414/cpython-3.14.4+20260414-x86_64-unknown-linux-gnu-install_only.tar.gz
 2222222222222222222222222222222222222222222222222222222222222222  20260414/cpython-3.14.4+20260414-x86_64-unknown-linux-gnu-install_only_stripped.tar.gz
@@ -456,11 +485,9 @@ def _test_archive_flavor_platform_keys(env):
                 is_root = True,
                 toolchain = [python_ext.toolchain(python_version = "3.14")],
             ),
-            mock_files = {
-                "python/private/runtimes_manifest.txt": _ARCHIVE_FLAVOR_MANIFEST,
-            },
         ),
         logger = repo_utils.logger(verbosity_level = 0, name = "python"),
+        _default_runtime_manifest = _ARCHIVE_FLAVOR_MANIFEST,
     )
     tool_versions = py.config.default["tool_versions"]
     platform = "x86_64-unknown-linux-gnu"
@@ -884,6 +911,15 @@ def _test_single_version_override_errors(env):
                 ),
             ],
             want_error = "Only a single 'python.single_version_override' can be present for '3.12.4'",
+        ),
+        struct(
+            overrides = [
+                python_ext.single_version_override(
+                    distutils_content = "foo",
+                    python_version = "3.13.99",
+                ),
+            ],
+            want_error = "When introducing a new python_version '3.13.99', 'sha256' and 'urls' must be specified",
         ),
     ]:
         errors = []

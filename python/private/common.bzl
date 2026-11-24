@@ -145,9 +145,10 @@ def create_binary_semantics_struct(
         A "BinarySemantics" struct.
     """
     return struct(
-        # keep-sorted
+        # keep-sorted start
         get_native_deps_dso_name = get_native_deps_dso_name,
         should_build_native_deps_dso = should_build_native_deps_dso,
+        # keep-sorted end
     )
 
 def create_cc_details_struct(
@@ -283,6 +284,28 @@ def get_imports(ctx):
         result.append(import_path)
     return result
 
+def py_info_runfiles_files(info, pyc_collection_enabled):
+    """The files a binary puts into its runfiles for a dependency's PyInfo.
+
+    Args:
+        info: {type}`PyInfo | BuiltinPyInfo` of a dependency.
+        pyc_collection_enabled: {type}`bool` whether the binary includes
+            implicit pyc files instead of their sources.
+
+    Returns:
+        {type}`list[depset[File]]`
+    """
+    files = [info.transitive_sources]
+
+    # BuiltinPyInfo doesn't have the pyc fields
+    if hasattr(info, "transitive_pyc_files"):
+        files.append(info.transitive_pyc_files)
+        if pyc_collection_enabled:
+            files.append(info.transitive_implicit_pyc_files)
+        else:
+            files.append(info.transitive_implicit_pyc_source_files)
+    return files
+
 def collect_runfiles(ctx, files = depset()):
     """Collects the necessary files from the rule's context.
 
@@ -392,6 +415,7 @@ def create_py_info(
     py_info.transitive_original_sources.add(original_sources)
     py_info.transitive_pyc_files.add(required_pyc_files)
     py_info.transitive_pyi_files.add(ctx.files.pyi_srcs)
+    py_info.direct_implicit_pyc_files.add(implicit_pyc_files)
     py_info.transitive_implicit_pyc_files.add(implicit_pyc_files)
     py_info.transitive_implicit_pyc_source_files.add(implicit_pyc_source_files)
     py_info.imports.add(imports)
@@ -623,7 +647,8 @@ def actions_run(
             provides `testing.ExecutionInfo`, the requirements will be added to
             the execution requirements.
         toolchain: The toolchain type to use. Must be None or
-            `//python:exec_tools_toolchain_type`.
+            `//python:exec_tools_toolchain_type` when `executable` provides
+            `PyInterpreterProgramInfo`.
         **kwargs: Additional arguments to pass to `ctx.actions.run()`.
             `mnemonic` and `progress_message` are required.
     """

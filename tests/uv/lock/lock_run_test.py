@@ -9,6 +9,10 @@ from python import runfiles
 rfiles = runfiles.Create()
 assert rfiles is not None, "Failed to create runfiles"
 
+# The runfiles directory of the main repository: `_main` under bzlmod, the
+# `workspace(name = ...)` value under WORKSPACE. Always set by `bazel test`.
+_MAIN_REPO_DIR = os.environ["TEST_WORKSPACE"]
+
 
 def _relative_rpath(path: str) -> Path:
     """Find file in runfiles, handling Windows .bat/.exe wrappers."""
@@ -17,7 +21,9 @@ def _relative_rpath(path: str) -> Path:
     # (e.g. a Python source file instead of the .exe launcher).
     exts = (".exe", ".bat", "") if os.name == "nt" else ("", ".exe", ".bat")
     for ext in exts:
-        p = (Path("_main") / "tests" / "uv" / "lock" / (path + ext)).as_posix()
+        # Refer to the main repository by its apparent name so the lookup
+        # works under both bzlmod and WORKSPACE.
+        p = (Path("rules_python") / "tests" / "uv" / "lock" / (path + ext)).as_posix()
         rpath = rfiles.Rlocation(p)
         if rpath:
             rp = Path(rpath)
@@ -30,21 +36,21 @@ def _relative_rpath(path: str) -> Path:
     if runfiles_dir:
         exts = (".exe", ".bat", "") if os.name == "nt" else ("", ".bat", ".exe")
         for ext in exts:
-            rp = Path(runfiles_dir, "_main", "tests", "uv", "lock", path + ext)
+            rp = Path(runfiles_dir, _MAIN_REPO_DIR, "tests", "uv", "lock", path + ext)
             if rp.exists():
                 return rp
 
     raise ValueError(f"Could not find file in runfiles: {path}")
 
 
-def _run_binary(path: Path, **kwargs):
+def _run_binary(path: Path, *args: str, **kwargs):
     """Run a binary, handling Windows .bat files."""
     if os.name == "nt":
         return subprocess.run(
-            ["cmd.exe", "/c", str(path)],
+            ["cmd.exe", "/c", str(path), *args],
             **kwargs,
         )
-    return subprocess.run(path, **kwargs)
+    return subprocess.run([path, *args], **kwargs)
 
 
 class LockTests(unittest.TestCase):
@@ -205,6 +211,43 @@ class LockTests(unittest.TestCase):
             )
             self.assertTrue(want_path.exists(), "The path should exist after the test")
             self.assertNotEqual(want_path.read_text(), "")
+
+    def test_requirements_updating_refuses_arguments(self):
+        # Given
+        copier_path = _relative_rpath("requirements.update")
+
+        # When
+        with tempfile.TemporaryDirectory() as dir:
+            workspace_dir = Path(dir)
+            want_path = (
+                workspace_dir
+                / "tests"
+                / "uv"
+                / "lock"
+                / "testdata"
+                / "requirements.txt"
+            )
+            want_path.parent.mkdir(parents=True)
+
+            output = _run_binary(
+                copier_path,
+                "--upgrade-package",
+                "foo >=2",
+                capture_output=True,
+                env=self._subprocess_env(workspace_dir),
+            )
+
+            # Then
+            self.assertEqual(2, output.returncode, output.stderr)
+            # Quoted for the shell the command is pasted into: CMD on Windows
+            # recognizes only double quotes.
+            quoted = '"foo >=2"' if os.name == "nt" else "'foo >=2'"
+            self.assertIn(
+                "bazel run //tests/uv/lock:requirements.run -- --upgrade-package "
+                + quoted,
+                output.stderr.decode("utf-8"),
+            )
+            self.assertFalse(want_path.exists(), "Nothing should be copied")
 
     def test_requirements_run_on_the_first_time(self):
         # Given

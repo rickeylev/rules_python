@@ -1,7 +1,7 @@
 ---
 trigger: glob
 description: Documentation formatting, Sphinx MyST style rules, and documentation build correctness
-globs: docs/*.md
+globs: "docs/**,RELEASING.md"
 ---
 
 # Documentation Rules
@@ -11,6 +11,14 @@ globs: docs/*.md
 * Use hyphens (`-`) in file names instead of underscores (`_`).
 * Document user-visible behavior, not internal workarounds or implementation
   details.
+* **API Docstrings vs. Narrative Docs**: Keep `.bzl` docstrings brief (purpose
+  and arguments). Put setup guides and multi-scenario examples in `docs/`, and
+  link to them with `{ref}` or `{obj}` instead of repeating rules.
+* **Bidirectional Alias Cross-References**: When documenting public `alias`
+  targets alongside a canonical target, cross-link in both directions:
+  reference the canonical target from each alias entry and list the aliases on
+  the canonical `{bzl:target}` entry (use `{obj}` for documented in-repo
+  targets and inline code for generated external-repo labels).
 * **How-to Guides (`docs/howto/`)**:
   * Prefer adding sections to an existing topical guide (e.g.
     `docs/howto/build-a-wheel.md`) over creating a separate granular file.
@@ -24,3 +32,5 @@ globs: docs/*.md
   behavioral adjustments, use `VERSION_NEXT_PATCH` in `{versionchanged}`
   directives.
 * **Documentation Build Correctness**: Ensure new `.bzl` files or user-facing APIs are properly registered in documentation build targets (e.g. `//docs:docs` or relevant Starlark API reference generation configs).
+* **`RELEASING.md` Scope**: Keep `RELEASING.md` focused strictly on how to
+  perform a release; do not document presubmit CI behavior in it.

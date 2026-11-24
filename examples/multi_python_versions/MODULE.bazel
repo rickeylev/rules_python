@@ -3,11 +3,19 @@ module(
 )
 
 bazel_dep(name = "bazel_skylib", version = "1.7.1")
+bazel_dep(name = "platforms", version = "0.0.11")
 bazel_dep(name = "rules_python", version = "0.0.0")
 local_path_override(
     module_name = "rules_python",
     path = "../..",
 )
+
+uv = use_extension(
+    "@rules_python//python/uv:uv.bzl",
+    "uv",
+    dev_dependency = True,
+)
+uv.configure(version = "0.13.5")
 
 python = use_extension("@rules_python//python/extensions:python.bzl", "python")
 python.defaults(
@@ -47,27 +55,27 @@ use_repo(pip, "pypi")
 pip.parse(
     hub_name = "pypi",
     python_version = "3.10",
-    requirements_lock = "//requirements:requirements_lock_3_10.txt",
+    uv_lock = "//requirements:uv.lock",
 )
 pip.parse(
     hub_name = "pypi",
     python_version = "3.11",
-    requirements_lock = "//requirements:requirements_lock_3_11.txt",
+    uv_lock = "//requirements:uv.lock",
 )
 pip.parse(
     hub_name = "pypi",
     python_version = "3.12",
-    requirements_lock = "//requirements:requirements_lock_3_12.txt",
+    uv_lock = "//requirements:uv.lock",
 )
 pip.parse(
     hub_name = "pypi",
     python_version = "3.13",
-    requirements_lock = "//requirements:requirements_lock_3_13.txt",
+    uv_lock = "//requirements:uv.lock",
 )
 pip.parse(
     hub_name = "pypi",
     python_version = "3.14",
-    requirements_lock = "//requirements:requirements_lock_3_14.txt",
+    uv_lock = "//requirements:uv.lock",
 )
 
 # example test dependencies

@@ -22,7 +22,9 @@ load("//python/private:auth.bzl", "AUTH_ATTRS")
 load("//python/private:normalize_name.bzl", "normalize_name")
 load("//python/private:pyproject_utils.bzl", "read_pyproject", "version_from_requires_python")
 load("//python/private:repo_utils.bzl", "repo_utils")
+load(":default_platforms.bzl", "default_platforms")
 load(":hub_builder.bzl", "hub_builder")
+load(":hub_exposure.bzl", "hub_exposure")
 load(":hub_repository.bzl", "hub_repository", "whl_config_settings_to_json")
 load(":parse_whl_name.bzl", "parse_whl_name")
 load(":pep508_env.bzl", "env")
@@ -58,128 +60,6 @@ def _whl_mods_impl(whl_mods_dict):
             whl_mods = whl_mods,
         )
 
-def default_platforms():
-    """Return the built-in default platform definitions.
-
-    These provide the platform metadata needed for pip wheel resolution
-    (whl_abi_tags, whl_platform_tags, config_settings, etc.) across all
-    common OS/arch combinations. They are always used as the starting point
-    for build_config; root modules can override individual platforms via
-    pip.default tags.
-
-    Returns:
-        A dict of platform name to platform config dicts.
-    """
-    # NOTE @aignas 2025-07-06: we define these platforms to keep backwards compatibility. Whilst we
-    # stabilize the API this list may be updated with a mention in the CHANGELOG.
-
-    platforms = {}
-
-    # Linux platforms
-    for cpu in ["x86_64", "aarch64"]:
-        for freethreaded in ["", "_freethreaded"]:
-            platform_name = "linux_{}{}".format(cpu, freethreaded)
-            platforms[platform_name] = {
-                "arch_name": cpu,
-                "config_settings": [
-                    "@platforms//cpu:{}".format(cpu),
-                    "@platforms//os:linux",
-                    "//python/config_settings:_is_py_freethreaded_{}".format(
-                        "yes" if freethreaded else "no",
-                    ),
-                ],
-                "env": {"platform_version": "0"},
-                "marker": "python_version >= '3.13'" if freethreaded else "",
-                "name": platform_name,
-                "os_name": "linux",
-                "whl_abi_tags": ["cp{major}{minor}t"] if freethreaded else [
-                    "abi3",
-                    "cp{major}{minor}",
-                ],
-                "whl_platform_tags": [
-                    "linux_{}".format(cpu),
-                    "manylinux_*_{}".format(cpu),
-                ],
-            }
-
-    # macOS platforms
-    for cpu, platform_tag_cpus in {
-        "aarch64": ["universal2", "arm64"],
-        "x86_64": ["universal2", "x86_64"],
-    }.items():
-        for freethreaded in ["", "_freethreaded"]:
-            platform_name = "osx_{}{}".format(cpu, freethreaded)
-            platforms[platform_name] = {
-                "arch_name": cpu,
-                "config_settings": [
-                    "@platforms//cpu:{}".format(cpu),
-                    "@platforms//os:osx",
-                    "//python/config_settings:_is_py_freethreaded_{}".format(
-                        "yes" if freethreaded else "no",
-                    ),
-                ],
-                "env": {"platform_version": "14.0"},
-                "marker": "python_version >= '3.13'" if freethreaded else "",
-                "name": platform_name,
-                "os_name": "osx",
-                "whl_abi_tags": ["cp{major}{minor}t"] if freethreaded else [
-                    "abi3",
-                    "cp{major}{minor}",
-                ],
-                "whl_platform_tags": [
-                    "macosx_*_{}".format(suffix)
-                    for suffix in platform_tag_cpus
-                ],
-            }
-
-    # Windows x86_64 platforms
-    for freethreaded in ["", "_freethreaded"]:
-        platform_name = "windows_x86_64{}".format(freethreaded)
-        platforms[platform_name] = {
-            "arch_name": "x86_64",
-            "config_settings": [
-                "@platforms//cpu:x86_64",
-                "@platforms//os:windows",
-                "//python/config_settings:_is_py_freethreaded_{}".format(
-                    "yes" if freethreaded else "no",
-                ),
-            ],
-            "env": {"platform_version": "0"},
-            "marker": "python_version >= '3.13'" if freethreaded else "",
-            "name": platform_name,
-            "os_name": "windows",
-            "whl_abi_tags": ["cp{major}{minor}t"] if freethreaded else [
-                "abi3",
-                "cp{major}{minor}",
-            ],
-            "whl_platform_tags": ["win_amd64"],
-        }
-
-    # Windows aarch64 platforms
-    for freethreaded in ["", "_freethreaded"]:
-        platform_name = "windows_aarch64{}".format(freethreaded)
-        platforms[platform_name] = {
-            "arch_name": "aarch64",
-            "config_settings": [
-                "@platforms//cpu:aarch64",
-                "@platforms//os:windows",
-                "//python/config_settings:_is_py_freethreaded_{}".format(
-                    "yes" if freethreaded else "no",
-                ),
-            ],
-            "env": {"platform_version": "0"},
-            "marker": "python_version >= '3.13'" if freethreaded else "python_version >= '3.11'",
-            "name": platform_name,
-            "os_name": "windows",
-            "whl_abi_tags": ["cp{major}{minor}t"] if freethreaded else [
-                "abi3",
-                "cp{major}{minor}",
-            ],
-            "whl_platform_tags": ["win_arm64"],
-        }
-
-    return platforms
-
 def _configure(config, *, override = False, **kwargs):
     """Set the value in the config if the value is provided"""
     env = kwargs.get("env")
@@ -195,21 +75,24 @@ def _configure(config, *, override = False, **kwargs):
 def build_config(
         *,
         module_ctx,
-        enable_pipstar_extract):
+        enable_pipstar_extract,
+        _fail = fail):
     """Parse 'configure' and 'default' extension tags
 
     Args:
         module_ctx: {type}`module_ctx` module context.
         enable_pipstar_extract: {type}`bool | None` a flag to also not pass Python
             interpreter to `whl_library` when possible.
+        _fail: {type}`function` the failure function, mainly for testing.
 
     Returns:
-        A struct with the configuration.
+        A struct with the configuration, or `None` on failure.
     """
     default_hub = None
     unified_hub_requirements_bzl = False
     defaults = {
         "platforms": default_platforms(),
+        "pyproject_toml": None,
         "python_version": None,
     }
     for mod in module_ctx.modules:
@@ -226,6 +109,8 @@ def build_config(
                 unified_hub_requirements_bzl = True
             pyproject_toml = tag.pyproject_toml
             if pyproject_toml:
+                if mod.is_root:
+                    defaults["pyproject_toml"] = pyproject_toml
                 pyproject = read_pyproject(module_ctx, pyproject_toml)
                 if pyproject.requires_python:
                     defaults["python_version"] = version_from_requires_python(pyproject.requires_python)
@@ -249,9 +134,18 @@ def build_config(
                 if platform and not (tag.arch_name or tag.config_settings or tag.env or tag.os_name or tag.whl_abi_tags or tag.whl_platform_tags or tag.marker):
                     defaults["platforms"].pop(platform)
 
+            if tag.index_url and not tag.index_url.rstrip("/"):
+                _fail((
+                    "pip.default(index_url = {}) is not a valid index URL. " +
+                    "To not use the SimpleAPI for the packages of a hub, set " +
+                    "`simpleapi_skip = [\"*\"]` on `pip.parse` instead."
+                ).format(repr(tag.index_url)))
+                return None
+
             _configure(
                 defaults,
                 override = mod.is_root,
+                envsubst = tag.envsubst,
                 index_url = tag.index_url,
                 # extra values that we just add
                 auth_patterns = tag.auth_patterns,
@@ -264,6 +158,7 @@ def build_config(
     return struct(
         auth_patterns = defaults.get("auth_patterns", {}),
         default_hub = default_hub,
+        envsubst = defaults.get("envsubst", []),
         index_url = defaults.get("index_url", "https://pypi.org/simple").rstrip("/"),
         netrc = defaults.get("netrc", None),
         python_version = defaults.get("python_version", None),
@@ -272,6 +167,8 @@ def build_config(
             for name, values in defaults["platforms"].items()
         },
         enable_pipstar_extract = enable_pipstar_extract,
+        # Label | None: default `pyproject.toml` from `pip.default`.
+        pyproject_toml = defaults["pyproject_toml"],
         toml_decode = toml.decode,
         unified_hub_requirements_bzl = unified_hub_requirements_bzl,
     )
@@ -326,7 +223,13 @@ You cannot use both the additive_build_content and additive_build_content_file a
                 srcs_exclude_glob = whl_mod.srcs_exclude_glob,
             )
 
-    config = build_config(module_ctx = module_ctx, enable_pipstar_extract = enable_pipstar_extract)
+    config = build_config(
+        module_ctx = module_ctx,
+        enable_pipstar_extract = enable_pipstar_extract,
+        _fail = _fail,
+    )
+    if config == None:
+        return None
 
     # TODO @aignas 2025-06-03: Merge override API with the builder?
     _overriden_whl_set = {}
@@ -364,6 +267,7 @@ You cannot use both the additive_build_content and additive_build_content_file a
     # dict[str repo, HubBuilder]
     # See `hub_builder.bzl%hub_builder()` for `HubBuilder`
     pip_hub_map = {}
+    hub_pyproject = {}
     simpleapi_cache = pypi_cache(mctx = module_ctx)
 
     is_pypi_hub_reserved = module_ctx.getenv("RULES_PYTHON_PYPI_HUB_RESERVED", "0") == "1"
@@ -440,9 +344,13 @@ You cannot use both the additive_build_content and additive_build_content_file a
             else:
                 builder = pip_hub_map[hub_name]
 
+            if pip_attr.pyproject_toml and hub_name not in hub_pyproject:
+                hub_pyproject[hub_name] = pip_attr.pyproject_toml
+
             builder.pip_parse(
                 module_ctx,
                 pip_attr = pip_attr,
+                default_envsubst = config.envsubst,
                 python_version = python_version,
             )
 
@@ -463,6 +371,7 @@ You cannot use both the additive_build_content and additive_build_content_file a
     exposed_packages = {}
     extra_aliases = {}
     whl_libraries = {}
+    hubs = {}
     for hub in pip_hub_map.values():
         out = hub.build()
 
@@ -476,8 +385,38 @@ You cannot use both the additive_build_content and additive_build_content_file a
         extra_aliases[hub.name] = out.extra_aliases
         hub_group_map[hub.name] = out.group_map
         hub_whl_map[hub.name] = out.whl_map
+        hubs[hub.name] = struct(
+            # str: module that created the hub.
+            module_name = hub.module_name,
+            # Label | None: `pyproject_toml` set on `pip.parse`.
+            pyproject = hub_pyproject.get(hub.name),
+            # list[str]: normalized names of all packages in the hub.
+            packages = out.whl_map.keys(),
+        )
+
+    configured_hubs = hub_exposure(
+        module_ctx,
+        hubs = hubs,
+        default_pyproject = config.pyproject_toml,
+        _fail = _fail,
+    )
+    if configured_hubs == None:
+        return None
+
+    # The `all_*requirements` only list the selected packages that are
+    # available on all of the platforms, while all of the selected packages
+    # stay public.
+    for hub_name, packages in configured_hubs.items():
+        selected = {name: None for name in packages}
+        exposed_packages[hub_name] = [
+            name
+            for name in exposed_packages[hub_name]
+            if name in selected
+        ]
 
     return struct(
+        # dict[str, list[str]]: configured hubs and exposed packages.
+        configured_hubs = configured_hubs,
         config = config,
         declared_deps = declared_deps,
         default_hub = config.default_hub or renamed_default_hub,
@@ -510,7 +449,12 @@ def _create_unified_hub_repo(mods):
     extra_aliases = {}
 
     for hub_name in hubs:
-        for pkg_name in mods.exposed_packages.get(hub_name, []):
+        # The hubs configured with `pip.configure` only expose some packages.
+        hub_packages = mods.configured_hubs.get(
+            hub_name,
+            mods.hub_whl_map[hub_name],
+        )
+        for pkg_name in hub_packages:
             norm_pkg = normalize_name(pkg_name)
             if norm_pkg not in packages:
                 packages[norm_pkg] = []
@@ -632,6 +576,9 @@ def _pip_impl(module_ctx):
             packages = mods.exposed_packages.get(hub_name, []),
             platform_config_settings = mods.platform_config_settings.get(hub_name, {}),
             groups = mods.hub_group_map.get(hub_name),
+            # The hubs configured with `pip.configure` hide the other packages.
+            hide_unexposed_packages = hub_name in mods.configured_hubs,
+            public_packages = mods.configured_hubs.get(hub_name, []),
         )
 
     _create_unified_hub_repo(mods)
@@ -686,14 +633,29 @@ Supported keys:
 * `sys_platform`, defaults to a value inferred from the {attr}`os_name`.
 """,
     ),
+    "envsubst": attr.string_list(
+        mandatory = False,
+        doc = """\
+A list of environment variables to substitute (e.g. `["PIP_INDEX_URL",
+"PIP_RETRIES"]`). The corresponding variables are expanded in `index_url`
+using the syntax `$VARNAME` or `${VARNAME}` (expanding to empty string if unset)
+or `${VARNAME:-default}` (expanding to default if the variable is unset or empty
+in the environment). Note: On Bazel 7 changes to the variables named here do
+not cause packages to be re-fetched. Don't fetch different things based on the
+value of these variables.
+
+:::{versionadded} 2.5.0
+:::
+""",
+    ),
     "index_url": attr.string(
         doc = """\
 The index URL to use as a default when downloading packages from PyPI. This is used if nothing is
 specified via `--index-url` or `--extra-index-url` parameters in the `requirements.txt` file or via
 the {attr}`pip.parse.extra_pip_args`.
 
-This value is going to be subject to `envsubst` substitutions if necessary, look at the
-{attr}`pip.parse.envsubst` documentation for more information..
+This value is subject to `envsubst` substitutions if necessary, look at the
+{attr}`pip.default.envsubst` documentation for more information.
 
 The indexes must support Simple API as described here:
 <https://packaging.python.org/en/latest/specifications/simple-repository-api/>
@@ -759,6 +721,10 @@ This is designed to work with dependency management tools like Renovate.
 
 :::{versionadded} 2.3.0
 :::
+
+:::{versionchanged} VERSION_NEXT_FEATURE
+Also used by {obj}`pip.configure` for the hubs of the root module.
+:::
 """,
     ),
     "unified_hub_requirements_bzl": attr.bool(
@@ -777,7 +743,7 @@ only list one hub's packages; load those from a concrete hub.
 
 Only the root module's value is used.
 
-:::{versionadded} VERSION_NEXT_FEATURE
+:::{versionadded} 2.5.0
 :::
 """,
     ),
@@ -788,12 +754,28 @@ parameters like `{major}` and `{minor}` which will be replaced with python versi
 `cp{major}{minor}` will result in `cp313` given the full python version is `3.13.5`.
 Will always  include `"none"` even if it is not specified.
 
+The python tag of the wheels using the stable ABI (`abi3` and `abi3t`) is
+treated as the minimum supported Python version, e.g. a `cp315-abi3t` wheel is
+selected for Python `3.15` and above.
+
+The default platforms use the following values:
+* `["abi3", "cp{major}{minor}"]` for the GIL-enabled builds.
+* `["abi3t", "cp{major}{minor}t"]` for the free-threaded builds, where `abi3t`
+  is the stable ABI for the free-threaded builds as specified in
+  [PEP 803](https://peps.python.org/pep-0803/). The GIL-enabled builds only
+  select `abi3t` wheels if they are also tagged as `abi3` (e.g.
+  `cp315-abi3.abi3t`).
+
 :::{note}
 We select a single wheel and the last match will take precedence.
 :::
 
 :::{seealso}
 See official [docs](https://packaging.python.org/en/latest/specifications/platform-compatibility-tags/#abi-tag) for more information.
+:::
+
+:::{versionchanged} VERSION_NEXT_FEATURE
+The default free-threaded platforms select the `abi3t` wheels.
 :::
 """,
     ),
@@ -962,6 +944,10 @@ The version must be specified as `==X.Y.Z` (exact version with full semver).
 
 :::{versionadded} 2.3.0
 :::
+
+:::{versionchanged} VERSION_NEXT_FEATURE
+Also used by {obj}`pip.configure` to select the packages that the hub exposes.
+:::
 """,
         ),
         "python_version": attr.string(
@@ -985,14 +971,21 @@ No longer mandatory if the {obj}`pyproject_toml` attribute or
 """,
         ),
         "simpleapi_skip": attr.string_list(
-            doc = """\
-The list of packages to skip fetching metadata for from SimpleAPI index. You should
-normally not need this attribute, but in case you do, please report this as a bug
-to `rules_python` and use this attribute until the bug is fixed.
+            doc = """
+The list of packages to skip fetching metadata for from SimpleAPI index. You
+should normally not need this attribute, but in case you do, please report this
+as a bug to `rules_python` and use this attribute until the bug is fixed.
+
+Use `["*"]` to skip it for all of the packages, in which case the SimpleAPI is
+not used for this `pip.parse` call and the packages are downloaded with `pip`.
 
 EXPERIMENTAL: this may be removed without notice.
 
 :::{versionadded} 1.4.0
+:::
+
+:::{versionchanged} VERSION_NEXT_FEATURE
+Added the support for `["*"]`.
 :::
 """,
         ),
@@ -1009,10 +1002,17 @@ function in general are the same as used in the {obj}`pip.default.platform` attr
 If you only care for the host platform and do not have a usecase to cross-build, then you can put in
 a string `"{os}_{arch}"` as the value here. You could also use `"{os}_{arch}_freethreaded"` as well.
 
+Use `"*"` to evaluate the requirements for all built-in default platforms and
+any custom platforms configured with {obj}`pip.default`.
+
 :::{include} /_includes/experimental_api.md
 :::
 
 :::{versionadded} 1.8.0
+:::
+
+:::{versionchanged} VERSION_NEXT_FEATURE
+Added support for `"*"` to select all of the configured platforms.
 :::
 """,
         ),
@@ -1022,6 +1022,13 @@ a string `"{os}_{arch}"` as the value here. You could also use `"{os}_{arch}_fre
 the uv.lock file will be used as the primary source for package metadata.
 
 :::{versionadded} 2.2.0
+:::
+
+:::{versionchanged} 2.5.0
+Package platforms follow dependency markers from virtual and editable workspace
+roots, including development dependency groups. All recorded optional extras
+remain enabled, and their dependency markers are respected. Locks without
+workspace roots use package-level resolution markers.
 :::
 """,
         ),
@@ -1147,6 +1154,83 @@ execution-phase error when built.
 """,
 )
 
+_configure_tag = tag_class(
+    attrs = {
+        "dependency_groups": attr.string_list(
+            default = [],
+            doc = """
+The `pyproject.toml` dependency groups whose packages the hub exposes. The
+default, `[]`, does not select any packages, so the tag does not limit the hub
+and it does not need a `pyproject.toml`.
+
+Each item is one of:
+
+* `"default"`: the `[project] dependencies`.
+* `"optional:<name>"`: the `[project.optional-dependencies]` entry `<name>`.
+* `"group:<name>"`: the PEP 735 `[dependency-groups]` entry `<name>`.
+* `"optional:*"` or `"group:*"`: all entries of the table.
+* `"*"`: all of the above.
+* `"<name>"`: the dependency group `<name>` if it exists, otherwise the
+  optional dependency group `<name>`.
+* `"transitive"`: only supported together with `"*"`, exposes all of the
+  packages of the hub including the transitive dependencies, i.e. all of the
+  packages from the requirements files or the `uv.lock` file.
+
+See {ref}`Configuring the Exposed Packages <pip-configure>` for examples.
+
+:::{versionadded} VERSION_NEXT_FEATURE
+:::
+""",
+        ),
+        "hub_name": attr.string(
+            mandatory = True,
+            doc = """
+The name of the hub to configure.
+
+:::{versionadded} VERSION_NEXT_FEATURE
+:::
+""",
+        ),
+        "pyproject_toml": attr.label(
+            mandatory = False,
+            doc = """
+The `pyproject.toml` file that defines the dependency groups. It is also used
+by the later `pip.configure` tags of the same module and hub that don't set it.
+Defaults to the last `pyproject_toml` set by an earlier `pip.configure` tag of
+the same module and hub, then to the {attr}`pip.parse.pyproject_toml` of the
+hub, then to {attr}`pip.default.pyproject_toml` if the hub is defined by the
+root module. It is only needed when {attr}`dependency_groups` is set.
+
+:::{versionadded} VERSION_NEXT_FEATURE
+:::
+""",
+        ),
+    },
+    doc = """
+Configure the packages exposed by a hub.
+
+The packages are selected from a `pyproject.toml` file using the
+`[project] dependencies`, `[project.optional-dependencies]` and PEP 735
+`[dependency-groups]` tables. The other packages of the hub, e.g. the
+transitive dependencies, are still used by the packages that need them, but
+they are not public.
+
+The tags work like a builder: they are applied in order and multiple tags for
+the same hub are combined, so each tag can configure a different part of the
+hub. A `pyproject_toml` set on a tag is used by the later tags of the same
+module and hub. A tag that does not select any {attr}`dependency_groups` does
+not limit the hub.
+
+Only the root module and the module that created the hub can configure it. If
+both do, the root module wins.
+
+See {ref}`Configuring the Exposed Packages <pip-configure>` for examples.
+
+:::{versionadded} VERSION_NEXT_FEATURE
+:::
+""",
+)
+
 pypi = module_extension(
     environ = ["RULES_PYTHON_PYPI_HUB_RESERVED"],
     doc = """\
@@ -1170,12 +1254,17 @@ Environment Variables:
 - `RULES_PYTHON_PYPI_HUB_RESERVED`: Enable fallback renaming for reserved hub name collisions.
   See the {envvar}`RULES_PYTHON_PYPI_HUB_RESERVED` documentation for details.
 
+pip.configure:
+This tag class configures the packages exposed by a hub using the dependency
+groups from a pyproject.toml file.
+
 pip.whl_mods:
 This tag class is used to help create JSON files to describe modifications to
 the BUILD files for wheels.
 """,
     implementation = _pip_impl,
     tag_classes = {
+        "configure": _configure_tag,
         "default": tag_class(
             attrs = _default_attrs,
             doc = """\

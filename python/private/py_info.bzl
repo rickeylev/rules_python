@@ -56,6 +56,11 @@ VenvSymlinkKind = struct(
 
 def _VenvSymlinkEntry_init(**kwargs):
     kwargs.setdefault("link_to_file", None)
+    link_to_subpaths = kwargs.get("link_to_subpaths")
+    if link_to_subpaths == None:
+        kwargs["link_to_subpaths"] = depset()
+        return kwargs
+    _check_arg_type("link_to_subpaths", "depset", link_to_subpaths)
     return kwargs
 
 # A provider is used for memory efficiency.
@@ -69,10 +74,20 @@ An entry in `PyInfo.venv_symlinks`
         "files": """
 :type: depset[File]
 
-Files under `link_to_path`.
+Files backing this entry in runfiles. Entries may be regular `File` objects or
+directory artifacts (`File.is_directory`).
 
-This is only used when multiple targets have overlapping `venv_path` paths. e.g.
-if one adds files to `venv_path=a/` and another adds files to `venv_path=a/b/`.
+A directory artifact's contents aren't known at analysis time, so conflict
+merging can't look inside one. To make an entry backed by a directory artifact
+mergeable, list the files under `link_to_path` in {obj}`link_to_subpaths`;
+conflict merging then uses those paths instead of `files`, and `files` only
+supplies runfiles. If {obj}`link_to_subpaths` is empty, the entry is linked as
+a single unit (`venv_path` to `link_to_path`) and can't be merged: analysis
+fails if another entry's files have to be created under its `venv_path`.
+
+Conflict merging occurs when multiple targets have overlapping `venv_path`
+paths, e.g. if one adds files to `venv_path=a/` and another adds files to
+`venv_path=a/b/`.
 """,
         "kind": """
 :type: str
@@ -95,6 +110,27 @@ A file that `venv_path` should point to. The file to link to should also be in
 A runfiles-root relative path that `venv_path` will symlink to (if
 `link_to_file` is `None`). If `None`, it means to not create it in the venv.
 """,
+        "link_to_subpaths": """
+:type: depset[str]
+
+:::{include} /_includes/experimental_api.md
+:::
+
+Relative paths of the files under `link_to_path`, for entries whose `files`
+are directory artifacts (`File.is_directory`) and whose `link_to_path` is a
+directory. Optional. When non-empty, it must list every file under
+`link_to_path`, and conflict merging uses these paths instead of `files`
+(`files` then only supplies runfiles). When empty, the entry is linked as a
+single unit and can't be merged with entries under its `venv_path`.
+
+This is for entries whose target isn't a single `File`, so it's mutually
+exclusive with `link_to_file`: `link_to_file` is only used when an entry
+doesn't conflict, whereas `link_to_subpaths` is only used during conflict
+merging.
+
+:::{versionadded} VERSION_NEXT_FEATURE
+:::
+""",
         "package": """
 :type: str | None
 
@@ -110,8 +146,13 @@ A path relative to the `kind` directory within the venv.
         "version": """
 :type: str | None
 
-Represents the PyPI package version that the code originates from. It is normalized according to the
-PEP440 standard.
+Represents the PyPI package version that the code originates from. It is the
+version as it is spelled in the name of the `.dist-info` directory, which the
+installers normalize according to the PEP440 standard.
+
+:::{versionchanged} VERSION_NEXT_PATCH
+The version is no longer normalized by `rules_python`.
+:::
 """,
     },
 )
@@ -124,6 +165,13 @@ def _VenvSymlinkEntryBuilder_typedef():
     :::{field} files
     :type: DepsetBuilder[File]
     :::
+
+    ::::{field} link_to_subpaths
+    :type: DepsetBuilder[str]
+
+    :::{versionadded} VERSION_NEXT_FEATURE
+    :::
+    ::::
 
     :::{versionadded} 2.2.0
     :::
@@ -141,6 +189,7 @@ def _VenvSymlinkEntryBuilder():
             "version": None,
         },
         files = builders.DepsetBuilder(),
+        link_to_subpaths = builders.DepsetBuilder(),
         get_kind = lambda: _VenvSymlinkEntryBuilder_get_kind(self),
         set_kind = lambda k: _VenvSymlinkEntryBuilder_set_kind(self, k),
         get_link_to_file = lambda: _VenvSymlinkEntryBuilder_get_link_to_file(self),
@@ -327,6 +376,7 @@ def _VenvSymlinkEntryBuilder_build(self):
         kind = self._state["kind"],
         link_to_file = self._state["link_to_file"],
         link_to_path = self._state["link_to_path"],
+        link_to_subpaths = self.link_to_subpaths.build(),
         package = self._state["package"],
         venv_path = self._state["venv_path"],
         version = self._state["version"],
@@ -369,6 +419,7 @@ def _PyInfo_init(
         has_py3_only_sources = False,
         direct_pyc_files = depset(),
         transitive_pyc_files = depset(),
+        direct_implicit_pyc_files = depset(),
         transitive_implicit_pyc_files = depset(),
         transitive_implicit_pyc_source_files = depset(),
         direct_original_sources = depset(),
@@ -389,6 +440,7 @@ def _PyInfo_init(
     _check_arg_type("direct_pyc_files", "depset", direct_pyc_files)
     _check_arg_type("transitive_pyc_files", "depset", transitive_pyc_files)
 
+    _check_arg_type("direct_implicit_pyc_files", "depset", direct_implicit_pyc_files)
     _check_arg_type("transitive_implicit_pyc_files", "depset", transitive_pyc_files)
     _check_arg_type("transitive_implicit_pyc_source_files", "depset", transitive_pyc_files)
 
@@ -400,6 +452,7 @@ def _PyInfo_init(
     if type_checking_info != None:
         _check_arg_type("type_checking_info", "struct", type_checking_info)
     return {
+        "direct_implicit_pyc_files": direct_implicit_pyc_files,
         "direct_original_sources": direct_original_sources,
         "direct_pyc_files": direct_pyc_files,
         "direct_pyi_files": direct_pyi_files,
@@ -425,6 +478,15 @@ the {obj}`PyCommonApi` utilities.
 """,
     init = _PyInfo_init,
     fields = {
+        "direct_implicit_pyc_files": """
+:type: depset[File]
+
+The automatically generated pyc files that are directly provided by the target.
+The direct counterpart of {obj}`transitive_implicit_pyc_files`.
+
+::::{versionadded} 2.5.0
+::::
+""",
         "direct_original_sources": """
 :type: depset[File]
 
@@ -571,7 +633,7 @@ example, from `pyi_deps`). This information is not included into the final
 output of a program. Type checkers should merge this into their information to
 augment the analyzed output.
 
-::::{versionadded} VERSION_NEXT_FEATURE
+::::{versionadded} 2.5.0
 ::::
 """,
         "uses_shared_libraries": """
@@ -601,6 +663,10 @@ def _PyInfoBuilder_typedef():
     """Builder for PyInfo.
 
     To create an instance, use {obj}`py_common.get()` and call `PyInfoBuilder()`
+
+    :::{field} direct_implicit_pyc_files
+    :type: DepsetBuilder[File]
+    :::
 
     :::{field} direct_original_sources
     :type: DepsetBuilder[File]
@@ -648,7 +714,7 @@ def _PyInfoBuilder_typedef():
     Builder for {obj}`PyInfo.type_checking_info`. `None` on nested
     type-checking builders.
 
-    ::::{versionadded} VERSION_NEXT_FEATURE
+    ::::{versionadded} 2.5.0
     ::::
     :::
 
@@ -666,6 +732,7 @@ def _new_raw_py_info_builder(type_checking_info = None):
         add_venv_symlink = lambda *a, **k: _PyInfoBuilder_add_venv_symlink(self, *a, **k),
         build = lambda *a, **k: _PyInfoBuilder_build(self, *a, **k),
         build_builtin_py_info = lambda *a, **k: _PyInfoBuilder_build_builtin_py_info(self, *a, **k),
+        direct_implicit_pyc_files = builders.DepsetBuilder(),
         direct_original_sources = builders.DepsetBuilder(),
         direct_pyc_files = builders.DepsetBuilder(),
         direct_pyi_files = builders.DepsetBuilder(),
@@ -854,6 +921,7 @@ def _merge_py_info_fields(self, transitive, *, direct = []):
         # BuiltinPyInfo doesn't have this field
         if hasattr(info, "direct_pyc_files"):
             self.direct_original_sources.add(info.direct_original_sources)
+            self.direct_implicit_pyc_files.add(info.direct_implicit_pyc_files)
             self.direct_pyc_files.add(info.direct_pyc_files)
             self.direct_pyi_files.add(info.direct_pyi_files)
 
@@ -909,7 +977,7 @@ def _PyInfoBuilder_merge_type_checking(self, *infos, direct = []):
     `type_checking_info`) into {obj}`type_checking_info`, excluding runtime
     fields like `imports` and `transitive_sources` from the top-level `PyInfo`.
 
-    :::{versionadded} VERSION_NEXT_FEATURE
+    :::{versionadded} 2.5.0
     :::
 
     Args:
@@ -993,6 +1061,7 @@ def _build_py_info_fields(self, type_checking_info = None):
         imports = self.imports.build(),
         transitive_sources = self.transitive_sources.build(),
         uses_shared_libraries = self._uses_shared_libraries[0],
+        direct_implicit_pyc_files = self.direct_implicit_pyc_files.build(),
         direct_original_sources = self.direct_original_sources.build(),
         direct_pyc_files = self.direct_pyc_files.build(),
         direct_pyi_files = self.direct_pyi_files.build(),

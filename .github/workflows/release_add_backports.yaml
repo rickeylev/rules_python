@@ -24,6 +24,7 @@ on:
 
 permissions:
   issues: write
+  pull-requests: write
 
 jobs:
   add_backports:
@@ -54,5 +55,6 @@ jobs:
           bazel run \
             --//python/config_settings:py_pbs_distribution=install_only_stripped \
             //dev/release -- add-backports \
-            "${pr_array[@]}" \
-            "${ARGS[@]}"
+            "${ARGS[@]}" \
+            -- \
+            "${pr_array[@]}"

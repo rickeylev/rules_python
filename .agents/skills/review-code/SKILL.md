@@ -59,23 +59,83 @@ file from `.agents/skills/review-code/`:
      `.agents/skills/review-code/review-workflows-prompt.md`
    - Focus: Audits workflow files (`.github/**`) and workflow tests against
      `.agents/rules/github_actions_workflows.md` (e.g. `chmod +x` executable
-     permissions, shebangs, action versions, fallback jobs).
+     permissions, shebangs, action and tool versions,
+     `./.github/actions/setup-bazel` wrapper usage, fallback jobs, and shell,
+     script, CLI flag, `$GITHUB_OUTPUT`, or workflow-command injection
+     vulnerabilities).
 
 8. **`rules_python` Usage Sub-Agent** (`Role: "rules_python Usage Auditor"`):
    - Prompt file:
      `.agents/skills/review-code/review-rules-python-prompt.md`
-   - Focus: Audits changes against `.agents/rules/rules_python.md` and
-     `rules_python`-specific Bzlmod and rule usage invariants (e.g., `pip.dep()`
-     declarations in `MODULE.bazel` for `@pypi//<pkg>` references under
-     `python/**`).
+   - Focus: Audits changes against `.agents/rules/rules_python.md` (e.g.,
+     `pip.dep()` declarations in `MODULE.bazel` and minimum Bazel version
+     bounds).
 
 9. **News Entry Sub-Agent** (`Role: "News Entry Auditor"`):
    - Prompt file:
      `.agents/skills/review-code/review-news-prompt.md`
-   - Focus: Audits `news/<id>.<category>.md` files for presence, naming (no
-     generic `0000` placeholders), brevity and skimmability, and formatting
+   - Focus: Audits `news/` entries and user-visible changes in `git diff`
      against `.agents/rules/news.md` and
      `.agents/skills/create-news/SKILL.md`.
+
+10. Code Style & Architecture Sub-Agent
+    (`Role: "Code Style & Architecture Auditor"`):
+    - Prompt file:
+      `.agents/skills/review-code/review-code-style-prompt.md`
+    - Focus: Audits cross-language code style across code and config files
+      (`*.py`, `*.rs`, `*.sh`, `*.cc`, `*.h`, `*.go`, `*.bzl`, `*.bazel`,
+      `*.html`, `*.js`, `*.ts`, `*.css`, `*.yaml`, `*.yml`) against
+      `.agents/rules/code-style.md` and `.agents/rules/web-ui.md`: file
+      definition order, guard clauses, fail-closed `else`, single input form,
+      no unrequested knobs/aliases, no speculative validation or defensive
+      `None` checks, no nested comprehensions, naming precision,
+      simplification, `keep-sorted` markers, `LINT.IfChange` /
+      `LINT.ThenChange` directives, porting parity, and CLI safety annotations.
+
+11. Shell Script Sub-Agent (`Role: "Shell Script Auditor"`):
+    - Prompt file:
+      `.agents/skills/review-code/review-shell-prompt.md`
+    - Focus: Audits `*.sh`, git hooks, and inline shell scripts against
+      `.agents/rules/shell.md` and `.agents/rules/code-style.md` (long flags
+      and commented short flags, direct shebang invocation, GNU `getopt --name`,
+      `(set -x; ...)`, `Modifies:` doc sections, no blind `|| true`, and no `$?`
+      checks under `set -e`).
+
+12. Justification & Exception Sub-Agent
+    (`Role: "Justification & Exception Auditor"`):
+    - Prompt file:
+      `.agents/skills/review-code/review-justification-auditor-prompt.md`
+    - Focus: Evaluates all stated or missing justifications for rule exceptions
+      (such as `sys.path`/`ImportError` probing, lint/type/buildifier
+      suppressions, custom timeouts/retries, or review replies claiming a rule
+      does not apply), rejecting missing, circular, or inaccurate excuses as
+      `SHOULD-FIX` and flagging plausible technical constraints as
+      `HUMAN-SIGN-OFF`.
+
+13. Rust Sub-Agent (`Role: "Rust Code Auditor"`):
+    - Prompt file:
+      `.agents/skills/review-code/review-rust-prompt.md`
+    - Focus: Audits Rust code (`*.rs`, `crates/**`) and crate dependencies in
+      `MODULE.bazel` / `Cargo.*` against `.agents/rules/rust.md` (standard
+      ecosystem crates over custom subsystems such as regex or ZIP handling,
+      crate legitimacy and latest `crates.io` versions, feature pruning and
+      `zlib-rs` DEFLATE selection, idiomatic `str::lines()`/`create_dir_all`,
+      `# Errors` rustdocs, library crate structure, and `rustfmt`).
+
+14. Comment Readability Sub-Agent (`Role: "Comment Readability Editor"`):
+    - Prompt file:
+      `.agents/skills/review-code/review-comment-readability-prompt.md`
+    - Focus: Polishes `Problem`, `Proposed Fix`, optional `Where`, and
+      `Draft Reply` text for rendered readability:
+      - Enforce the `Proposed Fix` budget: a high-level, direct first sentence
+        under 20 words stating the suggested fix, plus up to 50 additional
+        words for more information on the fix (`Where` is not subject to this
+        limit).
+      - Cut dense "wall of text" paragraphs down to 1–2 short, direct
+        sentences.
+      - Omit verbatim code snippets when a concise prose instruction suffices.
+      - Remove excessive inline backticks across identifier lists (such as
+        `UPPER_SNAKE_CASE` constants) and strip outer backtick wrappers.
 
 ### Action Instructions
 - Immediately create a user-facing review artifact named
@@ -84,18 +144,228 @@ file from `.agents/skills/review-code/`:
 - Have sub-agents run `git diff $(git merge-base HEAD upstream/main)` to audit
   committed and uncommitted branch changes without newer `upstream/main`
   commits.
-- Launch all sub-agents concurrently using `invoke_subagent`.
-- Update `code-review-results.md` as sub-agent responses come in.
-- The artifact must include:
-  - Overall summary and verdict across audit categories.
-  - Detailed analysis and findings from each sub-agent.
-  - Actionable findings and fix suggestions with specific code snippets, diffs,
-    and clickable file links for any violations found.
+- Launch all domain sub-agents concurrently using `invoke_subagent`.
+- Pass candidate findings from the domain sub-agents through the
+  `Comment Readability Sub-Agent` (`Role: "Comment Readability Editor"`, prompt
+  `.agents/skills/review-code/review-comment-readability-prompt.md`) to
+  eliminate jarring backtick-switching across identifier lists and polish prose
+  readability as results stream into `code-review-results.md`.
+- Update `code-review-results.md` as sub-agent responses come in, applying the
+  Synthesis & Anti-Noise Gate (below), including a clickable link to the PR (or
+  branch name for local unpushed changes) and a brief 2-sentence overview of
+  what the PR does, and omitting all passing-check prose. Do not use bold for
+  the introduction or lead-in of a bulleted list or bullet item; use **bold**
+  for any questions the user needs to answer. Structure
+  `code-review-results.md` as follows:
+
+  ````markdown
+  # Code Review: [<PR #N: Title>](<PR_URL>)
+
+  <Brief 2-sentence overview of what the PR does and why.>
+
+  Verdict: `<PASS | NEEDS_FIXES | NEEDS_HUMAN_SIGN_OFF>` (<N> open, <H>
+  needing human sign-off, <M> resolved)
+
+  ## Open Issues
+
+  ### <ID>. [<SEVERITY>] <Short title> — [<file>:<line>](file:///...)
+  * Action: <Post comment | Fix directly and push to PR>
+  * Problem: <1-2 sentences stating what is wrong and why.>
+  * Proposed Fix: <First sentence under 20 words, high-level, direct, and to the
+    point, stating the suggested fix. Up to 50 additional words for more
+    information on the fix.>
+  * Where: <Other locations where this applies, included only when more than
+    just the primary location is affected; not subject to the 50-word limit.>
+  * Author Response: <If the author replied to this comment thread, quote or
+    summarize their response here, bolding any question to answer.>
+  * Draft Reply: <proposed reply in user's voice, if applicable>
+
+  ## Resolved Issues
+
+  * ~~<ID>. [<SEVERITY>] <Short title> ([<file>:<line>](file:///...))~~ —
+    Resolved: <How it was fixed or resolved (e.g., fixed in commit N,
+    updated in working copy, or dismissed per reviewer).>
+
+  ## Passing Domains
+  <Comma-separated list of audited domains with 0 issues>
+  ````
+- Omit verbatim code snippets from `Proposed Fix` when a concise prose
+  instruction suffices:
+  - Formatting and line wrapping: state what formatting rule to apply (e.g.,
+    wrap lines and `doc` strings to 80 columns) instead of pasting re-wrapped
+    code.
+  - Per-field `struct(...)` comments: state to document each field with a
+    comment instead of pasting a commented `struct(...)` block.
+  - Compound boolean or inline ternary expressions: describe how to split them
+    into explicit `if` statements instead of pasting a replacement block.
+- When push access to the PR branch is available (`maintainerCanModify` is true
+  or the branch is in `rules_python`), set `Action: Fix directly and push to PR`
+  on mechanical, behavior-preserving findings rather than leaving nit review
+  comments for the author:
+  - Formatting and 80-column line wrapping (`*.bzl`, `doc` strings, `.md`).
+  - Trailing backslashes (`\`) on opening triple-quotes (`"""`) in multi-line
+    docstrings.
+  - `{ref}` roles when linking to narrative docs from `.bzl` docstrings.
+  - Per-field comments on returned `struct(...)` definitions.
+  - Splitting compound boolean guards and inline `or`/ternary expressions into
+    explicit `if` statements.
+  - `Args:` and `Returns:` sections on Starlark helper function docstrings.
+  - Defining module-level constants (including test constants) before
+    functions.
+  - Short-circuiting immediately after injectable `_fail(...)` calls (using
+    bare `return`, `return False`, or `return None` to match the function's
+    return convention) and guarding error returns in callers.
+- Whenever an open issue in `code-review-results.md` is resolved (via local
+  edit, a new commit, or reviewer decision), move it from `## Open Issues` to
+  `## Resolved Issues` (never delete it) and record how it was resolved.
+- If the PR author posts a question or reply requiring reviewer input on a
+  comment thread, record their response (`* Author Response: ...`) and a
+  proposed `* Draft Reply` under the corresponding issue in
+  `code-review-results.md`, then prompt the user via `ask_question` (including a
+  clickable `[code-review-results.md](file:///...#L<start>-L<end>)` link in the
+  `question` prompt text).
+- Never auto-resolve a rule exception solely because the author added a
+  justification comment or reply. Whenever a justification is present or added,
+  use the `Justification & Exception Auditor` to evaluate it, rejecting weak or
+  inaccurate justifications as `SHOULD-FIX` and keeping plausible justifications
+  open as `[HUMAN-SIGN-OFF]` until the user explicitly signs off.
+- When reviewing an existing GitHub PR whose description has incorrect line
+  wrapping against `.agents/rules/pr.md` (body prose over 72 columns,
+  excluding long URLs, Markdown links, fenced code blocks, and Markdown
+  tables):
+  - As an explicit exception to the `ask_question` gate for candidate comments
+    on another user's PR, run
+    `.agents/skills/review-code/scripts/wrap_pr_body.py` with
+    `--repo=bazel-contrib/rules_python -- "<pr>"` directly during synthesis.
+    Do not pull raw PR descriptions into LLM context to re-wrap manually or
+    propose a long formatting comment; the script re-fetches via `gh pr view`,
+    strips control characters, wraps prose deterministically, verifies
+    non-whitespace token equivalence, and applies `gh pr edit`.
+  - Only after `wrap_pr_body.py` exits `0` with `status=updated`:
+    - If modifying another contributor's PR, write a brief notice saying PR
+      description prose was wrapped to 72 columns (ending with
+      `*This is an agent-generated comment unreviewed by the user.*`) to
+      `<artifact_dir>/scratch/pr-wrap-notice.md` and post via
+      `gh pr comment --repo=bazel-contrib/rules_python` with
+      `--body-file="<artifact_dir>/scratch/pr-wrap-notice.md" -- "<pr>"`.
+    - On the user's own PR, omit the notice comment.
+    - Record the fix under `## Resolved Issues` in `code-review-results.md`.
+  - If `wrap_pr_body.py` exits `0` with `status=unchanged` (for example, when
+    the PR was wrapped in the interim or no prose lines exceed 72 columns),
+    omit the notice comment and drop the finding (or move it to
+    `## Resolved Issues` if previously recorded).
+  - If `wrap_pr_body.py` fails (e.g., `gh pr edit` lacks permissions), keep
+    the finding under `## Open Issues` in `code-review-results.md` requesting
+    72-column prose wrapping.
 - Once all sub-agents finish, finalize `code-review-results.md` and provide a
   concise summary with the overall verdict and a clickable markdown link to
   `code-review-results.md` in the response.
-- If a PR is being reviewed, ask the user if they want to post comments to the
-  PR.
-- When posting comments to the PR, add a note in italics at the end of each
-  comment identifying it as an agent-generated comment and referring to yourself
-  using a magnanimous title.
+- If reviewing a PR belonging to another user and at least one net-new open
+  issue remains after the Anti-Noise Gate, prompt the user via a single
+  multi-select (`is_multi_select: true`) `ask_question` question (including a
+  clickable `[code-review-results.md](file:///...)` link in the `question`
+  prompt text) with the following options:
+  1. Post non-draft comments
+  2. Post draft comments
+  3. Also fix trivial issues and push to PR
+  4. Review feedback further
+  5. Also approve PR
+  6. Also fix all issues
+  7. Also push fixes to PR
+- When `Also fix trivial issues and push to PR` is selected:
+  - Implement all `Fix directly and push to PR` issues locally.
+  - Verify with `buildifier` and relevant `bazel test --config=fast-tests`
+    targets.
+  - Commit the fixes without amending existing PR commits.
+  - Validate `<remote>` and `<branch>` fail-closed (rejecting `..`, leading
+    `-`, `:`, control characters, and shell metacharacters) and push via
+    `git push -- <remote> "HEAD:refs/heads/<branch>"`.
+  - Post a single PR comment summarizing the trivial issues fixed instead of
+    posting individual inline review comments for them.
+- When fixing and pushing open issues that already had non-draft review comments
+  posted, reply to each fixed review thread with the commit SHA (and disclosure
+  line) without resolving the thread unless explicitly instructed.
+- If reviewing or re-reviewing a PR belonging to another user and the verdict is
+  `PASS` (0 open issues and 0 net-new candidate comments) while the PR is not
+  yet approved by the user, prompt the user via `ask_question` (including a
+  clickable `[code-review-results.md](file:///...)` link in the `question`
+  prompt text) to choose whether to:
+  1. Approve PR
+  2. Do nothing
+  3. Re-review
+- Immediately before posting comments (after `ask_question` returns), re-fetch
+  the latest PR description, commits, and review comments (`gh pr view`), move
+  any issues addressed in the interim to `## Resolved Issues` in
+  `code-review-results.md`, and drop their candidate comments.
+- When posting review comments to a PR, phrase them mechanically in the user's
+  voice from `Problem`, `Proposed Fix`, and (when multiple locations are
+  affected) `Where` without storing the verbatim comment in
+  `code-review-results.md`:
+
+  ```markdown
+  <brief/concise description of issue>
+
+  Suggested fix: <fix, under 10 lines / 50 words>
+
+  Where: <other locations where this is applicable, if more than just the
+  commented location>
+  ```
+
+  Include `Where:` only when more than just the commented location is affected
+  (omit `Where:` for single-location issues). Append an italicized disclosure
+  line at the end of every posted comment or reply:
+  `*This is an agent-generated comment reviewed and approved by the user.*` if
+  the user reviewed and approved posting the comment, or
+  `*This is an agent-generated comment unreviewed by the user.*` if posted
+  without user review.
+
+### Synthesis & Anti-Noise Gate (Guardrails)
+
+When aggregating sub-agent findings into `code-review-results.md` and before
+posting comments, filter out noise:
+
+1. Starlark is not Python: Do not leak Python complaints into Starlark (`.bzl`,
+   `BUILD`, `*.bazel`). Starlark has no `is` operator (`== None` is correct),
+   freezes default arguments (mutable defaults are safe), accepts `# @unused` or
+   `# buildifier: disable=...` suppressions, and prefers explicit `len()`
+   checks. Do not suggest Python stdlib functions.
+2. Third-Party, Vendored, & Generated Code: Never nitpick style or structure in
+   third-party imported, vendored, lockfile, or generated files (such as
+   `*requirements*.txt`, `gazelle_python_manifest.yaml`, or patches). Only flag
+   build breakages or license issues.
+3. Formatter-Handled Output: Never ask to revert a formatter's output (such as
+   `buildifier`, `ruff`, or `rustfmt` quote/comma/order changes, trailing
+   newlines, or markdown hard-break backslashes).
+4. `TODO` Syntax: Do not complain about `TODO(...)` formatting or demand a
+   username or issue number. Drop `TODO` syntax nits entirely.
+5. Rule Over-Application:
+   - Only flag a redundant comment when it literally restates the code. Never
+     remove a "why" rationale or Arrange/Act/Assert test headers.
+   - Naming nits must be objective (redundant qualifier, misleading term, or
+     cryptic abbreviation), not subjective taste.
+   - Do not require docstrings on wrapper macros where the signature is
+     forwarded via `**kwargs`, or enforce explicit types when duck-typing is the
+     established pattern.
+6. Verify Before Claiming: A finding that asserts a behavior must quote the
+   exact line(s). If uncertain about external tool or API semantics, phrase it
+   as a `QUESTION` ("Does X do Y here?") rather than a factual assertion.
+7. No Persona Flourishes in Posted Comments: Review comments posted to GitHub
+   must contain only technical review content and the trailing italicized
+   agent-generated disclosure line. Never include conversational chat persona
+   flourishes (song lyrics, jokes, sassy remarks) in posted review comments.
+8. Follow-Up Etiquette: Do not block on explicit "postponed to a follow-up"
+   notes or minor out-of-scope follow-ups.
+9. No Speculative Defensive Checks: Do not invent hypothetical edge cases (such
+   as "if list is empty, indexing raises"). Assume callers provide valid domain
+   inputs unless there is concrete evidence otherwise.
+10. Specific Test Requests: Do not demand tests vaguely ("please add tests");
+    always specify the exact behavior, edge case, or branch that needs testing.
+11. Consolidation (>= 15 Findings): If sub-agents produce 15 or more findings
+    total, consolidate repeated nits into a single comment ("same here and N
+    other places") or omit the lowest-priority formatting nits first without
+    suppressing naming precision or simplification findings.
+12. Deduplicate Against Existing Comments: Inspect existing PR review comments
+    and suppress candidate comments that duplicate feedback already posted.
+13. Preserve Documented Rule Findings: Keep every sub-agent finding backed by
+    `.agents/rules/` or `AGENTS.md` in `## Open Issues`, regardless of `NIT`
+    severity or legacy patterns in existing files.

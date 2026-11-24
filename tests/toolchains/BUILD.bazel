@@ -13,7 +13,8 @@
 # limitations under the License.
 
 load("@bazel_skylib//rules:build_test.bzl", "build_test")
-load("@bazel_skylib//rules:diff_test.bzl", "diff_test")
+load("//python:pytest_test.bzl", "pytest_test")
+load("//python/cc:py_extension.bzl", "py_extension")
 load("//python/private:bzlmod_enabled.bzl", "BZLMOD_ENABLED")  # buildifier: disable=bzl-visibility
 load("//tests/support:py_reconfig.bzl", "py_reconfig_test")
 load(":defs.bzl", "define_toolchain_tests")
@@ -33,6 +34,25 @@ py_reconfig_test(
     ] if BZLMOD_ENABLED else ["@platforms//:incompatible"],
 )
 
+# Manual: it only compiles with the headers of the debug runtime.
+py_extension(
+    name = "debug_ext",
+    srcs = ["debug_ext.c"],
+    tags = ["manual"],
+)
+
+py_reconfig_test(
+    name = "debug_runtime_test",
+    srcs = ["debug_runtime_test.py"],
+    config_settings = {"//tests/support:custom_runtime": "linux-x86-debug"},
+    python_version = "3.14.4",
+    target_compatible_with = [
+        "@platforms//os:linux",
+        "@platforms//cpu:x86_64",
+    ] if BZLMOD_ENABLED else ["@platforms//:incompatible"],
+    deps = [":debug_ext"],
+)
+
 build_test(
     name = "build_test",
     targets = [
@@ -40,17 +60,12 @@ build_test(
     ],
 )
 
-# Verify that runtimes_manifest_workspace.bzl exactly matches runtimes_manifest.txt
-genrule(
-    name = "gen_expected_runtimes_manifest_workspace",
-    srcs = ["//python/private:runtimes_manifest.txt"],
-    outs = ["expected_runtimes_manifest_workspace.bzl"],
-    cmd = "$(execpath //python/private:sync_runtimes_manifest_workspace) $(location //python/private:runtimes_manifest.txt) $@",
-    tools = ["//python/private:sync_runtimes_manifest_workspace"],
-)
-
-diff_test(
-    name = "runtimes_manifest_workspace_sync_test",
-    file1 = "//python/private:runtimes_manifest_workspace.bzl",
-    file2 = ":expected_runtimes_manifest_workspace.bzl",
+pytest_test(
+    name = "sort_manifest_test",
+    srcs = ["sort_manifest_test.py"],
+    data = ["//python/private:runtimes_manifest.bzl"],
+    deps = [
+        "//python/private:sort_manifest_lib",
+        "//python/runfiles",
+    ],
 )
