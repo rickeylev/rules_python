@@ -1,5 +1,8 @@
 //! Library for the stage-1 native bootstrap template and config embedder.
 
+// Errors must be returned, not panicked; see the `rust-lint` config in .bazelrc.
+#![deny(clippy::expect_used, clippy::unwrap_used)]
+
 use std::env;
 use std::fs::{self, File};
 use std::io::{self, Read, Seek, SeekFrom, Write};
@@ -15,8 +18,7 @@ pub const EOF_TRAILER_MAGIC_LEN: usize = 24;
 pub const EOF_TRAILER_LEN: usize = 32;
 
 pub const CFG_MAGIC: [u8; CFG_MAGIC_LEN] = *b"\x89RPY_NATIVE_BOOTSTRAP_CFG_V1_00\0";
-pub const EOF_TRAILER_MAGIC: [u8; EOF_TRAILER_MAGIC_LEN] =
-    *b"\x00RPY_NATIVE_EOF_CFG_V1\x00\x00";
+pub const EOF_TRAILER_MAGIC: [u8; EOF_TRAILER_MAGIC_LEN] = *b"\x00RPY_NATIVE_EOF_CFG_V1\x00\x00";
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct BootstrapConfig {
@@ -84,7 +86,11 @@ pub fn serialize_cfg_payload(opts: &EmbedOptions) -> Vec<u8> {
     let mut payload = Vec::new();
     push_kv(&mut payload, "stage2_bootstrap", &opts.stage2_bootstrap);
     push_kv(&mut payload, "python_binary", &opts.python_binary);
-    push_kv(&mut payload, "python_binary_actual", &opts.python_binary_actual);
+    push_kv(
+        &mut payload,
+        "python_binary_actual",
+        &opts.python_binary_actual,
+    );
     push_kv(&mut payload, "is_zipfile", &opts.is_zipfile);
     push_kv(
         &mut payload,
@@ -136,24 +142,18 @@ pub fn parse_cfg_payload(payload: &[u8], cfg: &mut BootstrapConfig) {
             b"python_binary" => cfg.python_binary = val,
             b"python_binary_actual" => cfg.python_binary_actual = val,
             b"is_zipfile" => cfg.is_zipfile = val.parse().unwrap_or(0),
-            b"recreate_venv_at_runtime" => {
-                cfg.recreate_venv_at_runtime = val.parse().unwrap_or(0)
-            }
+            b"recreate_venv_at_runtime" => cfg.recreate_venv_at_runtime = val.parse().unwrap_or(0),
             b"resolve_python_binary_at_runtime" => {
                 cfg.resolve_python_binary_at_runtime = val.parse().unwrap_or(0)
             }
             b"venv_rel_site_packages" => cfg.venv_rel_site_packages = val,
             b"workspace_name" => cfg.workspace_name = val,
             b"target" => cfg.target = val,
-            b"interpreter_arg" => {
-                if !val.is_empty() {
-                    cfg.interpreter_args.push(val);
-                }
+            b"interpreter_arg" if !val.is_empty() => {
+                cfg.interpreter_args.push(val);
             }
-            b"runtime_venv_symlink" => {
-                if !val.is_empty() {
-                    cfg.runtime_venv_symlinks.push(val);
-                }
+            b"runtime_venv_symlink" if !val.is_empty() => {
+                cfg.runtime_venv_symlinks.push(val);
             }
             _ => {}
         }
@@ -212,9 +212,7 @@ pub fn parse_embed_args(args: &[String]) -> Result<EmbedOptions, String> {
             "--python_binary_actual" => opts.python_binary_actual = val,
             "--is_zipfile" => opts.is_zipfile = val,
             "--recreate_venv_at_runtime" => opts.recreate_venv_at_runtime = val,
-            "--resolve_python_binary_at_runtime" => {
-                opts.resolve_python_binary_at_runtime = val
-            }
+            "--resolve_python_binary_at_runtime" => opts.resolve_python_binary_at_runtime = val,
             "--venv_rel_site_packages" => opts.venv_rel_site_packages = val,
             "--workspace_name" => opts.workspace_name = val,
             "--target" => opts.target = val,
@@ -258,10 +256,7 @@ pub fn find_magic_offset(tpl_buf: &[u8]) -> Option<usize> {
 ///   returns an error if the serialized payload exceeds `4,044` bytes.
 /// - On Windows (`opts.use_eof_trailer` or a PE `MZ` binary), always appends
 ///   the variable-sized EOF trailer (`[payload][payload_len: u64_le][EOF_TRAILER_MAGIC]`).
-pub fn embed_config_into_binary(
-    tpl_buf: &[u8],
-    opts: &EmbedOptions,
-) -> Result<Vec<u8>, String> {
+pub fn embed_config_into_binary(tpl_buf: &[u8], opts: &EmbedOptions) -> Result<Vec<u8>, String> {
     let payload = serialize_cfg_payload(opts);
     let use_eof = opts.use_eof_trailer || tpl_buf.starts_with(b"MZ");
 
@@ -304,8 +299,7 @@ pub fn embed_config_into_binary(
     cfg_region[CFG_MAGIC_LEN..].fill(0);
     let plen = (payload.len() as u32).to_le_bytes();
     cfg_region[32..36].copy_from_slice(&plen);
-    cfg_region[CFG_HEADER_LEN..CFG_HEADER_LEN + payload.len()]
-        .copy_from_slice(&payload);
+    cfg_region[CFG_HEADER_LEN..CFG_HEADER_LEN + payload.len()].copy_from_slice(&payload);
     Ok(out)
 }
 
@@ -619,9 +613,8 @@ pub fn resolve_actual_interpreter(
         return Ok(join_path(runfiles_dir, python_binary_actual));
     }
     let path_env = env::var("PATH").ok();
-    find_in_path(python_binary_actual, path_env.as_deref()).ok_or_else(|| {
-        format!("Python interpreter not found on PATH: {python_binary_actual}")
-    })
+    find_in_path(python_binary_actual, path_env.as_deref())
+        .ok_or_else(|| format!("Python interpreter not found on PATH: {python_binary_actual}"))
 }
 
 static TEMP_COUNTER: AtomicU64 = AtomicU64::new(0);

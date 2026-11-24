@@ -1,3 +1,6 @@
+// Errors must be returned, not panicked; see the `rust-lint` config in .bazelrc.
+#![deny(clippy::expect_used, clippy::unwrap_used)]
+
 #[cfg(not(windows))]
 use std::cell::UnsafeCell;
 use std::env;
@@ -7,13 +10,13 @@ use std::ptr;
 
 #[cfg(windows)]
 use stage1_native_bootstrap_lib::{
-    load_eof_trailer_config, resolve_self_executable, run_stage1_with_config,
-    BootstrapConfig, CFG_MAGIC, CFG_MAGIC_LEN,
+    load_eof_trailer_config, resolve_self_executable, run_stage1_with_config, BootstrapConfig,
+    CFG_MAGIC, CFG_MAGIC_LEN,
 };
 #[cfg(not(windows))]
 use stage1_native_bootstrap_lib::{
-    parse_cfg_payload, run_stage1_with_config, BootstrapConfig, CFG_BUFFER_SIZE,
-    CFG_HEADER_LEN, CFG_MAGIC, CFG_MAGIC_LEN,
+    parse_cfg_payload, run_stage1_with_config, BootstrapConfig, CFG_BUFFER_SIZE, CFG_HEADER_LEN,
+    CFG_MAGIC, CFG_MAGIC_LEN,
 };
 
 #[cfg(not(windows))]

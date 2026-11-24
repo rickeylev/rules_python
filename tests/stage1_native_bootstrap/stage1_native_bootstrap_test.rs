@@ -2,12 +2,11 @@ use std::env;
 use std::fs;
 
 use stage1_native_bootstrap_lib::{
-    basename_str, create_temp_dir, dirname_str, embed_bootstrap_file,
-    embed_config_into_binary, extract_runfiles_prefix, find_magic_offset,
-    find_runfiles_root_with_env, join_path, join_path3, load_eof_trailer_config,
-    parse_cfg_payload, parse_embed_args, parse_eof_trailer_from_bytes,
-    serialize_cfg_payload, strip_last_two_components, BootstrapConfig,
-    EmbedOptions, CFG_BUFFER_SIZE, CFG_HEADER_LEN, CFG_MAGIC, CFG_MAGIC_LEN,
+    BootstrapConfig, CFG_BUFFER_SIZE, CFG_HEADER_LEN, CFG_MAGIC, CFG_MAGIC_LEN, EmbedOptions,
+    basename_str, create_temp_dir, dirname_str, embed_bootstrap_file, embed_config_into_binary,
+    extract_runfiles_prefix, find_magic_offset, find_runfiles_root_with_env, join_path, join_path3,
+    load_eof_trailer_config, parse_cfg_payload, parse_embed_args, parse_eof_trailer_from_bytes,
+    serialize_cfg_payload, strip_last_two_components,
 };
 
 fn make_mock_template_binary() -> Vec<u8> {
@@ -229,10 +228,7 @@ fn test_load_eof_trailer_config_from_file() {
 
 #[test]
 fn test_parse_embed_args_validation() {
-    let temp_dir = env::temp_dir().join(format!(
-        "stage1_param_file_test_{}",
-        std::process::id()
-    ));
+    let temp_dir = env::temp_dir().join(format!("stage1_param_file_test_{}", std::process::id()));
     let _ = fs::remove_dir_all(&temp_dir);
     fs::create_dir_all(&temp_dir).unwrap();
     let param_file = temp_dir.join("args.params");
@@ -315,9 +311,7 @@ fn test_path_helpers_and_extract_runfiles_prefix() {
         Some("/tmp/foo.runfiles".to_string())
     );
     assert_eq!(
-        extract_runfiles_prefix(
-            "/tmp/outer.runfiles/_main/inner.runfiles/_main/bin"
-        ),
+        extract_runfiles_prefix("/tmp/outer.runfiles/_main/inner.runfiles/_main/bin"),
         Some("/tmp/outer.runfiles/_main/inner.runfiles".to_string())
     );
     assert_eq!(extract_runfiles_prefix("/tmp/no_runfiles_here"), None);
@@ -335,14 +329,9 @@ fn test_find_runfiles_root_with_env_and_symlinks() {
     fs::write(&s2_abs, b"# stage2").unwrap();
 
     // 1. Valid RUNFILES_DIR containing stage2_bootstrap
-    let found = find_runfiles_root_with_env(
-        "/nonexistent/app",
-        s2_rel,
-        Some(&rf_dir),
-        None,
-        &root_tmp,
-    )
-    .unwrap();
+    let found =
+        find_runfiles_root_with_env("/nonexistent/app", s2_rel, Some(&rf_dir), None, &root_tmp)
+            .unwrap();
     assert_eq!(found, rf_dir);
 
     // 2. Valid RUNFILES_MANIFEST_FILE ending in .runfiles_manifest
@@ -362,14 +351,8 @@ fn test_find_runfiles_root_with_env_and_symlinks() {
     fs::create_dir_all(&wrong_rf).unwrap();
     let app_bin = join_path(&root_tmp, "app");
     fs::write(&app_bin, b"").unwrap();
-    let found_from_argv0 = find_runfiles_root_with_env(
-        &app_bin,
-        s2_rel,
-        Some(&wrong_rf),
-        None,
-        &root_tmp,
-    )
-    .unwrap();
+    let found_from_argv0 =
+        find_runfiles_root_with_env(&app_bin, s2_rel, Some(&wrong_rf), None, &root_tmp).unwrap();
     assert_eq!(found_from_argv0, rf_dir);
 
     // 4. Symlink hop to binary inside *.runfiles/*
@@ -379,14 +362,8 @@ fn test_find_runfiles_root_with_env_and_symlinks() {
         fs::write(&target_in_rf, b"").unwrap();
         let link_path = join_path(&root_tmp, "app_link");
         std::os::unix::fs::symlink(&target_in_rf, &link_path).unwrap();
-        let found_via_link = find_runfiles_root_with_env(
-            &link_path,
-            s2_rel,
-            None,
-            None,
-            &root_tmp,
-        )
-        .unwrap();
+        let found_via_link =
+            find_runfiles_root_with_env(&link_path, s2_rel, None, None, &root_tmp).unwrap();
         assert_eq!(found_via_link, rf_dir);
     }
 
