@@ -33,6 +33,11 @@ _PYTHON_WHEELMAKER_SUFFIX = "tools/wheelmaker"
 _PYTHON_ZIP_MAIN_MAKER_SUFFIX = "tools/zipapp/zip_main_maker_.py"
 _PYTHON_ZIPPER_SUFFIX = "tools/zipapp/zipper_.py"
 _NEED_SHRUBBERY_FLAG = str(Label("//python/private/toolchains:need_shrubbery"))
+_BOOTSTRAP_IMPL_FLAG = str(Label("//python/config_settings:bootstrap_impl"))
+_BUILD_PYTHON_ZIP_FLAG = str(Label("//python/config_settings:build_python_zip"))
+_NATIVE_EMBEDDER_SUFFIX = (
+    "crates/stage1_native_bootstrap/stage1_native_bootstrap_embedder"
+)
 
 def _endswith_exe(suffix):
     return matching.custom(
@@ -174,6 +179,61 @@ def _test_py_wheel_flag_disabled_uses_python_wheelmaker_impl(env, target):
     action.argv().contains_predicate(_endswith_exe(_PYTHON_WHEELMAKER_SUFFIX))
 
 _tests.append(_test_py_wheel_flag_disabled_uses_python_wheelmaker)
+
+def _define_native_bootstrap_subject(name):
+    rt_util.helper_target(
+        py_binary,
+        name = name + "_subject",
+        srcs = ["main.py"],
+        main = "main.py",
+    )
+
+def _test_native_bootstrap_uses_toolchain_shrubbery(name):
+    _define_native_bootstrap_subject(name)
+    analysis_test(
+        name = name,
+        impl = _test_native_bootstrap_uses_toolchain_shrubbery_impl,
+        target = name + "_subject",
+        config_settings = {
+            _BOOTSTRAP_IMPL_FLAG: "native",
+            _BUILD_PYTHON_ZIP_FLAG: False,
+            _NEED_SHRUBBERY_FLAG: "yes",
+        },
+        attr_values = {"target_compatible_with": _ZIPAPP_COMPATIBLE_WITH},
+    )
+
+def _test_native_bootstrap_uses_toolchain_shrubbery_impl(env, target):
+    action = env.expect.that_target(target).action_named(
+        "PyEmbedNativeBootstrap",
+    )
+    action.argv().contains_predicate(_endswith_exe(_SHRUBBERY_SUFFIX))
+    action.argv().contains("native_bootstrap_embedder")
+
+_tests.append(_test_native_bootstrap_uses_toolchain_shrubbery)
+
+def _test_native_bootstrap_flag_disabled_uses_fallback_embedder(name):
+    _define_native_bootstrap_subject(name)
+    analysis_test(
+        name = name,
+        impl = _test_native_bootstrap_flag_disabled_uses_fallback_embedder_impl,
+        target = name + "_subject",
+        config_settings = {
+            _BOOTSTRAP_IMPL_FLAG: "native",
+            _BUILD_PYTHON_ZIP_FLAG: False,
+            _NEED_SHRUBBERY_FLAG: "no",
+        },
+        attr_values = {"target_compatible_with": _ZIPAPP_COMPATIBLE_WITH},
+    )
+
+def _test_native_bootstrap_flag_disabled_uses_fallback_embedder_impl(
+        env,
+        target):
+    action = env.expect.that_target(target).action_named(
+        "PyEmbedNativeBootstrap",
+    )
+    action.argv().contains_predicate(_endswith_exe(_NATIVE_EMBEDDER_SUFFIX))
+
+_tests.append(_test_native_bootstrap_flag_disabled_uses_fallback_embedder)
 
 def _test_prebuilt_file_toolchain_target(name):
     rt_util.helper_target(

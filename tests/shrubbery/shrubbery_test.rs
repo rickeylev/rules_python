@@ -103,6 +103,38 @@ fn test_subcommand_forwarding() {
         ExitCode::SUCCESS
     );
     assert!(out_whl.exists());
+
+    let native_tpl = dir.join("native_tpl.bin");
+    let native_out = dir.join("native_out.bin");
+    let mut tpl_bytes = vec![0x7f, b'E', b'L', b'F'];
+    tpl_bytes.resize(64, 0);
+    let magic_start = tpl_bytes.len();
+    tpl_bytes.resize(
+        magic_start + stage1_native_bootstrap_lib::CFG_BUFFER_SIZE,
+        0,
+    );
+    tpl_bytes[magic_start..magic_start + stage1_native_bootstrap_lib::CFG_MAGIC_LEN]
+        .copy_from_slice(&stage1_native_bootstrap_lib::CFG_MAGIC);
+    fs::write(&native_tpl, &tpl_bytes).expect("native_tpl should be writable");
+
+    assert_eq!(
+        run_cli([
+            "shrubbery",
+            "native_bootstrap_embedder",
+            "--template",
+            native_tpl
+                .to_str()
+                .expect("native_tpl path should be UTF-8"),
+            "--output",
+            native_out
+                .to_str()
+                .expect("native_out path should be UTF-8"),
+            "--stage2_bootstrap",
+            "_main/pkg/stage2.py",
+        ]),
+        ExitCode::SUCCESS
+    );
+    assert!(native_out.exists());
 }
 
 #[test]

@@ -22,9 +22,9 @@ rust_binary(
 rust_binary(
     name = "stage1_native_bootstrap_embedder",
     srcs = ["src/embedder_main.rs"],
-    edition = "2021",
+    edition = "2024",
     visibility = ["//visibility:public"],
-    deps = [":stage1_native_bootstrap_lib"],
+    deps = ["//crates/native_bootstrap_embedder:native_bootstrap_embedder_lib"],
 )
 
 distribution_filegroup(

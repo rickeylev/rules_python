@@ -86,13 +86,6 @@ fn main() {
     let cfg = match load_embedded_config(argv0) {
         Ok(c) => c,
         Err(msg) => {
-            if args.get(1).map(|s| s.as_str()) == Some("--template") {
-                if let Err(err) = stage1_native_bootstrap_lib::run_embedder(args) {
-                    eprintln!("stage1_native_bootstrap: {err}");
-                    process::exit(1);
-                }
-                return;
-            }
             eprintln!("stage1_native_bootstrap: {msg}");
             process::exit(1);
         }

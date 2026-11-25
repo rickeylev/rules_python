@@ -1,0 +1,22 @@
+load("@rules_rust//rust:defs.bzl", "rust_test")
+
+package(default_visibility = ["//:__subpackages__"])
+
+licenses(["notice"])
+
+rust_test(
+    name = "native_bootstrap_embedder_test",
+    size = "small",
+    srcs = ["native_bootstrap_embedder_test.rs"],
+    data = [
+        "//crates/shrubbery",
+    ],
+    edition = "2024",
+    env = {
+        "SHRUBBERY_BIN": "$(rootpath //crates/shrubbery)",
+    },
+    deps = [
+        "//crates/native_bootstrap_embedder:native_bootstrap_embedder_lib",
+        "//crates/stage1_native_bootstrap:stage1_native_bootstrap_lib",
+    ],
+)

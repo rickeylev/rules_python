@@ -17,5 +17,6 @@ rust_test(
     },
     deps = [
         "//crates/shrubbery:shrubbery_lib",
+        "//crates/stage1_native_bootstrap:stage1_native_bootstrap_lib",
     ],
 )

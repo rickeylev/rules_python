@@ -28,3 +28,27 @@
       with `bazel build //docs:docs`.
 - [x] Commit deliverables and push to `origin`
       (`HEAD:add_native_bootstrap_method`).
+- [ ] **[IMPORTANT]** Add macOS Apple Silicon (`arm64`) Mach-O ad-hoc re-signing
+      (or `codesign -s -` / `apple-codesign`) to `lib.rs` for
+      `--bootstrap_impl=native`: on Apple Silicon, macOS `amfi` kills
+      (`SIGKILL`) Mach-O binaries whose mapped `.data` / `__TEXT` bytes are
+      modified after linking without updating `LC_CODE_SIGNATURE`.
+- [ ] Shrink `stage1_native_bootstrap_template` binary size by switching Linux
+      builds to `musl` static linking, stripping symbols, and enabling
+      `opt-level = "z"` and `panic = "abort"` to cut per-`py_binary` disk size
+      from megabytes down to tens/hundreds of kilobytes.
+- [ ] Place `G_BOOTSTRAP_CFG` in a read-only section (`.rodata` /
+      `__TEXT,__const`), patched on disk and read via volatile pointer at
+      runtime, to avoid dirtying a writable `.data` page per process.
+- [ ] On Windows, pass the resolved `GetFinalPathNameByHandleW` interpreter as
+      `lpApplicationName` while setting `__PYVENV_LAUNCHER__` and `argv[0]` to
+      the venv interpreter path, and attach a Job Object
+      (`JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE`) for DLL loading and orphan child
+      cleanup.
+- [x] Fold `native_bootstrap_embedder` into `shrubbery` (`exec_compatible_with`)
+      and dispatch `PyEmbedNativeBootstrap` through `get_shrubbery_tool`.
+- [ ] Wire prebuilt `stage1_native_bootstrap_template` binaries into a
+      `target_compatible_with` toolchain (`dev/release_artifacts` and
+      `@rules_python_tools`) so any exec platform can cross-build launchers for
+      any target platform without `rules_rust` or manually setting
+      `--//python/private:native_bootstrap_template`.

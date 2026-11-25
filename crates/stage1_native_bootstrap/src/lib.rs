@@ -1,11 +1,11 @@
-//! Library for the stage-1 native bootstrap template and config embedder.
+//! Library for the stage-1 native bootstrap template and wire format constants.
 
 // Errors must be returned, not panicked; see the `rust-lint` config in .bazelrc.
 #![deny(clippy::expect_used, clippy::unwrap_used)]
 
 use std::env;
 use std::fs::{self, File};
-use std::io::{self, Read, Seek, SeekFrom, Write};
+use std::io::{self, Read, Seek, SeekFrom};
 use std::path::Path;
 use std::process::{Command, Stdio};
 use std::sync::atomic::{AtomicI32, AtomicU64, Ordering};
@@ -33,90 +33,6 @@ pub struct BootstrapConfig {
     pub target: String,
     pub interpreter_args: Vec<String>,
     pub runtime_venv_symlinks: Vec<String>,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct EmbedOptions {
-    pub template_path: String,
-    pub output_path: String,
-    pub stage2_bootstrap: String,
-    pub python_binary: String,
-    pub python_binary_actual: String,
-    pub is_zipfile: String,
-    pub recreate_venv_at_runtime: String,
-    pub resolve_python_binary_at_runtime: String,
-    pub venv_rel_site_packages: String,
-    pub workspace_name: String,
-    pub target: String,
-    pub use_eof_trailer: bool,
-    pub interpreter_args: Vec<String>,
-    pub runtime_venv_symlinks: Vec<String>,
-}
-
-impl Default for EmbedOptions {
-    fn default() -> Self {
-        Self {
-            template_path: String::new(),
-            output_path: String::new(),
-            stage2_bootstrap: String::new(),
-            python_binary: String::new(),
-            python_binary_actual: String::new(),
-            is_zipfile: "0".to_string(),
-            recreate_venv_at_runtime: "0".to_string(),
-            resolve_python_binary_at_runtime: "0".to_string(),
-            venv_rel_site_packages: String::new(),
-            workspace_name: String::new(),
-            target: String::new(),
-            use_eof_trailer: false,
-            interpreter_args: Vec::new(),
-            runtime_venv_symlinks: Vec::new(),
-        }
-    }
-}
-
-fn push_kv(buf: &mut Vec<u8>, key: &str, val: &str) {
-    buf.extend_from_slice(key.as_bytes());
-    buf.push(b'=');
-    buf.extend_from_slice(val.as_bytes());
-    buf.push(0);
-}
-
-/// Serializes `EmbedOptions` into a NUL-delimited `key=value` byte payload.
-pub fn serialize_cfg_payload(opts: &EmbedOptions) -> Vec<u8> {
-    let mut payload = Vec::new();
-    push_kv(&mut payload, "stage2_bootstrap", &opts.stage2_bootstrap);
-    push_kv(&mut payload, "python_binary", &opts.python_binary);
-    push_kv(
-        &mut payload,
-        "python_binary_actual",
-        &opts.python_binary_actual,
-    );
-    push_kv(&mut payload, "is_zipfile", &opts.is_zipfile);
-    push_kv(
-        &mut payload,
-        "recreate_venv_at_runtime",
-        &opts.recreate_venv_at_runtime,
-    );
-    push_kv(
-        &mut payload,
-        "resolve_python_binary_at_runtime",
-        &opts.resolve_python_binary_at_runtime,
-    );
-    push_kv(
-        &mut payload,
-        "venv_rel_site_packages",
-        &opts.venv_rel_site_packages,
-    );
-    push_kv(&mut payload, "workspace_name", &opts.workspace_name);
-    push_kv(&mut payload, "target", &opts.target);
-    for arg in &opts.interpreter_args {
-        push_kv(&mut payload, "interpreter_arg", arg);
-    }
-    for sym in &opts.runtime_venv_symlinks {
-        push_kv(&mut payload, "runtime_venv_symlink", sym);
-    }
-    payload.push(0);
-    payload
 }
 
 /// Parses a NUL-delimited `key=value` byte slice into `BootstrapConfig`.
@@ -160,74 +76,6 @@ pub fn parse_cfg_payload(payload: &[u8], cfg: &mut BootstrapConfig) {
     }
 }
 
-/// Expands `@param_file` arguments into a flat argument vector.
-fn expand_param_files(args: &[String]) -> Result<Vec<String>, String> {
-    let mut expanded = Vec::with_capacity(args.len());
-    if let Some(first) = args.first() {
-        expanded.push(first.clone());
-    }
-    let mut i = 1;
-    while i < args.len() {
-        let arg = &args[i];
-        if arg.starts_with("--") {
-            expanded.push(arg.clone());
-            if i + 1 < args.len() {
-                expanded.push(args[i + 1].clone());
-                i += 2;
-            } else {
-                i += 1;
-            }
-        } else if let Some(param_path) = arg.strip_prefix('@') {
-            let content = fs::read_to_string(param_path)
-                .map_err(|e| format!("failed to read param file {param_path}: {e}"))?;
-            for line in content.lines() {
-                expanded.push(line.to_string());
-            }
-            i += 1;
-        } else {
-            expanded.push(arg.clone());
-            i += 1;
-        }
-    }
-    Ok(expanded)
-}
-
-/// Parses CLI arguments for `stage1_native_bootstrap_embedder`.
-pub fn parse_embed_args(args: &[String]) -> Result<EmbedOptions, String> {
-    let expanded = expand_param_files(args)?;
-    let mut opts = EmbedOptions::default();
-    let mut i = 1;
-    while i < expanded.len() {
-        let flag = expanded[i].as_str();
-        if i + 1 >= expanded.len() {
-            return Err(format!("unknown or incomplete arg: {flag}"));
-        }
-        let val = expanded[i + 1].clone();
-        i += 2;
-        match flag {
-            "--template" => opts.template_path = val,
-            "--output" => opts.output_path = val,
-            "--stage2_bootstrap" => opts.stage2_bootstrap = val,
-            "--python_binary" => opts.python_binary = val,
-            "--python_binary_actual" => opts.python_binary_actual = val,
-            "--is_zipfile" => opts.is_zipfile = val,
-            "--recreate_venv_at_runtime" => opts.recreate_venv_at_runtime = val,
-            "--resolve_python_binary_at_runtime" => opts.resolve_python_binary_at_runtime = val,
-            "--venv_rel_site_packages" => opts.venv_rel_site_packages = val,
-            "--workspace_name" => opts.workspace_name = val,
-            "--target" => opts.target = val,
-            "--eof_trailer" => opts.use_eof_trailer = val == "1" || val == "true",
-            "--interpreter_arg" => opts.interpreter_args.push(val),
-            "--runtime_venv_symlink" => opts.runtime_venv_symlinks.push(val),
-            _ => return Err(format!("unknown or incomplete arg: {flag}")),
-        }
-    }
-    if opts.template_path.is_empty() || opts.output_path.is_empty() {
-        return Err("--template and --output are required".to_string());
-    }
-    Ok(opts)
-}
-
 pub const CFG_FOOTER_ZERO_LEN: usize = 16;
 
 /// Returns whether `tpl_buf` contains the 32-byte `CFG_MAGIC` sentinel.
@@ -248,99 +96,6 @@ pub fn find_magic_offset(tpl_buf: &[u8]) -> Option<usize> {
             && tpl_buf[i + CFG_BUFFER_SIZE - CFG_FOOTER_ZERO_LEN..i + CFG_BUFFER_SIZE]
                 == [0u8; CFG_FOOTER_ZERO_LEN]
     })
-}
-
-/// Embeds `opts` into `tpl_buf`.
-///
-/// - On Unix (default), patches the 4 KiB `.data` sentinel buffer in-place and
-///   returns an error if the serialized payload exceeds `4,044` bytes.
-/// - On Windows (`opts.use_eof_trailer` or a PE `MZ` binary), always appends
-///   the variable-sized EOF trailer (`[payload][payload_len: u64_le][EOF_TRAILER_MAGIC]`).
-pub fn embed_config_into_binary(tpl_buf: &[u8], opts: &EmbedOptions) -> Result<Vec<u8>, String> {
-    let payload = serialize_cfg_payload(opts);
-    let use_eof = opts.use_eof_trailer || tpl_buf.starts_with(b"MZ");
-
-    if use_eof {
-        if !has_magic_sentinel(tpl_buf) {
-            return Err(
-                "template binary is missing native bootstrap magic sentinel \
-                 (\\x89RPY_NATIVE_BOOTSTRAP_CFG_V1_00\\0); ensure bootstrap_template \
-                 is a native bootstrap binary when --bootstrap_impl=native"
-                    .to_string(),
-            );
-        }
-        let mut out = Vec::with_capacity(tpl_buf.len() + payload.len() + EOF_TRAILER_LEN);
-        out.extend_from_slice(tpl_buf);
-        out.extend_from_slice(&payload);
-        out.extend_from_slice(&(payload.len() as u64).to_le_bytes());
-        out.extend_from_slice(&EOF_TRAILER_MAGIC);
-        return Ok(out);
-    }
-
-    let Some(magic_offset) = find_magic_offset(tpl_buf) else {
-        return Err(
-            "template binary is missing native bootstrap magic sentinel \
-             (\\x89RPY_NATIVE_BOOTSTRAP_CFG_V1_00\\0); ensure bootstrap_template \
-             is a native bootstrap binary when --bootstrap_impl=native"
-                .to_string(),
-        );
-    };
-
-    let max_inplace_len = CFG_BUFFER_SIZE - CFG_HEADER_LEN - CFG_FOOTER_ZERO_LEN;
-    if payload.len() > max_inplace_len {
-        return Err(format!(
-            "bootstrap config payload ({} bytes) exceeds 4 KiB in-place buffer capacity ({max_inplace_len} bytes)",
-            payload.len()
-        ));
-    }
-
-    let mut out = tpl_buf.to_vec();
-    let cfg_region = &mut out[magic_offset..magic_offset + CFG_BUFFER_SIZE];
-    cfg_region[CFG_MAGIC_LEN..].fill(0);
-    let plen = (payload.len() as u32).to_le_bytes();
-    cfg_region[32..36].copy_from_slice(&plen);
-    cfg_region[CFG_HEADER_LEN..CFG_HEADER_LEN + payload.len()].copy_from_slice(&payload);
-    Ok(out)
-}
-
-fn set_executable_permissions(path: &Path) -> io::Result<()> {
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        let perms = fs::Permissions::from_mode(0o755);
-        fs::set_permissions(path, perms)?;
-    }
-    #[cfg(not(unix))]
-    {
-        let _ = path;
-    }
-    Ok(())
-}
-
-/// Reads `opts.template_path`, embeds `opts`, and writes the executable to
-/// `opts.output_path`.
-pub fn embed_bootstrap_file(opts: &EmbedOptions) -> io::Result<()> {
-    let tpl_buf = fs::read(&opts.template_path)?;
-    let out_buf = embed_config_into_binary(&tpl_buf, opts)
-        .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
-    let output_path = Path::new(&opts.output_path);
-    if let Some(parent) = output_path.parent() {
-        if !parent.as_os_str().is_empty() {
-            fs::create_dir_all(parent)?;
-        }
-    }
-    let mut f = File::create(output_path)?;
-    f.write_all(&out_buf)?;
-    f.flush()?;
-    drop(f);
-    set_executable_permissions(output_path)?;
-    Ok(())
-}
-
-/// Entrypoint helper for `stage1_native_bootstrap_embedder`.
-pub fn run_embedder(args: Vec<String>) -> Result<(), String> {
-    let opts = parse_embed_args(&args)?;
-    embed_bootstrap_file(&opts).map_err(|e| format!("{}: {}", opts.output_path, e))
 }
 
 /// Parses the EOF trailer (`[payload][payload_len: u64_le][EOF_TRAILER_MAGIC]`)
