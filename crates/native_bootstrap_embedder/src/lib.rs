@@ -1,5 +1,5 @@
-//! Library for embedding target-specific bootstrap metadata into a prebuilt native stage-1
-//! bootstrap template binary.
+//! Library for embedding target-specific bootstrap metadata into a native stage-1 bootstrap
+//! template binary.
 
 // Errors must be returned, not panicked; see the `rust-lint` config in .bazelrc.
 #![deny(clippy::expect_used, clippy::unwrap_used)]
@@ -19,22 +19,21 @@ use stage1_native_bootstrap_lib::{
 
 mod flags {
     // keep-sorted start case=no
-    pub const EOF_TRAILER: &str = "eof_trailer";
     pub const HELP: &str = "help";
     pub const HELP_SHORT: char = 'h';
-    pub const INTERPRETER_ARG: &str = "interpreter_arg";
-    pub const IS_ZIPFILE: &str = "is_zipfile";
+    pub const INTERPRETER_ARG: &str = "interpreter-arg";
+    pub const IS_ZIPFILE: &str = "is-zipfile";
     pub const OUTPUT: &str = "output";
-    pub const PYTHON_BINARY: &str = "python_binary";
-    pub const PYTHON_BINARY_ACTUAL: &str = "python_binary_actual";
-    pub const RECREATE_VENV_AT_RUNTIME: &str = "recreate_venv_at_runtime";
-    pub const RESOLVE_PYTHON_BINARY_AT_RUNTIME: &str = "resolve_python_binary_at_runtime";
-    pub const RUNTIME_VENV_SYMLINK: &str = "runtime_venv_symlink";
-    pub const STAGE2_BOOTSTRAP: &str = "stage2_bootstrap";
+    pub const PYTHON_BINARY: &str = "python-binary";
+    pub const PYTHON_BINARY_ACTUAL: &str = "python-binary-actual";
+    pub const RECREATE_VENV_AT_RUNTIME: &str = "recreate-venv-at-runtime";
+    pub const RESOLVE_PYTHON_BINARY_AT_RUNTIME: &str = "resolve-python-binary-at-runtime";
+    pub const RUNTIME_VENV_SYMLINK: &str = "runtime-venv-symlink";
+    pub const STAGE2_BOOTSTRAP_PATH: &str = "stage2-bootstrap-path";
     pub const TARGET: &str = "target";
     pub const TEMPLATE: &str = "template";
-    pub const VENV_REL_SITE_PACKAGES: &str = "venv_rel_site_packages";
-    pub const WORKSPACE_NAME: &str = "workspace_name";
+    pub const VENV_REL_SITE_PACKAGES: &str = "venv-rel-site-packages";
+    pub const WORKSPACE_NAME: &str = "workspace-name";
     // keep-sorted end
 }
 
@@ -62,20 +61,20 @@ Embed target-specific Python bootstrap configuration into a native stage-1
 bootstrap template binary.
 
 Options:
-  --template <PATH>                            Input native bootstrap template binary
-  --output <PATH>                              Output executable binary path
-  --stage2_bootstrap <RUNFILES_PATH>           Runfiles-relative stage-2 Python script path
-  --python_binary <PATH>                       Python interpreter path (runfiles-relative, PATH, or absolute)
-  --python_binary_actual <PATH>                Underlying interpreter path when recreating venv at runtime
-  --is_zipfile <0|1>                           Whether the target is a self-extracting zip (default: 0)
-  --recreate_venv_at_runtime <0|1>             Whether stage-1 recreates the venv at runtime (default: 0)
-  --resolve_python_binary_at_runtime <0|1>     Whether stage-1 resolves python_binary_actual at runtime (default: 0)
-  --venv_rel_site_packages <REL_PATH>          Venv-relative site-packages directory path
-  --workspace_name <NAME>                      Bazel workspace name
+  --template <PATH>                            Input native bootstrap template binary (CWD-relative or absolute)
+  --output <PATH>                              Output executable binary path (CWD-relative or absolute)
+  --stage2-bootstrap-path <RF_ROOT_REL_PATH>   Runfiles-root-relative path to the stage-2 Python script (e.g. _main/pkg/app_stage2.py)
+  --python-binary <PATH>                       Python interpreter path: runfiles-root-relative (typically venv bin/python3), absolute, or bare PATH name
+  --python-binary-actual <PATH>                Underlying interpreter target symlinked by --python-binary for zip/runtime-venv: runfiles-root-relative, absolute, or bare PATH name
+  --is-zipfile <0|1>                           Whether the target is a self-extracting zip (default: 0)
+  --recreate-venv-at-runtime <0|1>             Whether stage-1 recreates the venv at runtime (default: 0)
+  --resolve-python-binary-at-runtime <0|1>     Whether stage-1 resolves --python-binary-actual at runtime (default: 0)
+  --venv-rel-site-packages <VENV_REL_PATH>     Venv-root-relative path to site-packages (e.g. lib/python3.12/site-packages)
+  --workspace-name <NAME>                      Bazel workspace name
   --target <LABEL>                             Bazel target label
-  --eof_trailer <0|1>                          Append variable-sized EOF trailer instead of patching .data (default: 0)
-  --interpreter_arg <ARG>                      Extra Python interpreter flag (repeatable)
-  --runtime_venv_symlink <VENV_PATH|RF_PATH>   Runtime venv symlink mapping (repeatable)
+  --interpreter-arg <ARG>                      Argument from the target's interpreter_args attr passed to Python before stage-2 (repeatable)
+  --runtime-venv-symlink <VENV_REL|RF_ROOT_REL>
+                                               Runtime venv symlink mapping (repeatable): <venv-root-relative>|<runfiles-root-relative>
   @<FLAGFILE>                                  Read newline-delimited arguments from <FLAGFILE>
   -h, --help                                   Print this help";
 
@@ -97,7 +96,7 @@ pub fn serialize_cfg_payload(options: &Options) -> Vec<u8> {
     push_kv(
         &mut payload,
         payload_keys::STAGE2_BOOTSTRAP,
-        &options.stage2_bootstrap,
+        &options.stage2_bootstrap_path,
     );
     push_kv(
         &mut payload,
@@ -151,20 +150,18 @@ pub fn serialize_cfg_payload(options: &Options) -> Vec<u8> {
 
 /// Embeds `options` into the raw template binary bytes `tpl_buf`.
 ///
-/// * On Unix templates (default), patches the 4 KiB `.data` sentinel buffer in-place.
-/// * On Windows PE (`MZ`) templates or when `options.use_eof_trailer` is true, appends the
-///   variable-sized EOF trailer (`[payload][payload_len: u64_le][EOF_TRAILER_MAGIC]`).
+/// * On Unix templates (ELF/Mach-O), patches the 4 KiB `.data` sentinel buffer in-place.
+/// * On Windows PE (`MZ`) templates, appends the variable-sized EOF trailer
+///   (`[payload][payload_len: u64_le][EOF_TRAILER_MAGIC]`) so arbitrarily large runtime venv
+///   symlink lists fit without resizing PE sections.
 ///
 /// # Errors
 ///
 /// Returns an error if `tpl_buf` does not contain the `CFG_MAGIC` sentinel or if the serialized
-/// payload exceeds the 4 KiB in-place buffer capacity (`4,044` bytes) when not using the EOF
-/// trailer.
+/// payload exceeds the 4 KiB in-place buffer capacity (`4,044` bytes) on non-PE templates.
 pub fn embed_config_into_binary(tpl_buf: &[u8], options: &Options) -> Result<Vec<u8>> {
     let payload = serialize_cfg_payload(options);
-    let use_eof = options.use_eof_trailer || tpl_buf.starts_with(b"MZ");
-
-    if use_eof {
+    if tpl_buf.starts_with(b"MZ") {
         if !has_magic_sentinel(tpl_buf) {
             bail!(
                 "template binary is missing native bootstrap magic sentinel \
@@ -264,15 +261,17 @@ pub struct RuntimeVenvSymlink {
 /// Parsed command-line options for `native_bootstrap_embedder`.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Options {
-    /// Path to the input native stage-1 bootstrap template binary.
+    /// Path to the input native stage-1 bootstrap template binary (CWD-relative or absolute).
     pub template: PathBuf,
-    /// Path to write the embedded executable output binary.
+    /// Path to write the embedded executable output binary (CWD-relative or absolute).
     pub output: PathBuf,
-    /// Runfiles-relative path to the stage-2 Python bootstrap script.
-    pub stage2_bootstrap: String,
-    /// Runfiles-relative, `PATH`, or absolute path to the Python interpreter.
+    /// Runfiles-root-relative path to the stage-2 Python bootstrap script.
+    pub stage2_bootstrap_path: String,
+    /// Path to the Python interpreter to invoke: runfiles-root-relative (typically the venv's
+    /// `bin/python3`), absolute, or bare `PATH` executable name.
     pub python_binary: String,
-    /// Underlying interpreter path used when recreating a virtualenv at runtime.
+    /// Underlying interpreter path that `python_binary` symlinks to for zip or runtime-venv
+    /// execution: runfiles-root-relative, absolute, or bare `PATH` executable name.
     pub python_binary_actual: String,
     /// Whether the generated binary is a self-extracting zip archive.
     pub is_zipfile: bool,
@@ -280,17 +279,16 @@ pub struct Options {
     pub recreate_venv_at_runtime: bool,
     /// Whether stage-1 resolves `python_binary_actual` at runtime.
     pub resolve_python_binary_at_runtime: bool,
-    /// Virtualenv-relative `site-packages` directory path.
+    /// Venv-root-relative `site-packages` directory path (e.g. `lib/python3.12/site-packages`).
     pub venv_rel_site_packages: String,
     /// Bazel workspace name.
     pub workspace_name: String,
     /// Bazel target label string.
     pub target: String,
-    /// Force appending a variable-sized EOF trailer instead of patching the 4 KiB `.data` buffer.
-    pub use_eof_trailer: bool,
-    /// Extra interpreter flags passed before the stage-2 script.
+    /// Arguments from the target's `interpreter_args` attribute passed to Python before stage-2.
     pub interpreter_args: Vec<String>,
-    /// Explicit virtualenv symlinks (`<venv_path>|<link_to_path>`) created at runtime.
+    /// Explicit virtualenv symlinks (`<venv-root-relative>|<runfiles-root-relative>`) created at
+    /// runtime.
     pub runtime_venv_symlinks: Vec<RuntimeVenvSymlink>,
 }
 
@@ -355,8 +353,9 @@ fn apply_flag(parser: &mut lexopt::Parser, flag: &str, state: &mut ParseState) -
         flags::OUTPUT => {
             state.output = Some(PathBuf::from(parser.value()?));
         }
-        flags::STAGE2_BOOTSTRAP => {
-            state.options.stage2_bootstrap = parse_no_nul_string(parser, flags::STAGE2_BOOTSTRAP)?;
+        flags::STAGE2_BOOTSTRAP_PATH => {
+            state.options.stage2_bootstrap_path =
+                parse_no_nul_string(parser, flags::STAGE2_BOOTSTRAP_PATH)?;
         }
         flags::PYTHON_BINARY => {
             state.options.python_binary = parse_no_nul_string(parser, flags::PYTHON_BINARY)?;
@@ -385,9 +384,6 @@ fn apply_flag(parser: &mut lexopt::Parser, flag: &str, state: &mut ParseState) -
         }
         flags::TARGET => {
             state.options.target = parse_no_nul_string(parser, flags::TARGET)?;
-        }
-        flags::EOF_TRAILER => {
-            state.options.use_eof_trailer = parse_bool_flag(parser, flags::EOF_TRAILER)?;
         }
         flags::INTERPRETER_ARG => {
             state

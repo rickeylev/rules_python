@@ -47,7 +47,7 @@ fn test_serialize_and_parse_cfg_payload_roundtrip() {
     let options = Options {
         template: PathBuf::from("tpl"),
         output: PathBuf::from("out"),
-        stage2_bootstrap: "_main/pkg/stage2.py".to_string(),
+        stage2_bootstrap_path: "_main/pkg/stage2.py".to_string(),
         python_binary: "_main/pkg/.venv/bin/python3".to_string(),
         python_binary_actual: "python3_x86_64/bin/python3".to_string(),
         is_zipfile: true,
@@ -56,7 +56,6 @@ fn test_serialize_and_parse_cfg_payload_roundtrip() {
         venv_rel_site_packages: "lib/python3.11/site-packages".to_string(),
         workspace_name: "_main".to_string(),
         target: "//pkg:bin".to_string(),
-        use_eof_trailer: false,
         interpreter_args: vec!["-B".to_string(), "-Xutf8".to_string()],
         runtime_venv_symlinks: vec![
             RuntimeVenvSymlink {
@@ -100,7 +99,7 @@ fn test_serialize_and_parse_cfg_payload_roundtrip() {
 fn test_embed_config_into_binary_inplace_preserves_size_and_rejects_overflow() {
     let tpl = make_mock_template_binary();
     let options = Options {
-        stage2_bootstrap: "_main/app_stage2.py".to_string(),
+        stage2_bootstrap_path: "_main/app_stage2.py".to_string(),
         python_binary: "_main/.app.venv/bin/python3".to_string(),
         python_binary_actual: "py_toolchain/bin/python3".to_string(),
         workspace_name: "_main".to_string(),
@@ -141,10 +140,9 @@ fn test_embed_config_into_binary_windows_eof_trailer_roundtrip() {
     let long_arg = "X".repeat(2000);
     let many_args: Vec<String> = (0..40).map(|i| format!("-D{i}={long_arg}")).collect();
     let options = Options {
-        stage2_bootstrap: "_main/windows_stage2.py".to_string(),
+        stage2_bootstrap_path: "_main/windows_stage2.py".to_string(),
         python_binary: "_main/.windows.venv/Scripts/python.exe".to_string(),
         target: "//:windows_app".to_string(),
-        use_eof_trailer: true,
         interpreter_args: many_args.clone(),
         ..Options::default()
     };
@@ -180,7 +178,7 @@ fn test_embed_bootstrap_file_and_missing_magic_error() {
     let options = Options {
         template: tpl_path,
         output: out_path.clone(),
-        stage2_bootstrap: "_main/s2.py".to_string(),
+        stage2_bootstrap_path: "_main/s2.py".to_string(),
         python_binary: "_main/py3".to_string(),
         interpreter_args: vec!["-a".to_string(), "-b".to_string()],
         ..Options::default()
@@ -226,24 +224,29 @@ fn test_parse_args_flagfile_canonical_labels_and_equals_syntax() {
     let param_file = tmp.path().join("args.params");
     fs::write(
         &param_file,
-        "--template\nin.bin\r\n--output=out.bin\r\n--eof_trailer\n1\n--stage2_bootstrap\ns2.py\n--target\n@@//pkg:bin\n--runtime_venv_symlink\nLib/site-packages/pkg|+pypi+pkg/site-packages/pkg\n",
+        "--template\nin.bin\r\n--output=out.bin\r\n--stage2-bootstrap-path\ns2.py\n--python-binary\n_main/.venv/bin/python3\n--python-binary-actual\npy_tc/bin/python3\n--recreate-venv-at-runtime\n1\n--resolve-python-binary-at-runtime=0\n--venv-rel-site-packages\nlib/python3.12/site-packages\n--workspace-name=_main\n--target\n@@//pkg:bin\n--runtime-venv-symlink\nLib/site-packages/pkg|+pypi+pkg/site-packages/pkg\n",
     )
     .expect("param file should be writable");
 
     let opts = unwrap_run_options(
         parse_args([
             format!("@{}", param_file.display()),
-            "--is_zipfile=true".to_string(),
-            "--interpreter_arg".to_string(),
+            "--is-zipfile=true".to_string(),
+            "--interpreter-arg".to_string(),
             "@literal_arg".to_string(),
         ])
         .expect("param file and CLI args should parse"),
     );
     assert_eq!(opts.template, PathBuf::from("in.bin"));
     assert_eq!(opts.output, PathBuf::from("out.bin"));
-    assert!(opts.use_eof_trailer);
     assert!(opts.is_zipfile);
-    assert_eq!(opts.stage2_bootstrap, "s2.py");
+    assert!(opts.recreate_venv_at_runtime);
+    assert!(!opts.resolve_python_binary_at_runtime);
+    assert_eq!(opts.stage2_bootstrap_path, "s2.py");
+    assert_eq!(opts.python_binary, "_main/.venv/bin/python3");
+    assert_eq!(opts.python_binary_actual, "py_tc/bin/python3");
+    assert_eq!(opts.venv_rel_site_packages, "lib/python3.12/site-packages");
+    assert_eq!(opts.workspace_name, "_main");
     assert_eq!(opts.target, "@@//pkg:bin");
     assert_eq!(opts.interpreter_args, vec!["@literal_arg".to_string()]);
     assert_eq!(
@@ -285,16 +288,16 @@ fn test_help_and_validation_errors() {
     assert!(parse_args(["--template=a", "--output=b", "--unknown=1"]).is_err());
     assert!(parse_args(["--template=a", "--output=b", "extra_positional"]).is_err());
     assert!(parse_args(["@"]).is_err());
-    assert!(parse_args(["--template=a", "--output=b", "--is_zipfile=maybe"]).is_err());
+    assert!(parse_args(["--template=a", "--output=b", "--is-zipfile=maybe"]).is_err());
     assert!(
         parse_args([
             "--template=a",
             "--output=b",
-            "--runtime_venv_symlink=no_pipe"
+            "--runtime-venv-symlink=no_pipe"
         ])
         .is_err()
     );
-    assert!(parse_args(["--template=a", "--output=b", "--runtime_venv_symlink=|rhs"]).is_err());
+    assert!(parse_args(["--template=a", "--output=b", "--runtime-venv-symlink=|rhs"]).is_err());
     assert!(parse_args(["--template=a", "--output=b", "--target=bad\0nul"]).is_err());
 
     assert_eq!(run_cli::<_, &str>([]), ExitCode::FAILURE);
@@ -318,7 +321,7 @@ fn test_shrubbery_cli_subprocess_in_cwd() {
             "native_bootstrap_embedder",
             "--template=tpl.bin",
             "--output=out.bin",
-            "--stage2_bootstrap=_main/pkg/stage2.py",
+            "--stage2-bootstrap-path=_main/pkg/stage2.py",
             "--target",
             "@@//pkg:app",
         ])

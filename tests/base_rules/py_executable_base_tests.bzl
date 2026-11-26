@@ -141,9 +141,9 @@ def _test_bootstrap_native_impl(env, target):
     embed_action = subject.action_generating("{package}/{test_name}_subject")
     embed_action.mnemonic().equals("PyEmbedNativeBootstrap")
     embed_action.argv().contains_at_least([
-        "--is_zipfile",
+        "--is-zipfile",
         "0",
-        "--interpreter_arg",
+        "--interpreter-arg",
         "-Xutf8",
     ])
 
@@ -220,7 +220,7 @@ def _test_bootstrap_native_zip_impl(env, target):
     )
     prelude_action.mnemonic().equals("PyEmbedNativeBootstrap")
     prelude_action.argv().contains_at_least([
-        "--is_zipfile",
+        "--is-zipfile",
         "1",
     ])
 

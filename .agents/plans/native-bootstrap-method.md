@@ -96,10 +96,9 @@ Rust) per target.
      mistakenly provided under `--bootstrap_impl=native`).
    - On Unix, always patch the 4 KiB `.data` buffer in-place (failing at build
      time if the payload exceeds `4044` bytes).
-   - On Windows (`--eof_trailer 1` or PE `MZ` template binary), always append
-     the variable-sized EOF trailer
-     (`[payload][payload_len: u64_le][\0RPY_NATIVE_EOF_CFG_V1\0\0]`) and seek to
-     the end of the executable in $O(1)$ at runtime.
+   - On Windows (PE `MZ` template binary), always append the variable-sized EOF
+     trailer (`[payload][payload_len: u64_le][\0RPY_NATIVE_EOF_CFG_V1\0\0]`) and
+     seek to the end of the executable in $O(1)$ at runtime.
    - Support `@param_file` arguments (`args.use_param_file("@%s")`) in
      `PyEmbedNativeBootstrap` so large Windows `runtime_venv_symlinks` lists do
      not exceed OS command-line limits (`CreateProcessW` 32 KiB limit).

@@ -129,7 +129,7 @@ fn test_subcommand_forwarding() {
             native_out
                 .to_str()
                 .expect("native_out path should be UTF-8"),
-            "--stage2_bootstrap",
+            "--stage2-bootstrap-path",
             "_main/pkg/stage2.py",
         ]),
         ExitCode::SUCCESS

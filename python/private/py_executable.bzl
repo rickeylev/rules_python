@@ -1130,35 +1130,33 @@ def _create_stage1_bootstrap(
             args.set_param_file_format("multiline")
             args.add("--template", template)
             args.add("--output", output)
-            if is_windows_platform(ctx):
-                args.add("--eof_trailer", "1")
-            args.add("--stage2_bootstrap", subs["%stage2_bootstrap%"])
-            args.add("--python_binary", python_binary_path)
-            args.add("--python_binary_actual", python_binary_actual)
-            args.add("--is_zipfile", subs["%is_zipfile%"])
+            args.add("--stage2-bootstrap-path", subs["%stage2_bootstrap%"])
+            args.add("--python-binary", python_binary_path)
+            args.add("--python-binary-actual", python_binary_actual)
+            args.add("--is-zipfile", subs["%is_zipfile%"])
             args.add(
-                "--recreate_venv_at_runtime",
+                "--recreate-venv-at-runtime",
                 subs["%recreate_venv_at_runtime%"],
             )
             args.add(
-                "--resolve_python_binary_at_runtime",
+                "--resolve-python-binary-at-runtime",
                 resolve_python_binary_at_runtime,
             )
             args.add(
-                "--venv_rel_site_packages",
+                "--venv-rel-site-packages",
                 subs["%venv_rel_site_packages%"],
             )
-            args.add("--workspace_name", ctx.workspace_name)
+            args.add("--workspace-name", ctx.workspace_name)
             args.add("--target", str(ctx.label))
             args.add_all(
                 ctx.attr.interpreter_args,
-                before_each = "--interpreter_arg",
+                before_each = "--interpreter-arg",
             )
             if runtime_venv_symlinks:
                 args.add_all(
                     runtime_venv_symlinks,
                     map_each = _map_runtime_venv_symlink,
-                    before_each = "--runtime_venv_symlink",
+                    before_each = "--runtime-venv-symlink",
                 )
             embedder_tool = get_shrubbery_tool(
                 ctx,
